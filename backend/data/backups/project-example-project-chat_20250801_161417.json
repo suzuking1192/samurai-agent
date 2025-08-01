@@ -1,0 +1,20 @@
+[
+  {
+    "id": "msg-1",
+    "role": "user",
+    "content": "I want to build a web application for project management. Can you help me plan it?",
+    "timestamp": "2025-08-01 16:14:17.507002"
+  },
+  {
+    "id": "msg-2",
+    "role": "assistant",
+    "content": "I'd be happy to help you build a project management web app! Let me break this down into manageable tasks. What's your preferred tech stack?",
+    "timestamp": "2025-08-01 16:14:17.507025"
+  },
+  {
+    "id": "msg-3",
+    "role": "user",
+    "content": "I'm thinking React for frontend and Python FastAPI for backend. What features should I include?",
+    "timestamp": "2025-08-01 16:14:17.507031"
+  }
+]

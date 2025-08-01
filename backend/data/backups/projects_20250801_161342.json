@@ -1,0 +1,9 @@
+[
+  {
+    "id": "backup-test-project",
+    "name": "Backup Test Project",
+    "description": "Testing backup functionality",
+    "tech_stack": "Python",
+    "created_at": "2025-08-01 16:13:42.187393"
+  }
+]

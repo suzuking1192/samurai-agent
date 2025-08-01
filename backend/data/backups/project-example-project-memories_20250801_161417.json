@@ -1,0 +1,16 @@
+[
+  {
+    "id": "memory-1",
+    "title": "Authentication System",
+    "content": "Implement JWT-based authentication with refresh tokens and role-based access control",
+    "type": "decision",
+    "created_at": "2025-08-01 16:14:17.490474"
+  },
+  {
+    "id": "memory-2",
+    "title": "Database Schema",
+    "content": "Users table: id, email, password_hash, created_at, updated_at. Projects table: id, name, description, user_id, created_at",
+    "type": "spec",
+    "created_at": "2025-08-01 16:14:17.490651"
+  }
+]
