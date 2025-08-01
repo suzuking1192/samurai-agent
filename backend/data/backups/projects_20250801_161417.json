@@ -1,0 +1,9 @@
+[
+  {
+    "id": "example-project",
+    "name": "Example Web App",
+    "description": "A modern web application with React frontend and Python backend",
+    "tech_stack": "React, TypeScript, Python, FastAPI, PostgreSQL",
+    "created_at": "2025-08-01 16:14:17.488612"
+  }
+]

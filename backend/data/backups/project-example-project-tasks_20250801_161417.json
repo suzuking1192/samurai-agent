@@ -1,0 +1,38 @@
+[
+  {
+    "id": "task-1",
+    "title": "Set up project structure",
+    "description": "Create the basic project structure with frontend and backend directories",
+    "prompt": "Create a new project with React frontend and Python FastAPI backend. Set up the basic directory structure and configuration files.",
+    "completed": true,
+    "order": 1,
+    "created_at": "2025-08-01 16:14:17.492316"
+  },
+  {
+    "id": "task-2",
+    "title": "Implement user authentication",
+    "description": "Create login and registration endpoints with JWT tokens",
+    "prompt": "Implement user authentication system with JWT tokens. Create login, register, and logout endpoints. Include password hashing and validation.",
+    "completed": false,
+    "order": 2,
+    "created_at": "2025-08-01 16:14:17.492322"
+  },
+  {
+    "id": "task-3",
+    "title": "Create database models",
+    "description": "Define Pydantic models for users, projects, and other entities",
+    "prompt": "Create Pydantic models for the application. Include User, Project, Task, and Memory models with proper validation and relationships.",
+    "completed": false,
+    "order": 3,
+    "created_at": "2025-08-01 16:14:17.492325"
+  },
+  {
+    "id": "task-4",
+    "title": "Build React components",
+    "description": "Create reusable React components for the frontend",
+    "prompt": "Create React components for the application. Include components for project list, task management, and chat interface. Use TypeScript and modern React patterns.",
+    "completed": false,
+    "order": 4,
+    "created_at": "2025-08-01 16:14:17.492326"
+  }
+]
