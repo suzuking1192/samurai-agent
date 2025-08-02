@@ -686,34 +686,57 @@ Please provide helpful, context-aware advice that considers the existing project
         tasks = []
         lines = ai_response.split('\n')
         
-        current_task = {}
+        # Look for the TASKS: section
+        in_tasks_section = False
         
         for line in lines:
             line = line.strip()
             
-            if line.startswith('TASK:'):
-                # Save previous task if exists
-                if current_task and 'title' in current_task:
-                    tasks.append(current_task)
+            # Check if we're entering the tasks section
+            if line.upper().startswith('TASKS:'):
+                in_tasks_section = True
+                continue
+            
+            # If we're in the tasks section, look for numbered tasks
+            if in_tasks_section and line:
+                # Check for numbered task format: "1. [title] - [description]"
+                if line[0].isdigit() and '. ' in line:
+                    # Extract task number, title, and description
+                    parts = line.split('. ', 1)
+                    if len(parts) == 2:
+                        task_content = parts[1]
+                        
+                        # Split on " - " to separate title and description
+                        if ' - ' in task_content:
+                            title, description = task_content.split(' - ', 1)
+                        else:
+                            # If no description separator, use the whole content as title
+                            title = task_content
+                            description = ""
+                        
+                        task = {
+                            'title': title.strip(),
+                            'description': description.strip(),
+                            'priority': 'MEDIUM'
+                        }
+                        tasks.append(task)
                 
-                # Start new task
-                current_task = {
-                    'title': line.replace('TASK:', '').strip(),
-                    'description': '',
-                    'priority': 'MEDIUM'
-                }
-            
-            elif line.startswith('DESCRIPTION:'):
-                if current_task:
-                    current_task['description'] = line.replace('DESCRIPTION:', '').strip()
-            
-            elif line.startswith('PRIORITY:'):
-                if current_task:
-                    current_task['priority'] = line.replace('PRIORITY:', '').strip()
-        
-        # Add last task
-        if current_task and 'title' in current_task:
-            tasks.append(current_task)
+                # Also check for bullet point format: "• [title] - [description]"
+                elif line.startswith('•') or line.startswith('-'):
+                    task_content = line[1:].strip()
+                    
+                    if ' - ' in task_content:
+                        title, description = task_content.split(' - ', 1)
+                    else:
+                        title = task_content
+                        description = ""
+                    
+                    task = {
+                        'title': title.strip(),
+                        'description': description.strip(),
+                        'priority': 'MEDIUM'
+                    }
+                    tasks.append(task)
         
         return tasks
     
@@ -721,15 +744,15 @@ Please provide helpful, context-aware advice that considers the existing project
         """Create Task objects from parsed task data"""
         tasks = []
         
-        for task_data in parsed_tasks:
+        for i, task_data in enumerate(parsed_tasks):
             task = Task(
                 id=str(uuid.uuid4()),
                 title=task_data.get('title', 'Untitled Task'),
                 description=task_data.get('description', ''),
-                priority=task_data.get('priority', 'MEDIUM'),
+                prompt='',  # Will be set later
                 completed=False,
-                created_at=datetime.now(),
-                prompt=''  # Will be set later
+                order=i + 1,  # Add order field
+                created_at=datetime.now()
             )
             tasks.append(task)
         
@@ -1278,7 +1301,9 @@ Available commands:
 - View memories: "show memories"
 - View context: "show context"
 - View enhanced context: "show enhanced context"
-- Clear data: "clear all"
+- Clear all data: "clear all"
+- Help: "help"
+- Exit: "exit"
                 """)
                 continue
             
@@ -1324,7 +1349,18 @@ Available commands:
                 # Clear test data
                 agent.file_service.save_tasks(test_project.id, [])
                 agent.file_service.save_memories(test_project.id, [])
-                print("🗑️ Cleared all test data")
+                
+                # Clear chat history file
+                import os
+                chat_file = f"data/project-{test_project.id}-chat.json"
+                if os.path.exists(chat_file):
+                    os.remove(chat_file)
+                
+                print("🗑️ Cleared all test data:")
+                print("  ✅ Tasks cleared")
+                print("  ✅ Memories cleared")
+                print("  ✅ Chat history cleared")
+                print("  🔄 Ready for fresh testing!")
                 continue
             
             if not user_input:
