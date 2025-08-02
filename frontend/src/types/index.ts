@@ -113,13 +113,6 @@ export interface MemoryPanelProps {
   projectId?: string
 }
 
-// Error types
-export interface ApiError {
-  message: string
-  status: number
-  details?: string
-}
-
 // Loading states
 export interface LoadingState {
   isLoading: boolean
