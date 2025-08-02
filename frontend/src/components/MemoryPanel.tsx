@@ -55,7 +55,7 @@ const MemoryPanel: React.FC<MemoryPanelProps> = ({ projectId }) => {
 
   const handleDeleteMemory = async (memoryId: string) => {
     try {
-      await deleteMemory(memoryId)
+      await deleteMemory(projectId!, memoryId)
       setMemories(prev => prev.filter(memory => memory.id !== memoryId))
     } catch (error) {
       console.error('Error deleting memory:', error)

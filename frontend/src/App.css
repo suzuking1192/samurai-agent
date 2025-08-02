@@ -564,6 +564,48 @@ body {
   border-color: rgba(255, 255, 255, 0.5);
 }
 
+.project-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.delete-project-btn {
+  background: #dc2626;
+  color: white;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.delete-project-btn:hover {
+  background: #b91c1c;
+  transform: translateY(-1px);
+}
+
+.delete-warning {
+  color: #dc2626;
+  font-weight: 500;
+  margin-bottom: 12px;
+  line-height: 1.5;
+}
+
+.modal-button.danger {
+  background: #dc2626;
+  color: white;
+}
+
+.modal-button.danger:hover {
+  background: #b91c1c;
+}
+
 .project-create-form {
   position: absolute;
   top: 100%;

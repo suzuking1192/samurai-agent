@@ -114,17 +114,19 @@ async def chat_with_project(project_id: str, request: ChatRequest):
         # 4. Save chat messages
         user_message = ChatMessage(
             id=str(uuid.uuid4()),
-            role="user",
-            content=request.message,
-            timestamp=datetime.now()
+            project_id=project_id,
+            message=request.message,
+            response="",
+            created_at=datetime.now()
         )
         file_service.save_chat_message(project_id, user_message)
         
         assistant_message = ChatMessage(
             id=str(uuid.uuid4()),
-            role="assistant",
-            content=ai_response,
-            timestamp=datetime.now()
+            project_id=project_id,
+            message=request.message,
+            response=ai_response,
+            created_at=datetime.now()
         )
         file_service.save_chat_message(project_id, assistant_message)
         
@@ -147,28 +149,74 @@ async def get_project_tasks(project_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.put("/projects/{project_id}/tasks/{task_id}")
-async def update_task(project_id: str, task_id: str, request: TaskUpdateRequest):
-    """Update task completion status"""
+async def update_task(project_id: str, task_id: str, request: dict):
+    """Update task status"""
     try:
-        success = file_service.update_task_status(project_id, task_id, request.completed)
+        # Update task with new data
+        task = file_service.get_task_by_id(project_id, task_id)
+        if not task:
+            raise HTTPException(status_code=404, detail="Task not found")
+        
+        # Update task fields
+        if 'status' in request:
+            task.status = request['status']
+        if 'priority' in request:
+            task.priority = request['priority']
+        if 'title' in request:
+            task.title = request['title']
+        if 'description' in request:
+            task.description = request['description']
+        if 'completed' in request:
+            task.completed = request['completed']
+        
+        task.updated_at = datetime.now()
+        file_service.save_task(project_id, task)
+        return task
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/projects/{project_id}/tasks/{task_id}")
+async def delete_task(project_id: str, task_id: str):
+    """Delete a task"""
+    try:
+        success = file_service.delete_task(project_id, task_id)
         if not success:
             raise HTTPException(status_code=404, detail="Task not found")
-        return {"message": "Task updated successfully"}
+        return {"message": "Task deleted successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 # Additional endpoints for completeness
 @app.post("/projects/{project_id}/tasks", response_model=Task)
-async def create_task(project_id: str, task: Task):
+async def create_task(project_id: str, task_data: dict):
     """Create a new task"""
     try:
-        task.project_id = project_id
+        # Create task with project_id
+        task = Task(
+            project_id=project_id,
+            title=task_data.get("title", ""),
+            description=task_data.get("description", ""),
+            status=task_data.get("status", "pending"),
+            priority=task_data.get("priority", "medium"),
+            prompt=task_data.get("prompt", ""),
+            completed=task_data.get("completed", False),
+            order=task_data.get("order", 0)
+        )
         file_service.save_task(project_id, task)
         return task
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
+
+# Chat messages endpoint
+@app.get("/projects/{project_id}/chat-messages", response_model=List[ChatMessage])
+async def get_project_chat_messages(project_id: str):
+    """Get all chat messages for a project"""
+    try:
+        return file_service.load_chat_messages(project_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # Memory endpoints
 @app.get("/projects/{project_id}/memories", response_model=List[Memory])
@@ -180,20 +228,25 @@ async def get_memories(project_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/projects/{project_id}/memories", response_model=Memory)
-async def create_memory(project_id: str, memory: Memory):
+async def create_memory(project_id: str, memory_data: dict):
     """Create a new memory"""
     try:
-        memory.project_id = project_id
+        # Create memory with project_id
+        memory = Memory(
+            project_id=project_id,
+            content=memory_data.get("content", ""),
+            type=memory_data.get("type", "note")
+        )
         file_service.save_memory(project_id, memory)
         return memory
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.delete("/memories/{memory_id}")
-async def delete_memory(memory_id: str):
+@app.delete("/projects/{project_id}/memories/{memory_id}")
+async def delete_memory(project_id: str, memory_id: str):
     """Delete a memory"""
     try:
-        success = file_service.delete_memory(memory_id)
+        success = file_service.delete_memory(project_id, memory_id)
         if not success:
             raise HTTPException(status_code=404, detail="Memory not found")
         return {"message": "Memory deleted successfully"}
