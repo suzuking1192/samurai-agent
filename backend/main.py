@@ -111,24 +111,15 @@ async def chat_with_project(project_id: str, request: ChatRequest):
         # 3. Use Gemini service to respond
         ai_response = await gemini_service.chat(request.message, context)
         
-        # 4. Save chat messages
-        user_message = ChatMessage(
-            id=str(uuid.uuid4()),
-            project_id=project_id,
-            message=request.message,
-            response="",
-            created_at=datetime.now()
-        )
-        file_service.save_chat_message(project_id, user_message)
-        
-        assistant_message = ChatMessage(
+        # 4. Save chat message with both user message and AI response
+        chat_message = ChatMessage(
             id=str(uuid.uuid4()),
             project_id=project_id,
             message=request.message,
             response=ai_response,
             created_at=datetime.now()
         )
-        file_service.save_chat_message(project_id, assistant_message)
+        file_service.save_chat_message(project_id, chat_message)
         
         # 5. Return simple chat response (no tasks for now)
         return ChatResponse(
