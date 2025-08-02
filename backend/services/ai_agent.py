@@ -98,20 +98,34 @@ class SamuraiAgent:
                 result = None
                 
                 if intent == "feature_request":
-                    clarity = await self._evaluate_clarity(message, project_context)
-                    
-                    if clarity["clear"]:
-                        result = await self._handle_feature_request(message, project_context, project_id)
-                        if result["type"] == "feature_breakdown" and result["tasks"]:
-                            for task in result["tasks"]:
-                                task.prompt = self._generate_cursor_prompt(
-                                    task.title, task.description, project_context
+                        clarity = await self._evaluate_clarity(message, project_context)
+                        
+                        if clarity["clear"]:
+                            result = await self._handle_feature_request(message, project_context, project_id)
+                            if result["type"] == "feature_breakdown" and result["tasks"]:
+                                for task in result["tasks"]:
+                                    task.prompt = self._generate_cursor_prompt(
+                                        task.title, task.description, project_context
+                                    )
+                                self.file_service.save_tasks(project_id, result["tasks"])
+                            
+                            # Update memory with important information from this conversation
+                            if result and result.get("response"):
+                                await self._update_memory_from_conversation(
+                                    message, result["response"], project_id, project_context
                                 )
-                            self.file_service.save_tasks(project_id, result["tasks"])
-                        return result
-                    else:
-                        result = await self._ask_clarifying_questions(message, project_context)
-                        return result
+                            
+                            return result
+                        else:
+                            result = await self._ask_clarifying_questions(message, project_context)
+                            
+                            # Update memory
+                            if result and result.get("response"):
+                                await self._update_memory_from_conversation(
+                                    message, result["response"], project_id, project_context
+                                )
+                            
+                            return result
                 
                 elif intent == "task_management":
                     result = await self._handle_task_management(message, project_id)
@@ -458,7 +472,7 @@ TASKS:
                 }
             
             # Create task objects with enhanced context
-            task_objects = self._create_task_objects(parsed_tasks)
+            task_objects = self._create_task_objects(parsed_tasks, project_id)
             
             # Enhanced response that references existing context
             response_parts = [f"Great! I've broken down your feature into {len(task_objects)} actionable tasks."]
@@ -740,13 +754,14 @@ Please provide helpful, context-aware advice that considers the existing project
         
         return tasks
     
-    def _create_task_objects(self, parsed_tasks: List[dict]) -> List[Task]:
+    def _create_task_objects(self, parsed_tasks: List[dict], project_id: str = None) -> List[Task]:
         """Create Task objects from parsed task data"""
         tasks = []
         
         for i, task_data in enumerate(parsed_tasks):
             task = Task(
                 id=str(uuid.uuid4()),
+                project_id=project_id or "",
                 title=task_data.get('title', 'Untitled Task'),
                 description=task_data.get('description', ''),
                 prompt='',  # Will be set later
@@ -818,9 +833,9 @@ Complete implementation of the task with all necessary files, components, and co
                         # Create new memory
                         memory = Memory(
                             id=str(uuid.uuid4()),
-                            title=info['title'],
-                            content=info['content'],
-                            type=info['type'],
+                            project_id=project_id,
+                            content=f"{info['title']}: {info['content']}",
+                            type=info['type'] if info['type'] in ['context', 'decision', 'note'] else 'note',
                             created_at=datetime.now()
                         )
                         existing_memories.append(memory)
@@ -846,10 +861,9 @@ Complete implementation of the task with all necessary files, components, and co
         {conversation}
 
         Extract information that falls into these categories:
-        1. "feature" - New features decided or specified
-        2. "decision" - Technical decisions made (database choice, architecture, etc.)
-        3. "spec" - Detailed specifications or requirements
-        4. "note" - Important implementation notes or constraints
+        1. "decision" - Technical decisions made (database choice, architecture, etc.)
+        2. "context" - Important context or background information
+        3. "note" - Important implementation notes, constraints, or specifications
 
         Return in this format if there's important information:
         MEMORY_ITEMS:
@@ -858,7 +872,7 @@ Complete implementation of the task with all necessary files, components, and co
         Example:
         MEMORY_ITEMS:
         User Authentication Method | decision | Decided to use JWT tokens with email/password, including email verification
-        Notification System | feature | In-app notifications as top-right popups with sound alerts for task assignments
+        Notification System | note | In-app notifications as top-right popups with sound alerts for task assignments
 
         If no important information to remember, return: NO_MEMORY_ITEMS
         """
@@ -894,7 +908,10 @@ Complete implementation of the task with all necessary files, components, and co
         new_title_words = set(new_info['title'].lower().split())
         
         for memory in existing_memories:
-            existing_words = set(memory.title.lower().split())
+            # Extract title from content (assuming format "Title: Content")
+            content_parts = memory.content.split(':', 1)
+            existing_title = content_parts[0] if len(content_parts) > 1 else memory.content
+            existing_words = set(existing_title.lower().split())
             
             # If 50% or more words overlap, consider it similar
             overlap = len(new_title_words.intersection(existing_words))
