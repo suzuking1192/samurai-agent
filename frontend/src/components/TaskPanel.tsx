@@ -57,7 +57,7 @@ const TaskPanel: React.FC<TaskPanelProps> = ({ projectId }) => {
 
   const handleUpdateTask = async (taskId: string, updates: TaskUpdate) => {
     try {
-      const updatedTask = await updateTask(taskId, updates)
+      const updatedTask = await updateTask(projectId!, taskId, updates)
       setTasks(prev => prev.map(task => 
         task.id === taskId ? updatedTask : task
       ))
@@ -68,7 +68,7 @@ const TaskPanel: React.FC<TaskPanelProps> = ({ projectId }) => {
 
   const handleDeleteTask = async (taskId: string) => {
     try {
-      await deleteTask(taskId)
+      await deleteTask(projectId!, taskId)
       setTasks(prev => prev.filter(task => task.id !== taskId))
     } catch (error) {
       console.error('Error deleting task:', error)
@@ -113,18 +113,17 @@ const TaskPanel: React.FC<TaskPanelProps> = ({ projectId }) => {
 
   return (
     <div className="task-panel">
-      <div className="panel-header">
-        Tasks
-        <button
-          onClick={() => setShowCreateForm(!showCreateForm)}
-          className="button"
-          style={{ marginLeft: 'auto' }}
-        >
-          {showCreateForm ? 'Cancel' : 'Add Task'}
-        </button>
-      </div>
-      
       <div className="panel-content">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: '600' }}>Tasks</h3>
+          <button
+            onClick={() => setShowCreateForm(!showCreateForm)}
+            className="button"
+          >
+            {showCreateForm ? 'Cancel' : 'Add Task'}
+          </button>
+        </div>
+
         {showCreateForm && (
           <div className="card">
             <h3>Create New Task</h3>
@@ -164,8 +163,7 @@ const TaskPanel: React.FC<TaskPanelProps> = ({ projectId }) => {
               </button>
               <button
                 onClick={() => setShowCreateForm(false)}
-                className="button"
-                style={{ backgroundColor: '#95a5a6' }}
+                className="button secondary"
               >
                 Cancel
               </button>
@@ -199,8 +197,8 @@ const TaskPanel: React.FC<TaskPanelProps> = ({ projectId }) => {
                   </select>
                   <button
                     onClick={() => handleDeleteTask(task.id)}
-                    className="button"
-                    style={{ backgroundColor: '#e74c3c', padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
+                    className="button danger"
+                    style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
                   >
                     Delete
                   </button>

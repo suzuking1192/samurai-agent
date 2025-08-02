@@ -55,7 +55,7 @@ const MemoryPanel: React.FC<MemoryPanelProps> = ({ projectId }) => {
 
   const handleDeleteMemory = async (memoryId: string) => {
     try {
-      await deleteMemory(memoryId)
+      await deleteMemory(projectId!, memoryId)
       setMemories(prev => prev.filter(memory => memory.id !== memoryId))
     } catch (error) {
       console.error('Error deleting memory:', error)
@@ -100,18 +100,17 @@ const MemoryPanel: React.FC<MemoryPanelProps> = ({ projectId }) => {
 
   return (
     <div className="memory-panel">
-      <div className="panel-header">
-        Project Memories
-        <button
-          onClick={() => setShowCreateForm(!showCreateForm)}
-          className="button"
-          style={{ marginLeft: 'auto' }}
-        >
-          {showCreateForm ? 'Cancel' : 'Add Memory'}
-        </button>
-      </div>
-      
       <div className="panel-content">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: '600' }}>Memories</h3>
+          <button
+            onClick={() => setShowCreateForm(!showCreateForm)}
+            className="button"
+          >
+            {showCreateForm ? 'Cancel' : 'Add Memory'}
+          </button>
+        </div>
+
         {showCreateForm && (
           <div className="card">
             <h3>Create New Memory</h3>
@@ -143,8 +142,7 @@ const MemoryPanel: React.FC<MemoryPanelProps> = ({ projectId }) => {
               </button>
               <button
                 onClick={() => setShowCreateForm(false)}
-                className="button"
-                style={{ backgroundColor: '#95a5a6' }}
+                className="button secondary"
               >
                 Cancel
               </button>
@@ -172,12 +170,10 @@ const MemoryPanel: React.FC<MemoryPanelProps> = ({ projectId }) => {
                 </span>
                 <button
                   onClick={() => handleDeleteMemory(memory.id)}
-                  className="button"
+                  className="button danger"
                   style={{ 
-                    backgroundColor: '#e74c3c', 
                     padding: '0.25rem 0.5rem', 
-                    fontSize: '0.8rem',
-                    marginLeft: 'auto'
+                    fontSize: '0.8rem'
                   }}
                 >
                   Delete
