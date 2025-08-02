@@ -21,6 +21,7 @@ from models import (
 from services.gemini_service import GeminiService
 from services.file_service import FileService
 from services.context_service import context_service
+from services.response_service import handle_long_response, handle_validation_error
 
 # Load environment variables
 load_dotenv()
@@ -220,20 +221,41 @@ async def chat_with_project(project_id: str, request: ChatRequest):
         ai_response = await gemini_service.chat(request.message, context)
         logger.info("AI response generated successfully")
         
-        # 6. Save chat message with both user message and AI response
-        chat_message = ChatMessage(
-            id=str(uuid.uuid4()),
-            project_id=project_id,
-            message=request.message,
-            response=ai_response,
-            created_at=datetime.now()
-        )
+        # 6. Handle long responses gracefully
+        is_truncated = False
+        final_response = ai_response
+        
+        try:
+            # Try to create ChatMessage with original response
+            chat_message = ChatMessage(
+                id=str(uuid.uuid4()),
+                project_id=project_id,
+                message=request.message,
+                response=ai_response,
+                created_at=datetime.now()
+            )
+        except ValidationError as e:
+            # Handle validation error (likely string_too_long)
+            logger.warning(f"Response validation error: {e}")
+            final_response = handle_validation_error(e, ai_response)
+            is_truncated = True
+            
+            # Create ChatMessage with truncated response
+            chat_message = ChatMessage(
+                id=str(uuid.uuid4()),
+                project_id=project_id,
+                message=request.message,
+                response=final_response,
+                created_at=datetime.now()
+            )
+        
+        # Save chat message
         file_service.save_chat_message(project_id, chat_message)
         logger.info(f"Chat message saved: {chat_message.id}")
         
         # 7. Return enhanced chat response with relevant context
         return ChatResponse(
-            response=ai_response,
+            response=final_response,
             tasks=relevant_tasks,  # Include relevant tasks
             memories=relevant_memories,  # Include relevant memories
             type="chat"

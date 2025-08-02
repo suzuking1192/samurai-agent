@@ -18,6 +18,7 @@ const Chat: React.FC<ChatProps> = ({ projectId }) => {
   const [isLoading, setIsLoading] = useState(false)
   const [isAtBottom, setIsAtBottom] = useState(true)
   const [agentActivity, setAgentActivity] = useState<string>('')
+  const [notification, setNotification] = useState<{type: 'info' | 'warning' | 'error', message: string} | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const chatMessagesRef = useRef<HTMLDivElement>(null)
 
@@ -118,6 +119,19 @@ const Chat: React.FC<ChatProps> = ({ projectId }) => {
       clearInterval(activityInterval)
       setAgentActivity('')
       
+      // Check if response was truncated
+      const isTruncated = response.response.includes('[Response truncated') || 
+                         response.response.includes('exceeded our limits')
+      
+      if (isTruncated) {
+        setNotification({
+          type: 'info',
+          message: 'Response was comprehensive - showing key points. You can ask for more details if needed.'
+        })
+        // Clear notification after 5 seconds
+        setTimeout(() => setNotification(null), 5000)
+      }
+      
       // Replace optimistic message with real message
       const realMessage: OptimisticMessage = {
         id: `real-${Date.now()}`,
@@ -132,19 +146,34 @@ const Chat: React.FC<ChatProps> = ({ projectId }) => {
         return [...filtered, realMessage]
       })
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error sending message:', error)
       
       // Clear activity
       clearInterval(activityInterval)
       setAgentActivity('')
       
+      // Determine appropriate error message based on error type
+      let errorResponse = 'Sorry, there was an error processing your message. Please try again.'
+      
+      if (error.status === 500) {
+        if (error.message?.includes('string_too_long') || error.message?.includes('validation')) {
+          errorResponse = 'The response was very detailed and exceeded our limits. The agent is processing a shorter version for you.'
+        } else if (error.message?.includes('truncated')) {
+          errorResponse = 'Response was comprehensive - showing key points. You can ask for more details if needed.'
+        }
+      } else if (error.status === 413) {
+        errorResponse = 'Your message was too long. Please try a shorter message.'
+      } else if (error.status === 404) {
+        errorResponse = 'Project not found. Please refresh and try again.'
+      }
+      
       // Replace optimistic message with error message
       const errorMessage: OptimisticMessage = {
         id: `error-${Date.now()}`,
         project_id: projectId,
         message: userMessage,
-        response: 'Sorry, there was an error processing your message. Please try again.',
+        response: errorResponse,
         created_at: new Date().toISOString(),
         isError: true
       }
@@ -184,6 +213,19 @@ const Chat: React.FC<ChatProps> = ({ projectId }) => {
 
   return (
     <div className="chat-container">
+      {/* Notification display */}
+      {notification && (
+        <div className={`notification notification-${notification.type}`}>
+          <span>{notification.message}</span>
+          <button 
+            onClick={() => setNotification(null)}
+            className="notification-close"
+          >
+            ×
+          </button>
+        </div>
+      )}
+      
       <div className="chat-messages" ref={chatMessagesRef} onScroll={handleScroll}>
         {messages.length === 0 ? (
           <div className="empty-state">
@@ -229,17 +271,35 @@ const Chat: React.FC<ChatProps> = ({ projectId }) => {
                       <ReactMarkdown
                         components={{
                           ul: ({children}) => <ul className="markdown-list">{children}</ul>,
+                          ol: ({children}) => <ol className="markdown-list">{children}</ol>,
                           li: ({children}) => <li className="markdown-list-item">{children}</li>,
                           strong: ({children}) => <strong className="markdown-strong">{children}</strong>,
                           em: ({children}) => <em className="markdown-em">{children}</em>,
-                          code: ({children}) => <code className="markdown-inline-code">{children}</code>,
+                          code: ({children, className}) => {
+                            const isInline = !className;
+                            return isInline ? (
+                              <code className="markdown-inline-code">{children}</code>
+                            ) : (
+                              <code className="markdown-code">{children}</code>
+                            );
+                          },
                           pre: ({children}) => <pre className="markdown-code-block">{children}</pre>,
                           p: ({children}) => <p className="markdown-paragraph">{children}</p>,
-                          h1: ({children}) => <h1 className="markdown-heading">{children}</h1>,
-                          h2: ({children}) => <h2 className="markdown-heading">{children}</h2>,
-                          h3: ({children}) => <h3 className="markdown-heading">{children}</h3>,
+                          h1: ({children}) => <h1 className="markdown-heading markdown-h1">{children}</h1>,
+                          h2: ({children}) => <h2 className="markdown-heading markdown-h2">{children}</h2>,
+                          h3: ({children}) => <h3 className="markdown-heading markdown-h3">{children}</h3>,
+                          h4: ({children}) => <h4 className="markdown-heading markdown-h4">{children}</h4>,
+                          h5: ({children}) => <h5 className="markdown-heading markdown-h5">{children}</h5>,
+                          h6: ({children}) => <h6 className="markdown-heading markdown-h6">{children}</h6>,
                           blockquote: ({children}) => <blockquote className="markdown-blockquote">{children}</blockquote>,
-                          a: ({href, children}) => <a href={href} className="markdown-link" target="_blank" rel="noopener noreferrer">{children}</a>
+                          a: ({href, children}) => <a href={href} className="markdown-link" target="_blank" rel="noopener noreferrer">{children}</a>,
+                          hr: () => <hr className="markdown-hr" />,
+                          table: ({children}) => <table className="markdown-table">{children}</table>,
+                          thead: ({children}) => <thead className="markdown-thead">{children}</thead>,
+                          tbody: ({children}) => <tbody className="markdown-tbody">{children}</tbody>,
+                          tr: ({children}) => <tr className="markdown-tr">{children}</tr>,
+                          th: ({children}) => <th className="markdown-th">{children}</th>,
+                          td: ({children}) => <td className="markdown-td">{children}</td>,
                         }}
                       >
                         {message.response}
