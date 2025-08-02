@@ -1,0 +1,37 @@
+[
+  {
+    "id": "dd2fce5b-9595-465d-b808-210ce5c4c954",
+    "title": "User Registration & Login",
+    "content": "Implement user registration and login functionality.",
+    "type": "feature",
+    "created_at": "2025-08-01 18:49:24.317007"
+  },
+  {
+    "id": "efb9f2c5-8822-4f96-81ac-e224bd8c3824",
+    "title": "Authentication Method",
+    "content": "Use JWT tokens for authentication.",
+    "type": "decision",
+    "created_at": "2025-08-01 18:49:24.317244"
+  },
+  {
+    "id": "bd7946c4-2b9d-4cf9-998c-dd749d9fa666",
+    "title": "Authentication Credentials",
+    "content": "Users will register and log in using email/password.",
+    "type": "spec",
+    "created_at": "2025-08-01 18:49:24.317298"
+  },
+  {
+    "id": "8162db5a-643b-41a9-9162-64dbd001ae7c",
+    "title": "Authentication UI Flow",
+    "content": "Separate pages are required for user login and signup.",
+    "type": "spec",
+    "created_at": "2025-08-01 18:49:24.317335"
+  },
+  {
+    "id": "86b2aaa3-a763-420c-afcd-3953e4823710",
+    "title": "Private Todo Lists",
+    "content": "Each user will have their own private todo list, not accessible by other users.",
+    "type": "spec",
+    "created_at": "2025-08-01 18:49:24.317360"
+  }
+]

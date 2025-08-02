@@ -1,0 +1,65 @@
+[
+  {
+    "id": "dd2fce5b-9595-465d-b808-210ce5c4c954",
+    "title": "User Registration & Login",
+    "content": "Implement user registration and login functionality.",
+    "type": "feature",
+    "created_at": "2025-08-01 18:49:24.317007"
+  },
+  {
+    "id": "efb9f2c5-8822-4f96-81ac-e224bd8c3824",
+    "title": "Authentication Method",
+    "content": "Use JWT tokens for authentication.\n\nUpdate: Use JWT tokens for authentication with the FastAPI backend.",
+    "type": "decision",
+    "created_at": "2025-08-01 22:17:44.242993"
+  },
+  {
+    "id": "bd7946c4-2b9d-4cf9-998c-dd749d9fa666",
+    "title": "Authentication Credentials",
+    "content": "Users will register and log in using email/password.",
+    "type": "spec",
+    "created_at": "2025-08-01 18:49:24.317298"
+  },
+  {
+    "id": "8162db5a-643b-41a9-9162-64dbd001ae7c",
+    "title": "Authentication UI Flow",
+    "content": "Separate pages are required for user login and signup.\n\nUpdate: Dedicated login and registration pages on the frontend with proper form validation.",
+    "type": "spec",
+    "created_at": "2025-08-01 22:17:44.243009"
+  },
+  {
+    "id": "86b2aaa3-a763-420c-afcd-3953e4823710",
+    "title": "Private Todo Lists",
+    "content": "Each user will have their own private todo list, not accessible by other users.",
+    "type": "spec",
+    "created_at": "2025-08-01 18:49:24.317360"
+  },
+  {
+    "id": "fa75ceae-6eea-4776-ab40-f8b6102e13ed",
+    "title": "User Authentication System",
+    "content": "Complete user authentication using email/password.",
+    "type": "feature",
+    "created_at": "2025-08-01 22:17:44.242755"
+  },
+  {
+    "id": "6d941170-c22f-4a7b-ac3a-8ebc96390bc5",
+    "title": "Authentication Functionality",
+    "content": "Users must be able to register new accounts, log in, log out, and reset forgotten passwords.",
+    "type": "spec",
+    "created_at": "2025-08-01 22:17:44.242828"
+  },
+  {
+    "id": "063c9462-9ed1-40da-8467-b02562f50a91",
+    "title": "Todo List Privacy",
+    "content": "Each user's todo list must be private with no sharing between users.",
+    "type": "spec",
+    "created_at": "2025-08-01 22:17:44.242848"
+  },
+  {
+    "id": "2c4cef9e-ea56-4033-be14-2019bb03fdf6",
+    "title": "JWT Token Handling & Route Protection",
+    "content": "JWT tokens must be stored securely on the frontend. Backend API routes requiring authentication must be protected by middleware.",
+    "type": "note",
+    "created_at": "2025-08-01 22:17:44.243032"
+  }
+]

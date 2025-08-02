@@ -10,7 +10,15 @@ import tempfile
 from contextlib import contextmanager
 
 # Import models
-from models import Project, Memory, Task, ChatMessage
+try:
+    from models import Project, Memory, Task, ChatMessage
+except ImportError:
+    # Fallback for when running the file directly
+    import sys
+    import os
+    # Add parent directory to path
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from models import Project, Memory, Task, ChatMessage
 
 # Constants
 DATA_DIR = "data"
