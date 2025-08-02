@@ -1,0 +1,15 @@
+[
+  {
+    "id": "06fc7806-147b-4cd0-a98e-4c968d5b513b",
+    "project_id": "413fa317-54dc-45c5-b498-12e4dcdcbac5",
+    "title": "Test Task 1754157755239",
+    "description": "Integration test task",
+    "status": "pending",
+    "priority": "medium",
+    "prompt": "Test task prompt",
+    "completed": false,
+    "order": 1,
+    "created_at": "2025-08-02 18:02:35.242282",
+    "updated_at": "2025-08-02 18:02:35.242287"
+  }
+]

@@ -57,7 +57,7 @@ const TaskPanel: React.FC<TaskPanelProps> = ({ projectId }) => {
 
   const handleUpdateTask = async (taskId: string, updates: TaskUpdate) => {
     try {
-      const updatedTask = await updateTask(taskId, updates)
+      const updatedTask = await updateTask(projectId!, taskId, updates)
       setTasks(prev => prev.map(task => 
         task.id === taskId ? updatedTask : task
       ))
@@ -68,7 +68,7 @@ const TaskPanel: React.FC<TaskPanelProps> = ({ projectId }) => {
 
   const handleDeleteTask = async (taskId: string) => {
     try {
-      await deleteTask(taskId)
+      await deleteTask(projectId!, taskId)
       setTasks(prev => prev.filter(task => task.id !== taskId))
     } catch (error) {
       console.error('Error deleting task:', error)

@@ -56,6 +56,9 @@ class FileService:
         """Context manager for atomic file writes."""
         temp_file = None
         try:
+            # Ensure the directory exists
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            
             # Create temporary file in the same directory
             temp_file = file_path.with_suffix('.tmp')
             yield temp_file
@@ -146,17 +149,17 @@ class FileService:
     
     def _validate_memory_data(self, data: Dict[str, Any]) -> bool:
         """Validate memory data structure."""
-        required_fields = ['id', 'title', 'content', 'type']
+        required_fields = ['id', 'project_id', 'content', 'type', 'created_at']
         return all(field in data for field in required_fields)
     
     def _validate_task_data(self, data: Dict[str, Any]) -> bool:
         """Validate task data structure."""
-        required_fields = ['id', 'title', 'description', 'prompt', 'completed', 'order']
+        required_fields = ['id', 'project_id', 'title', 'description', 'created_at']
         return all(field in data for field in required_fields)
     
     def _validate_chat_message_data(self, data: Dict[str, Any]) -> bool:
         """Validate chat message data structure."""
-        required_fields = ['id', 'role', 'content', 'timestamp']
+        required_fields = ['id', 'project_id', 'message', 'created_at']
         return all(field in data for field in required_fields)
     
     # Directory management
@@ -203,26 +206,30 @@ class FileService:
     
     def delete_project(self, project_id: str) -> bool:
         """Delete a project and all its associated data."""
-        self.ensure_data_dir()
-        projects = self.load_projects()
-        
-        # Find and remove project
-        original_count = len(projects)
-        projects = [p for p in projects if p.id != project_id]
-        
-        if len(projects) == original_count:
-            logger.warning(f"Project not found for deletion: {project_id}")
+        try:
+            self.ensure_data_dir()
+            projects = self.load_projects()
+            
+            # Find and remove project
+            original_count = len(projects)
+            projects = [p for p in projects if p.id != project_id]
+            
+            if len(projects) == original_count:
+                logger.warning(f"Project not found for deletion: {project_id}")
+                return False
+            
+            # Save updated projects list
+            file_path = self._get_file_path("projects.json")
+            self._save_json(file_path, [p.dict() for p in projects])
+            
+            # Delete project-specific files
+            self._delete_project_files(project_id)
+            
+            logger.info(f"Deleted project: {project_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Error deleting project {project_id}: {e}")
             return False
-        
-        # Save updated projects list
-        file_path = self._get_file_path("projects.json")
-        self._save_json(file_path, [p.dict() for p in projects])
-        
-        # Delete project-specific files
-        self._delete_project_files(project_id)
-        
-        logger.info(f"Deleted project: {project_id}")
-        return True
     
     def get_project_by_id(self, project_id: str) -> Optional[Project]:
         """Get a specific project by ID."""
@@ -273,7 +280,7 @@ class FileService:
         
         file_path = self._get_project_file_path(project_id, "memories")
         self._save_json(file_path, [m.dict() for m in memories])
-        logger.info(f"Saved memory: {memory.title}")
+        logger.info(f"Saved memory: {memory.id}")
     
     def save_memories(self, project_id: str, memories: List[Memory]) -> None:
         """Save multiple memories for a project."""
@@ -339,6 +346,14 @@ class FileService:
         self._save_json(file_path, [t.dict() for t in tasks])
         logger.info(f"Saved task: {task.title}")
     
+    def get_task_by_id(self, project_id: str, task_id: str) -> Optional[Task]:
+        """Get a specific task by ID."""
+        tasks = self.load_tasks(project_id)
+        for task in tasks:
+            if task.id == task_id:
+                return task
+        return None
+
     def update_task_status(self, project_id: str, task_id: str, completed: bool) -> bool:
         """Update task completion status."""
         tasks = self.load_tasks(project_id)
@@ -353,6 +368,22 @@ class FileService:
         
         logger.warning(f"Task not found for status update: {task_id}")
         return False
+
+    def delete_task(self, project_id: str, task_id: str) -> bool:
+        """Delete a specific task."""
+        tasks = self.load_tasks(project_id)
+        
+        original_count = len(tasks)
+        tasks = [t for t in tasks if t.id != task_id]
+        
+        if len(tasks) == original_count:
+            logger.warning(f"Task not found for deletion: {task_id}")
+            return False
+        
+        file_path = self._get_project_file_path(project_id, "tasks")
+        self._save_json(file_path, [t.dict() for t in tasks])
+        logger.info(f"Deleted task: {task_id}")
+        return True
     
     # Chat operations
     def load_chat_history(self, project_id: str) -> List[ChatMessage]:
@@ -370,10 +401,14 @@ class FileService:
                     logger.warning(f"Invalid chat message data: {e}")
                     continue
         
-        # Sort by timestamp
-        messages.sort(key=lambda x: x.timestamp)
+        # Sort by created_at
+        messages.sort(key=lambda x: x.created_at)
         logger.debug(f"Loaded {len(messages)} chat messages for project {project_id}")
         return messages
+    
+    def load_chat_messages(self, project_id: str) -> List[ChatMessage]:
+        """Load chat messages for a project (alias for load_chat_history)."""
+        return self.load_chat_history(project_id)
     
     def save_chat_message(self, project_id: str, message: ChatMessage) -> None:
         """Save a single chat message."""

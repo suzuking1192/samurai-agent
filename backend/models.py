@@ -74,15 +74,15 @@ class Memory(BaseModel):
     
     Attributes:
         id: Unique identifier for the memory
-        title: Memory title
+        project_id: Project identifier
         content: Memory content
-        type: Type of memory (feature, decision, spec, note)
+        type: Type of memory (context, decision, note)
         created_at: Timestamp when the memory was created
     """
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Unique memory identifier")
-    title: str = Field(..., min_length=1, max_length=200, description="Memory title")
+    project_id: str = Field(..., description="Project identifier")
     content: str = Field(..., max_length=2000, description="Memory content")
-    type: str = Field(..., pattern="^(feature|decision|spec|note)$", description="Memory type")
+    type: str = Field(..., pattern="^(context|decision|note)$", description="Memory type")
     created_at: datetime = Field(default_factory=datetime.utcnow, description="Creation timestamp")
 
     class Config:
@@ -106,20 +106,28 @@ class Task(BaseModel):
     
     Attributes:
         id: Unique identifier for the task
+        project_id: Project identifier
         title: Task title
         description: Task description
-        prompt: Generated Cursor prompt for the task
-        completed: Whether the task is completed
-        order: Task order/priority
+        status: Task status (pending, in_progress, completed)
+        priority: Task priority (low, medium, high)
+        prompt: Generated Cursor prompt for the task (optional)
+        completed: Whether the task is completed (legacy field)
+        order: Task order/priority (legacy field)
         created_at: Timestamp when the task was created
+        updated_at: Timestamp when the task was last updated
     """
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Unique task identifier")
+    project_id: str = Field(..., description="Project identifier")
     title: str = Field(..., min_length=1, max_length=200, description="Task title")
     description: str = Field(..., max_length=1000, description="Task description")
-    prompt: str = Field(..., max_length=2000, description="Generated Cursor prompt")
-    completed: bool = Field(default=False, description="Task completion status")
-    order: int = Field(..., ge=0, description="Task order/priority")
+    status: str = Field(default="pending", pattern="^(pending|in_progress|completed)$", description="Task status")
+    priority: str = Field(default="medium", pattern="^(low|medium|high)$", description="Task priority")
+    prompt: Optional[str] = Field(default="", max_length=2000, description="Generated Cursor prompt")
+    completed: bool = Field(default=False, description="Task completion status (legacy)")
+    order: int = Field(default=0, ge=0, description="Task order/priority (legacy)")
     created_at: datetime = Field(default_factory=datetime.utcnow, description="Creation timestamp")
+    updated_at: datetime = Field(default_factory=datetime.utcnow, description="Last update timestamp")
 
     class Config:
         """Pydantic configuration for JSON serialization."""
@@ -144,14 +152,16 @@ class ChatMessage(BaseModel):
     
     Attributes:
         id: Unique identifier for the message
-        role: Message role (user or assistant)
-        content: Message content
-        timestamp: Message timestamp
+        project_id: Project identifier
+        message: User message content
+        response: AI response content
+        created_at: Message timestamp
     """
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Unique message identifier")
-    role: str = Field(..., pattern="^(user|assistant)$", description="Message role")
-    content: str = Field(..., max_length=5000, description="Message content")
-    timestamp: datetime = Field(default_factory=datetime.utcnow, description="Message timestamp")
+    project_id: str = Field(..., description="Project identifier")
+    message: str = Field(..., max_length=5000, description="User message content")
+    response: str = Field(default="", max_length=5000, description="AI response content")
+    created_at: datetime = Field(default_factory=datetime.utcnow, description="Message timestamp")
 
     class Config:
         """Pydantic configuration for JSON serialization."""
@@ -250,13 +260,11 @@ class MemoryCreateRequest(BaseModel):
     Request model for creating a new memory.
     
     Attributes:
-        title: Memory title
         content: Memory content
         type: Memory type
     """
-    title: str = Field(..., min_length=1, max_length=200, description="Memory title")
     content: str = Field(..., max_length=2000, description="Memory content")
-    type: str = Field(..., pattern="^(feature|decision|spec|note)$", description="Memory type")
+    type: str = Field(..., pattern="^(context|decision|note)$", description="Memory type")
 
     class Config:
         json_schema_extra = {

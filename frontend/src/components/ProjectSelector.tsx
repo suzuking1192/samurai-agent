@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { Project, ProjectCreate } from '../types'
-import { getProjects, createProject } from '../services/api'
+import { getProjects, createProject, deleteProject } from '../services/api'
 
 interface ProjectSelectorProps {
   selectedProject: Project | null
@@ -14,6 +14,8 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
   const [projects, setProjects] = useState<Project[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [showCreateForm, setShowCreateForm] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [projectToDelete, setProjectToDelete] = useState<Project | null>(null)
   const [newProject, setNewProject] = useState<ProjectCreate>({
     name: '',
     description: ''
@@ -56,9 +58,38 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
     onProjectSelect(project)
   }
 
+  const handleDeleteProject = (project: Project) => {
+    setProjectToDelete(project)
+    setShowDeleteConfirm(true)
+  }
+
+  const confirmDeleteProject = async () => {
+    if (!projectToDelete) return
+
+    try {
+      await deleteProject(projectToDelete.id)
+      setProjects(prev => prev.filter(p => p.id !== projectToDelete.id))
+      
+      // If the deleted project was selected, clear selection
+      if (selectedProject?.id === projectToDelete.id) {
+        onProjectSelect(null as any)
+      }
+      
+      setShowDeleteConfirm(false)
+      setProjectToDelete(null)
+    } catch (error) {
+      console.error('Error deleting project:', error)
+    }
+  }
+
   const handleModalClose = () => {
     setShowCreateForm(false)
     setNewProject({ name: '', description: '' })
+  }
+
+  const handleDeleteModalClose = () => {
+    setShowDeleteConfirm(false)
+    setProjectToDelete(null)
   }
 
   return (
@@ -83,12 +114,24 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
             ))}
           </select>
           
-          <button
-            onClick={() => setShowCreateForm(true)}
-            className="new-project-btn"
-          >
-            + New Project
-          </button>
+          <div className="project-actions">
+            <button
+              onClick={() => setShowCreateForm(true)}
+              className="new-project-btn"
+            >
+              + New Project
+            </button>
+            
+            {selectedProject && (
+              <button
+                onClick={() => handleDeleteProject(selectedProject)}
+                className="delete-project-btn"
+                title="Delete Project"
+              >
+                🗑️ Delete
+              </button>
+            )}
+          </div>
         </div>
 
         {isLoading && (
@@ -131,6 +174,37 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
                   className="modal-button primary"
                 >
                   Create Project
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && projectToDelete && (
+        <div className="modal-overlay" onClick={handleDeleteModalClose}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">Delete Project</div>
+            <div className="modal-form">
+              <p className="delete-warning">
+                Are you sure you want to delete "{projectToDelete.name}"?
+              </p>
+              <p className="delete-warning">
+                This will permanently delete the project and all its associated data (tasks, memories, chat history).
+              </p>
+              <div className="modal-buttons">
+                <button
+                  onClick={handleDeleteModalClose}
+                  className="modal-button secondary"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmDeleteProject}
+                  className="modal-button danger"
+                >
+                  Delete Project
                 </button>
               </div>
             </div>

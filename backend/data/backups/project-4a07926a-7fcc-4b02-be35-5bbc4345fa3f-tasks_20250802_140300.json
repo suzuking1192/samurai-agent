@@ -1,0 +1,15 @@
+[
+  {
+    "id": "38d7cc86-0c20-46de-a826-b93035337cb2",
+    "project_id": "4a07926a-7fcc-4b02-be35-5bbc4345fa3f",
+    "title": "Test Task for Deletion",
+    "description": "This task will be deleted",
+    "status": "pending",
+    "priority": "medium",
+    "prompt": "",
+    "completed": false,
+    "order": 0,
+    "created_at": "2025-08-02 20:03:00.005444",
+    "updated_at": "2025-08-02 20:03:00.005448"
+  }
+]

@@ -85,15 +85,15 @@ export async function createTask(projectId: string, task: TaskCreate): Promise<T
   })
 }
 
-export async function updateTask(taskId: string, updates: TaskUpdate): Promise<Task> {
-  return apiRequest<Task>(`/tasks/${taskId}`, {
+export async function updateTask(projectId: string, taskId: string, updates: TaskUpdate): Promise<Task> {
+  return apiRequest<Task>(`/projects/${projectId}/tasks/${taskId}`, {
     method: 'PUT',
     body: JSON.stringify(updates),
   })
 }
 
-export async function deleteTask(taskId: string): Promise<void> {
-  return apiRequest<void>(`/tasks/${taskId}`, {
+export async function deleteTask(projectId: string, taskId: string): Promise<void> {
+  return apiRequest<void>(`/projects/${projectId}/tasks/${taskId}`, {
     method: 'DELETE',
   })
 }
@@ -110,17 +110,17 @@ export async function createMemory(projectId: string, memory: MemoryCreate): Pro
   })
 }
 
-export async function deleteMemory(memoryId: string): Promise<void> {
-  return apiRequest<void>(`/memories/${memoryId}`, {
+export async function deleteMemory(projectId: string, memoryId: string): Promise<void> {
+  return apiRequest<void>(`/projects/${projectId}/memories/${memoryId}`, {
     method: 'DELETE',
   })
 }
 
 // Chat API functions
 export async function sendChatMessage(request: ChatRequest): Promise<ChatResponse> {
-  return apiRequest<ChatResponse>('/chat', {
+  return apiRequest<ChatResponse>(`/projects/${request.project_id}/chat`, {
     method: 'POST',
-    body: JSON.stringify(request),
+    body: JSON.stringify({ message: request.message }),
   })
 }
 

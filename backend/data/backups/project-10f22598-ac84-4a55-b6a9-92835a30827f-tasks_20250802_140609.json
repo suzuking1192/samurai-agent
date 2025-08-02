@@ -1,0 +1,15 @@
+[
+  {
+    "id": "45edd932-177f-401d-82d0-c68458ee74ed",
+    "project_id": "10f22598-ac84-4a55-b6a9-92835a30827f",
+    "title": "test",
+    "description": "test",
+    "status": "in_progress",
+    "priority": "medium",
+    "prompt": "",
+    "completed": false,
+    "order": 0,
+    "created_at": "2025-08-02 20:06:02.757280",
+    "updated_at": "2025-08-02 14:06:08.171488"
+  }
+]
