@@ -26,5 +26,12 @@
     "description": "ai vibe coding partner",
     "tech_stack": "fast api",
     "created_at": "2025-08-02 14:23:22.566427"
+  },
+  {
+    "id": "5e94c481-5a94-4cfd-9a0f-75a6c25fbfb7",
+    "name": "samurai agent",
+    "description": "ai vibe coding partner",
+    "tech_stack": "fastapi",
+    "created_at": "2025-08-02 15:40:45.767517"
   }
 ]

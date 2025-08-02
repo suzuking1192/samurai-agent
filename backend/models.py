@@ -224,10 +224,12 @@ class ChatResponse(BaseModel):
     Attributes:
         response: Assistant response content
         tasks: Optional list of generated tasks
+        memories: Optional list of relevant memories
         type: Response type (chat, feature_breakdown, error)
     """
     response: str = Field(..., max_length=5000, description="Assistant response")
     tasks: Optional[List[Task]] = Field(default=None, description="Generated tasks")
+    memories: Optional[List[Memory]] = Field(default=None, description="Relevant memories")
     type: str = Field(..., pattern="^(chat|feature_breakdown|error)$", description="Response type")
 
     class Config:
