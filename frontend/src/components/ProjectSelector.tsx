@@ -13,12 +13,14 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
 }) => {
   const [projects, setProjects] = useState<Project[]>([])
   const [isLoading, setIsLoading] = useState(false)
+  const [isCreating, setIsCreating] = useState(false)
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null)
   const [newProject, setNewProject] = useState<ProjectCreate>({
     name: '',
-    description: ''
+    description: '',
+    tech_stack: ''
   })
 
   useEffect(() => {
@@ -38,19 +40,36 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
   }
 
   const handleCreateProject = async () => {
-    if (!newProject.name.trim()) return
+    if (!newProject.name.trim()) {
+      console.log('Project name is empty')
+      return
+    }
+    
+    if (!newProject.tech_stack.trim()) {
+      console.log('Tech stack is empty')
+      return
+    }
 
+    console.log('Creating project:', newProject)
+    
+    setIsCreating(true)
     try {
       const createdProject = await createProject(newProject)
+      console.log('Project created successfully:', createdProject)
       setProjects(prev => [...prev, createdProject])
       setNewProject({
         name: '',
-        description: ''
+        description: '',
+        tech_stack: ''
       })
       setShowCreateForm(false)
       onProjectSelect(createdProject)
     } catch (error) {
       console.error('Error creating project:', error)
+      // Add user feedback for errors
+      alert(`Failed to create project: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    } finally {
+      setIsCreating(false)
     }
   }
 
@@ -84,7 +103,7 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
 
   const handleModalClose = () => {
     setShowCreateForm(false)
-    setNewProject({ name: '', description: '' })
+    setNewProject({ name: '', description: '', tech_stack: '' })
   }
 
   const handleDeleteModalClose = () => {
@@ -161,6 +180,13 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
                 className="modal-input"
                 rows={3}
               />
+              <input
+                type="text"
+                placeholder="Technology stack (e.g., React, Python, Node.js)"
+                value={newProject.tech_stack}
+                onChange={(e) => setNewProject(prev => ({ ...prev, tech_stack: e.target.value }))}
+                className="modal-input"
+              />
               <div className="modal-buttons">
                 <button
                   onClick={handleModalClose}
@@ -170,10 +196,10 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
                 </button>
                 <button
                   onClick={handleCreateProject}
-                  disabled={!newProject.name.trim()}
+                  disabled={!newProject.name.trim() || !newProject.tech_stack.trim() || isCreating}
                   className="modal-button primary"
                 >
-                  Create Project
+                  {isCreating ? 'Creating...' : 'Create Project'}
                 </button>
               </div>
             </div>

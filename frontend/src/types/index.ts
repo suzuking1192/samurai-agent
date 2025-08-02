@@ -22,8 +22,9 @@ export interface Project {
   id: string
   name: string
   description: string
+  tech_stack: string
   created_at: string
-  updated_at: string
+  updated_at?: string
 }
 
 export interface Task {
@@ -68,6 +69,7 @@ export interface ChatResponse {
 export interface ProjectCreate {
   name: string
   description: string
+  tech_stack: string
 }
 
 export interface TaskCreate {

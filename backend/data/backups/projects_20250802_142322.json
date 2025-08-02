@@ -19,12 +19,5 @@
     "description": "Testing the project creation fix",
     "tech_stack": "React, FastAPI, Python",
     "created_at": "2025-08-02 14:20:49.389392"
-  },
-  {
-    "id": "87d9a2e2-c1e9-4ede-ae6c-0ffc3182776e",
-    "name": "samurai agent",
-    "description": "ai vibe coding partner",
-    "tech_stack": "fast api",
-    "created_at": "2025-08-02 14:23:22.566427"
   }
 ]

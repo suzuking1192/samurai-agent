@@ -30,6 +30,8 @@ async function apiRequest<T>(
 ): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`
   
+  console.log('API Request:', { url, method: options.method || 'GET', body: options.body })
+  
   const defaultOptions: RequestInit = {
     headers: {
       'Content-Type': 'application/json',
@@ -38,9 +40,12 @@ async function apiRequest<T>(
   }
 
   const response = await fetch(url, { ...defaultOptions, ...options })
+  
+  console.log('API Response:', { status: response.status, ok: response.ok })
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}))
+    console.error('API Error:', errorData)
     throw new ApiError(
       errorData.detail || `HTTP error! status: ${response.status}`,
       response.status,
@@ -48,7 +53,9 @@ async function apiRequest<T>(
     )
   }
 
-  return response.json()
+  const data = await response.json()
+  console.log('API Success:', data)
+  return data
 }
 
 // Project API functions
@@ -61,10 +68,18 @@ export async function getProject(projectId: string): Promise<Project> {
 }
 
 export async function createProject(project: ProjectCreate): Promise<Project> {
-  return apiRequest<Project>('/projects', {
-    method: 'POST',
-    body: JSON.stringify(project),
-  })
+  console.log('API: Creating project with data:', project)
+  try {
+    const result = await apiRequest<Project>('/projects', {
+      method: 'POST',
+      body: JSON.stringify(project),
+    })
+    console.log('API: Project created successfully:', result)
+    return result
+  } catch (error) {
+    console.error('API: Error creating project:', error)
+    throw error
+  }
 }
 
 export async function deleteProject(projectId: string): Promise<void> {
