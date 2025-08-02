@@ -45,6 +45,8 @@ frontend/.next/
 frontend/out/
 frontend/node_modules/
 
+backend/data/backups/
+
 # Environment variables
 .env
 .env.local
