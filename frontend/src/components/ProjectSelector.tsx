@@ -56,95 +56,88 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
     onProjectSelect(project)
   }
 
+  const handleModalClose = () => {
+    setShowCreateForm(false)
+    setNewProject({ name: '', description: '' })
+  }
+
   return (
-    <div className="project-selector">
-      <div className="project-selector-header">
-        <select
-          value={selectedProject?.id || ''}
-          onChange={(e) => {
-            const project = projects.find(p => p.id === e.target.value)
-            if (project) {
-              handleProjectSelect(project)
-            }
-          }}
-          className="input"
-          style={{ minWidth: '200px' }}
-        >
-          <option value="">Select a project...</option>
-          {projects.map((project) => (
-            <option key={project.id} value={project.id}>
-              {project.name}
-            </option>
-          ))}
-        </select>
-        
-        <button
-          onClick={() => setShowCreateForm(!showCreateForm)}
-          className="button"
-          style={{ marginLeft: '0.5rem' }}
-        >
-          {showCreateForm ? 'Cancel' : 'New Project'}
-        </button>
+    <>
+      <div className="project-selector">
+        <div className="project-selector-header">
+          <select
+            value={selectedProject?.id || ''}
+            onChange={(e) => {
+              const project = projects.find(p => p.id === e.target.value)
+              if (project) {
+                handleProjectSelect(project)
+              }
+            }}
+            className="project-dropdown"
+          >
+            <option value="">Select Project</option>
+            {projects.map((project) => (
+              <option key={project.id} value={project.id}>
+                {project.name}
+              </option>
+            ))}
+          </select>
+          
+          <button
+            onClick={() => setShowCreateForm(true)}
+            className="new-project-btn"
+          >
+            + New Project
+          </button>
+        </div>
+
+        {isLoading && (
+          <div className="loading-indicator">
+            <p>Loading projects...</p>
+          </div>
+        )}
       </div>
 
+      {/* Modal Overlay */}
       {showCreateForm && (
-        <div className="project-create-form">
-          <div className="card" style={{ marginTop: '0.5rem' }}>
-            <h3>Create New Project</h3>
-            <input
-              type="text"
-              placeholder="Project name"
-              value={newProject.name}
-              onChange={(e) => setNewProject(prev => ({ ...prev, name: e.target.value }))}
-              className="input"
-              style={{ marginBottom: '0.5rem' }}
-            />
-            <textarea
-              placeholder="Project description"
-              value={newProject.description}
-              onChange={(e) => setNewProject(prev => ({ ...prev, description: e.target.value }))}
-              className="input"
-              rows={3}
-              style={{ marginBottom: '0.5rem' }}
-            />
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <button
-                onClick={handleCreateProject}
-                disabled={!newProject.name.trim()}
-                className="button"
-              >
-                Create Project
-              </button>
-              <button
-                onClick={() => setShowCreateForm(false)}
-                className="button"
-                style={{ backgroundColor: '#95a5a6' }}
-              >
-                Cancel
-              </button>
+        <div className="modal-overlay" onClick={handleModalClose}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">Create New Project</div>
+            <div className="modal-form">
+              <input
+                type="text"
+                placeholder="Project name"
+                value={newProject.name}
+                onChange={(e) => setNewProject(prev => ({ ...prev, name: e.target.value }))}
+                className="modal-input"
+              />
+              <textarea
+                placeholder="Project description"
+                value={newProject.description}
+                onChange={(e) => setNewProject(prev => ({ ...prev, description: e.target.value }))}
+                className="modal-input"
+                rows={3}
+              />
+              <div className="modal-buttons">
+                <button
+                  onClick={handleModalClose}
+                  className="modal-button secondary"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleCreateProject}
+                  disabled={!newProject.name.trim()}
+                  className="modal-button primary"
+                >
+                  Create Project
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
-
-      {selectedProject && (
-        <div className="selected-project-info">
-          <div className="card" style={{ marginTop: '0.5rem' }}>
-            <h4>{selectedProject.name}</h4>
-            <p>{selectedProject.description}</p>
-            <small>
-              Created: {new Date(selectedProject.created_at).toLocaleDateString()}
-            </small>
-          </div>
-        </div>
-      )}
-
-      {isLoading && (
-        <div className="loading-indicator">
-          <p>Loading projects...</p>
-        </div>
-      )}
-    </div>
+    </>
   )
 }
 
