@@ -8,8 +8,7 @@ import {
   ProjectCreate,
   TaskCreate,
   TaskUpdate,
-  MemoryCreate,
-  ApiError
+  MemoryCreate
 } from '../types'
 
 const API_BASE_URL = 'http://localhost:8000'
@@ -31,6 +30,8 @@ async function apiRequest<T>(
 ): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`
   
+  console.log('API Request:', { url, method: options.method || 'GET', body: options.body })
+  
   const defaultOptions: RequestInit = {
     headers: {
       'Content-Type': 'application/json',
@@ -39,9 +40,12 @@ async function apiRequest<T>(
   }
 
   const response = await fetch(url, { ...defaultOptions, ...options })
+  
+  console.log('API Response:', { status: response.status, ok: response.ok })
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}))
+    console.error('API Error:', errorData)
     throw new ApiError(
       errorData.detail || `HTTP error! status: ${response.status}`,
       response.status,
@@ -49,7 +53,9 @@ async function apiRequest<T>(
     )
   }
 
-  return response.json()
+  const data = await response.json()
+  console.log('API Success:', data)
+  return data
 }
 
 // Project API functions
@@ -62,10 +68,18 @@ export async function getProject(projectId: string): Promise<Project> {
 }
 
 export async function createProject(project: ProjectCreate): Promise<Project> {
-  return apiRequest<Project>('/projects', {
-    method: 'POST',
-    body: JSON.stringify(project),
-  })
+  console.log('API: Creating project with data:', project)
+  try {
+    const result = await apiRequest<Project>('/projects', {
+      method: 'POST',
+      body: JSON.stringify(project),
+    })
+    console.log('API: Project created successfully:', result)
+    return result
+  } catch (error) {
+    console.error('API: Error creating project:', error)
+    throw error
+  }
 }
 
 export async function deleteProject(projectId: string): Promise<void> {
@@ -86,15 +100,15 @@ export async function createTask(projectId: string, task: TaskCreate): Promise<T
   })
 }
 
-export async function updateTask(taskId: string, updates: TaskUpdate): Promise<Task> {
-  return apiRequest<Task>(`/tasks/${taskId}`, {
+export async function updateTask(projectId: string, taskId: string, updates: TaskUpdate): Promise<Task> {
+  return apiRequest<Task>(`/projects/${projectId}/tasks/${taskId}`, {
     method: 'PUT',
     body: JSON.stringify(updates),
   })
 }
 
-export async function deleteTask(taskId: string): Promise<void> {
-  return apiRequest<void>(`/tasks/${taskId}`, {
+export async function deleteTask(projectId: string, taskId: string): Promise<void> {
+  return apiRequest<void>(`/projects/${projectId}/tasks/${taskId}`, {
     method: 'DELETE',
   })
 }
@@ -111,17 +125,17 @@ export async function createMemory(projectId: string, memory: MemoryCreate): Pro
   })
 }
 
-export async function deleteMemory(memoryId: string): Promise<void> {
-  return apiRequest<void>(`/memories/${memoryId}`, {
+export async function deleteMemory(projectId: string, memoryId: string): Promise<void> {
+  return apiRequest<void>(`/projects/${projectId}/memories/${memoryId}`, {
     method: 'DELETE',
   })
 }
 
 // Chat API functions
 export async function sendChatMessage(request: ChatRequest): Promise<ChatResponse> {
-  return apiRequest<ChatResponse>('/chat', {
+  return apiRequest<ChatResponse>(`/projects/${request.project_id}/chat`, {
     method: 'POST',
-    body: JSON.stringify(request),
+    body: JSON.stringify({ message: request.message }),
   })
 }
 

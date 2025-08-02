@@ -1,86 +1,81 @@
-import os
 import google.generativeai as genai
-from typing import Optional
+import os
+import logging
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
 
+# Setup logging
+logger = logging.getLogger(__name__)
+
 class GeminiService:
-    """Service for interacting with Google Gemini AI"""
-    
     def __init__(self):
+        # Configure Gemini
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
-            raise ValueError("GEMINI_API_KEY environment variable is required")
+            raise ValueError("GEMINI_API_KEY not found in environment variables")
         
         genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel('gemini-pro')
-    
-    async def generate_response(self, prompt: str) -> str:
-        """
-        Generate a response from Gemini AI
+        self.model = genai.GenerativeModel('gemini-2.5-flash')
         
-        Args:
-            prompt: The prompt to send to the AI
+        logger.info("Gemini service initialized successfully")
+
+    async def chat(self, message: str, context: str = "") -> str:
+        """Simple chat with optional context"""
+        try:
+            if context:
+                full_prompt = f"Context: {context}\n\nUser: {message}"
+            else:
+                full_prompt = message
+                
+            response = self.model.generate_content(full_prompt)
+            return response.text
             
-        Returns:
-            AI generated response as string
-        """
+        except Exception as e:
+            logger.error(f"Gemini API error: {e}")
+            return f"I'm having trouble processing that request. Please try again."
+
+    async def chat_with_system_prompt(self, message: str, system_prompt: str) -> str:
+        """Chat with a custom system prompt"""
+        try:
+            full_prompt = f"{system_prompt}\n\nUser: {message}"
+            response = self.model.generate_content(full_prompt)
+            return response.text
+            
+        except Exception as e:
+            logger.error(f"Gemini API error: {e}")
+            return f"I'm having trouble processing that request. Please try again."
+
+    def _safe_ai_call(self, prompt: str) -> str:
+        """Make AI call with error handling (synchronous)"""
         try:
             response = self.model.generate_content(prompt)
             return response.text
         except Exception as e:
-            # TODO: Add proper error handling and logging
-            raise Exception(f"Error generating Gemini response: {str(e)}")
+            logger.error(f"Gemini API error: {e}")
+            return f"Error: {str(e)}"
+
+
+async def test_gemini_service():
+    """Simple test function"""
+    service = GeminiService()
     
-    async def generate_response_with_context(self, prompt: str, context: str) -> str:
-        """
-        Generate a response with additional context
-        
-        Args:
-            prompt: The main prompt
-            context: Additional context information
-            
-        Returns:
-            AI generated response as string
-        """
-        try:
-            full_prompt = f"Context: {context}\n\nPrompt: {prompt}"
-            response = self.model.generate_content(full_prompt)
-            return response.text
-        except Exception as e:
-            # TODO: Add proper error handling and logging
-            raise Exception(f"Error generating Gemini response with context: {str(e)}")
+    # Test basic chat
+    response = await service.chat("Hello! Can you help me with coding?")
+    print("Basic chat:", response)
     
-    async def generate_structured_response(self, prompt: str, structure: str) -> str:
-        """
-        Generate a response with specific structure requirements
-        
-        Args:
-            prompt: The prompt to send to the AI
-            structure: Description of the required response structure
-            
-        Returns:
-            AI generated response following the specified structure
-        """
-        try:
-            structured_prompt = f"{prompt}\n\nPlease respond in the following structure:\n{structure}"
-            response = self.model.generate_content(structured_prompt)
-            return response.text
-        except Exception as e:
-            # TODO: Add proper error handling and logging
-            raise Exception(f"Error generating structured response: {str(e)}")
+    # Test with context
+    context = "I'm building a todo app with React and FastAPI"
+    response = await service.chat("How should I structure my project?", context)
+    print("With context:", response)
     
-    def validate_api_key(self) -> bool:
-        """
-        Validate that the API key is working
-        
-        Returns:
-            True if API key is valid, False otherwise
-        """
-        try:
-            test_response = self.model.generate_content("Hello")
-            return test_response.text is not None
-        except Exception:
-            return False 
+    # Test with system prompt
+    system_prompt = "You are a helpful coding assistant. Give concise, practical advice."
+    response = await service.chat_with_system_prompt("Explain REST APIs", system_prompt)
+    print("With system prompt:", response)
+
+
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(test_gemini_service()) 

@@ -4,9 +4,18 @@ from pydantic import BaseModel
 from typing import List, Optional
 import os
 from dotenv import load_dotenv
+import uuid
+from datetime import datetime
 
-from models import Project, Task, Memory, ChatMessage, ChatRequest, ChatResponse
-from services.ai_agent import SamuraiAgent
+# Import your models
+from models import (
+    Project, ProjectCreateRequest, 
+    ChatRequest, ChatResponse,
+    TaskUpdateRequest, Task, Memory, ChatMessage
+)
+
+# Import your services  
+from services.gemini_service import GeminiService
 from services.file_service import FileService
 
 # Load environment variables
@@ -29,7 +38,7 @@ app.add_middleware(
 
 # Initialize services
 file_service = FileService()
-ai_agent = SamuraiAgent()
+gemini_service = GeminiService()
 
 @app.get("/")
 async def root():
@@ -46,28 +55,34 @@ async def health_check():
 async def get_projects():
     """Get all projects"""
     try:
-        return file_service.get_projects()
+        return file_service.load_projects()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/projects", response_model=Project)
-async def create_project(project: Project):
+async def create_project(request: ProjectCreateRequest):
     """Create a new project"""
     try:
-        return file_service.create_project(project)
+        project = Project(
+            id=str(uuid.uuid4()),
+            name=request.name,
+            description=request.description,
+            tech_stack=request.tech_stack,
+            created_at=datetime.now()
+        )
+        
+        file_service.save_project(project)
+        return project
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/projects/{project_id}", response_model=Project)
 async def get_project(project_id: str):
     """Get a specific project"""
-    try:
-        project = file_service.get_project(project_id)
-        if not project:
-            raise HTTPException(status_code=404, detail="Project not found")
-        return project
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    project = file_service.get_project_by_id(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return project
 
 @app.delete("/projects/{project_id}")
 async def delete_project(project_id: str):
@@ -80,43 +95,117 @@ async def delete_project(project_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# Chat endpoint
+@app.post("/projects/{project_id}/chat", response_model=ChatResponse)
+async def chat_with_project(project_id: str, request: ChatRequest):
+    """Chat about the project - simple implementation for now"""
+    try:
+        # 1. Verify project exists
+        project = file_service.get_project_by_id(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # 2. Get project context 
+        context = f"Project: {project.name}, Tech Stack: {project.tech_stack}, Description: {project.description}"
+        
+        # 3. Use Gemini service to respond
+        ai_response = await gemini_service.chat(request.message, context)
+        
+        # 4. Save chat message with both user message and AI response
+        chat_message = ChatMessage(
+            id=str(uuid.uuid4()),
+            project_id=project_id,
+            message=request.message,
+            response=ai_response,
+            created_at=datetime.now()
+        )
+        file_service.save_chat_message(project_id, chat_message)
+        
+        # 5. Return simple chat response (no tasks for now)
+        return ChatResponse(
+            response=ai_response,
+            tasks=None,  # No task generation yet
+            type="chat"
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 # Task endpoints
-@app.get("/projects/{project_id}/tasks", response_model=List[Task])
-async def get_tasks(project_id: str):
+@app.get("/projects/{project_id}/tasks")
+async def get_project_tasks(project_id: str):
     """Get all tasks for a project"""
     try:
-        return file_service.get_tasks(project_id)
+        return file_service.load_tasks(project_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/projects/{project_id}/tasks", response_model=Task)
-async def create_task(project_id: str, task: Task):
-    """Create a new task"""
+@app.put("/projects/{project_id}/tasks/{task_id}")
+async def update_task(project_id: str, task_id: str, request: dict):
+    """Update task status"""
     try:
-        task.project_id = project_id
-        return file_service.create_task(task)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.put("/tasks/{task_id}", response_model=Task)
-async def update_task(task_id: str, task: Task):
-    """Update a task"""
-    try:
-        updated_task = file_service.update_task(task_id, task)
-        if not updated_task:
+        # Update task with new data
+        task = file_service.get_task_by_id(project_id, task_id)
+        if not task:
             raise HTTPException(status_code=404, detail="Task not found")
-        return updated_task
+        
+        # Update task fields
+        if 'status' in request:
+            task.status = request['status']
+        if 'priority' in request:
+            task.priority = request['priority']
+        if 'title' in request:
+            task.title = request['title']
+        if 'description' in request:
+            task.description = request['description']
+        if 'completed' in request:
+            task.completed = request['completed']
+        
+        task.updated_at = datetime.now()
+        file_service.save_task(project_id, task)
+        return task
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.delete("/tasks/{task_id}")
-async def delete_task(task_id: str):
+@app.delete("/projects/{project_id}/tasks/{task_id}")
+async def delete_task(project_id: str, task_id: str):
     """Delete a task"""
     try:
-        success = file_service.delete_task(task_id)
+        success = file_service.delete_task(project_id, task_id)
         if not success:
             raise HTTPException(status_code=404, detail="Task not found")
         return {"message": "Task deleted successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Additional endpoints for completeness
+@app.post("/projects/{project_id}/tasks", response_model=Task)
+async def create_task(project_id: str, task_data: dict):
+    """Create a new task"""
+    try:
+        # Create task with project_id
+        task = Task(
+            project_id=project_id,
+            title=task_data.get("title", ""),
+            description=task_data.get("description", ""),
+            status=task_data.get("status", "pending"),
+            priority=task_data.get("priority", "medium"),
+            prompt=task_data.get("prompt", ""),
+            completed=task_data.get("completed", False),
+            order=task_data.get("order", 0)
+        )
+        file_service.save_task(project_id, task)
+        return task
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+# Chat messages endpoint
+@app.get("/projects/{project_id}/chat-messages", response_model=List[ChatMessage])
+async def get_project_chat_messages(project_id: str):
+    """Get all chat messages for a project"""
+    try:
+        return file_service.load_chat_messages(project_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -125,36 +214,49 @@ async def delete_task(task_id: str):
 async def get_memories(project_id: str):
     """Get all memories for a project"""
     try:
-        return file_service.get_memories(project_id)
+        return file_service.load_memories(project_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/projects/{project_id}/memories", response_model=Memory)
-async def create_memory(project_id: str, memory: Memory):
+async def create_memory(project_id: str, memory_data: dict):
     """Create a new memory"""
     try:
-        memory.project_id = project_id
-        return file_service.create_memory(memory)
+        # Create memory with project_id
+        memory = Memory(
+            project_id=project_id,
+            content=memory_data.get("content", ""),
+            type=memory_data.get("type", "note")
+        )
+        file_service.save_memory(project_id, memory)
+        return memory
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.delete("/memories/{memory_id}")
-async def delete_memory(memory_id: str):
+@app.delete("/projects/{project_id}/memories/{memory_id}")
+async def delete_memory(project_id: str, memory_id: str):
     """Delete a memory"""
     try:
-        success = file_service.delete_memory(memory_id)
+        success = file_service.delete_memory(project_id, memory_id)
         if not success:
             raise HTTPException(status_code=404, detail="Memory not found")
         return {"message": "Memory deleted successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# Chat endpoint
+# Legacy chat endpoint (keeping for backward compatibility)
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     """Send a message to the AI agent"""
     try:
-        return ai_agent.process_message(request)
+        # Simple chat without project context
+        ai_response = await gemini_service.chat(request.message)
+        
+        return ChatResponse(
+            response=ai_response,
+            tasks=None,
+            type="chat"
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

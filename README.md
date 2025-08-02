@@ -14,6 +14,12 @@ An AI-powered development assistant that breaks down complex features into actio
 ### Backend Setup
 ```bash
 cd backend
+
+# Create and activate virtual environment
+python -m venv "samurai-agent"
+source samurai-agent/bin/activate  # Linux/macOS
+# OR on Windows: samurai-agent\Scripts\activate
+
 pip install -r requirements.txt
 cp .env.example .env
 # Add your GEMINI_API_KEY to .env
