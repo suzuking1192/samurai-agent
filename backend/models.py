@@ -160,7 +160,7 @@ class ChatMessage(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Unique message identifier")
     project_id: str = Field(..., description="Project identifier")
     message: str = Field(..., max_length=5000, description="User message content")
-    response: str = Field(default="", max_length=5000, description="AI response content")
+    response: str = Field(default="", max_length=15000, description="AI response content")
     created_at: datetime = Field(default_factory=datetime.utcnow, description="Message timestamp")
 
     class Config:
@@ -227,7 +227,7 @@ class ChatResponse(BaseModel):
         memories: Optional list of relevant memories
         type: Response type (chat, feature_breakdown, error)
     """
-    response: str = Field(..., max_length=5000, description="Assistant response")
+    response: str = Field(..., max_length=15000, description="Assistant response")
     tasks: Optional[List[Task]] = Field(default=None, description="Generated tasks")
     memories: Optional[List[Memory]] = Field(default=None, description="Relevant memories")
     type: str = Field(..., pattern="^(chat|feature_breakdown|error)$", description="Response type")

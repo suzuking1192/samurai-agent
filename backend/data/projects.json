@@ -14,24 +14,10 @@
     "created_at": "2025-08-02 14:18:25.367213"
   },
   {
-    "id": "c2a286f2-bcb0-4061-bfce-7a4a4cc5c6fb",
-    "name": "Test Fix Project",
-    "description": "Testing the project creation fix",
-    "tech_stack": "React, FastAPI, Python",
-    "created_at": "2025-08-02 14:20:49.389392"
-  },
-  {
-    "id": "87d9a2e2-c1e9-4ede-ae6c-0ffc3182776e",
-    "name": "samurai agent",
-    "description": "ai vibe coding partner",
-    "tech_stack": "fast api",
-    "created_at": "2025-08-02 14:23:22.566427"
-  },
-  {
-    "id": "5e94c481-5a94-4cfd-9a0f-75a6c25fbfb7",
-    "name": "samurai agent",
-    "description": "ai vibe coding partner",
-    "tech_stack": "fastapi",
-    "created_at": "2025-08-02 15:40:45.767517"
+    "id": "a09601ab-af0b-4cf4-85be-cce49f26d316",
+    "name": "Samurai Agent",
+    "description": "AI vibe coding partner with endless memory",
+    "tech_stack": "Fast API",
+    "created_at": "2025-08-02 16:04:27.294705"
   }
 ]
