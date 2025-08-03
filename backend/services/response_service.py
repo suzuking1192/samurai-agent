@@ -1,5 +1,5 @@
 """
-Response handling service for managing long AI responses and validation errors.
+Response handling service for managing long AI responses gracefully without user-facing error messages.
 """
 
 import logging
@@ -8,110 +8,96 @@ from pydantic import ValidationError
 
 logger = logging.getLogger(__name__)
 
-def handle_long_response(response: str, max_length: int = 14000) -> str:
+def handle_agent_response(response_text: str, max_length: int = 4500) -> str:
     """
-    Intelligently truncate response while preserving readability.
+    Handle long responses gracefully without showing error messages to users.
     
     Args:
-        response: The original AI response
-        max_length: Maximum allowed length (leaving buffer for truncation message)
+        response_text: The original AI response
+        max_length: Maximum allowed length
     
     Returns:
-        Truncated response with appropriate message
+        Intelligently summarized response or original if within limits
     """
-    if len(response) <= max_length:
-        return response
+    if len(response_text) <= max_length:
+        return response_text
     
-    logger.warning(f"Response truncated for length: {len(response)} chars")
+    # Log for debugging but don't show user
+    logger.info(f"Response summarized from {len(response_text)} to {max_length} chars")
     
-    # Try to split at natural breakpoints
-    truncated = response[:max_length]
-    
-    # Find last complete sentence
-    last_period = truncated.rfind('.')
-    last_newline = truncated.rfind('\n')
-    
-    # Use the better breakpoint
-    if last_period > max_length * 0.8:  # At least 80% of content
-        return response[:last_period + 1] + "\n\n[Response truncated due to length - please ask for more details if needed]"
-    elif last_newline > max_length * 0.8:
-        return response[:last_newline] + "\n\n[Response truncated due to length - please ask for more details if needed]"
-    else:
-        return truncated + "...\n\n[Response truncated due to length - please ask for more details if needed]"
+    # Intelligently summarize the response
+    summarized = intelligently_summarize_response(response_text, max_length)
+    return summarized
 
-def split_long_response(response: str, max_length: int = 14000) -> List[str]:
+def intelligently_summarize_response(full_response: str, target_length: int = 4500) -> str:
     """
-    Split long response into multiple manageable parts.
-    
-    Args:
-        response: The original AI response
-        max_length: Maximum length per part
-    
-    Returns:
-        List of response parts
+    Summarize long response while preserving key information and actionable content.
     """
-    if len(response) <= max_length:
-        return [response]
+    # Simple summarization logic - could be enhanced with LLM
+    if len(full_response) <= target_length:
+        return full_response
     
-    parts = []
-    current_pos = 0
+    # Find natural break points
+    sentences = full_response.split('. ')
+    paragraphs = full_response.split('\n\n')
     
-    while current_pos < len(response):
-        # Find good break point
-        end_pos = current_pos + max_length
-        if end_pos >= len(response):
-            parts.append(response[current_pos:])
-            break
-            
-        # Find last sentence or paragraph break
-        chunk = response[current_pos:end_pos]
-        last_break = max(
-            chunk.rfind('. '),
-            chunk.rfind('\n\n'),
-            chunk.rfind('.\n')
-        )
+    # Try to keep the most important parts
+    if len(paragraphs) > 1:
+        # Keep first paragraph and any with key words
+        important_keywords = ['task', 'implement', 'create', 'add', 'build', 'setup', 'configure']
+        important_paragraphs = [paragraphs[0]]  # Always keep first
         
-        if last_break > len(chunk) * 0.7:  # Good break point found
-            parts.append(response[current_pos:current_pos + last_break + 1])
-            current_pos += last_break + 1
-        else:  # Force break at max length
-            parts.append(response[current_pos:end_pos] + "...")
-            current_pos = end_pos
+        for paragraph in paragraphs[1:]:
+            if any(keyword in paragraph.lower() for keyword in important_keywords):
+                important_paragraphs.append(paragraph)
+        
+        summarized = '\n\n'.join(important_paragraphs)
+        
+        # If still too long, truncate at sentence level
+        if len(summarized) > target_length:
+            sentences = summarized.split('. ')
+            summarized = '. '.join(sentences[:3]) + '.'
+            
+            if len(summarized) > target_length:
+                summarized = summarized[:target_length-3] + "..."
     
-    return parts
+    else:
+        # Single paragraph - truncate at sentence level
+        sentences = full_response.split('. ')
+        summarized = '. '.join(sentences[:3]) + '.'
+        
+        if len(summarized) > target_length:
+            summarized = summarized[:target_length-3] + "..."
+    
+    return summarized
 
-def create_response_with_context(
-    response: str,
-    is_truncated: bool = False,
-    total_parts: Optional[int] = None,
-    current_part: Optional[int] = None
-) -> str:
+def chunk_long_response(response_text: str, chunk_size: int = 4000) -> List[str]:
     """
-    Create a response with appropriate context about truncation or splitting.
-    
-    Args:
-        response: The response content
-        is_truncated: Whether the response was truncated
-        total_parts: Total number of parts if split
-        current_part: Current part number if split
-    
-    Returns:
-        Response with appropriate context
+    Break very long responses into logical chunks sent as separate messages.
     """
-    if is_truncated:
-        return response + "\n\n[Response was very detailed and exceeded our limits. The agent is processing a shorter version for you.]"
+    if len(response_text) <= chunk_size:
+        return [response_text]
     
-    if total_parts and total_parts > 1:
-        part_info = f"\n\n[Part {current_part} of {total_parts}]"
-        if current_part == total_parts:
-            part_info += " - This completes the full response."
-        return response + part_info
+    # Find natural break points (code blocks, sections, paragraphs)
+    chunks = []
+    current_chunk = ""
     
-    return response
+    for paragraph in response_text.split('\n\n'):
+        if len(current_chunk + paragraph) <= chunk_size:
+            current_chunk += paragraph + '\n\n'
+        else:
+            if current_chunk:
+                chunks.append(current_chunk.strip())
+            current_chunk = paragraph + '\n\n'
+    
+    if current_chunk:
+        chunks.append(current_chunk.strip())
+    
+    return chunks
 
 def handle_validation_error(error: ValidationError, original_response: str) -> str:
     """
-    Handle Pydantic validation errors gracefully.
+    Handle Pydantic validation errors gracefully without user-facing error messages.
     
     Args:
         error: The validation error
@@ -124,8 +110,26 @@ def handle_validation_error(error: ValidationError, original_response: str) -> s
     
     if "string_too_long" in error_str:
         logger.warning(f"Response length validation error: {len(original_response)} chars")
-        return handle_long_response(original_response)
+        return handle_agent_response(original_response)
     
     # For other validation errors, return a truncated version
     logger.error(f"Validation error: {error_str}")
-    return handle_long_response(original_response) 
+    return handle_agent_response(original_response)
+
+# Legacy functions for backward compatibility
+def handle_long_response(response: str, max_length: int = 14000) -> str:
+    """Legacy function - now uses seamless handling"""
+    return handle_agent_response(response, max_length)
+
+def split_long_response(response: str, max_length: int = 14000) -> List[str]:
+    """Legacy function - now uses chunking"""
+    return chunk_long_response(response, max_length)
+
+def create_response_with_context(
+    response: str,
+    is_truncated: bool = False,
+    total_parts: Optional[int] = None,
+    current_part: Optional[int] = None
+) -> str:
+    """Legacy function - now returns response as-is without context messages"""
+    return response 
