@@ -1,0 +1,731 @@
+/* Compact Layout CSS - New Design for Memory and Task Display */
+
+/* CRITICAL: Main Layout with Independent Scrolling - FIXED */
+.main-container {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 320px 1fr 320px; /* Fixed panel widths */
+  height: calc(100vh - var(--header-height));
+  overflow: hidden;
+}
+
+/* CRITICAL: Ensure panels never auto-hide */
+.main-container.memory-hidden {
+  grid-template-columns: 1fr 320px;
+}
+
+.main-container.tasks-hidden {
+  grid-template-columns: 320px 1fr;
+}
+
+.main-container.both-hidden {
+  grid-template-columns: 1fr;
+}
+
+/* Panel Layout Controls */
+.layout-controls {
+  display: flex;
+  gap: 8px;
+  margin-right: 16px;
+}
+
+.panel-toggle-btn {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.panel-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+/* CRITICAL: Scrollable Panels - FIXED */
+.scrollable-panel {
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+  display: flex !important; /* Force visibility */
+  flex-direction: column;
+  min-width: 280px; /* Minimum width to remain functional */
+  max-width: 400px;
+  width: 320px;
+  flex-shrink: 0; /* Prevent shrinking */
+  overflow: visible; /* Allow content to be seen */
+}
+
+/* CRITICAL: Override any responsive hiding */
+@media (max-width: 1200px) {
+  .tasks-panel,
+  .memory-panel {
+    display: flex !important; /* Force visibility */
+    min-width: 250px;
+  }
+}
+
+@media (max-width: 900px) {
+  .tasks-panel,
+  .memory-panel {
+    display: flex !important;
+    min-width: 200px;
+  }
+}
+
+/* Only hide on very small screens with manual toggle */
+@media (max-width: 600px) {
+  .tasks-panel,
+  .memory-panel {
+    position: fixed;
+    top: 60px;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 1000;
+    background: white;
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+  }
+  
+  .panel-visible .tasks-panel,
+  .panel-visible .memory-panel {
+    transform: translateX(0);
+  }
+}
+
+.scrollable-panel::-webkit-scrollbar {
+  width: 8px;
+}
+
+.scrollable-panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollable-panel::-webkit-scrollbar-thumb {
+  background: #cbd5e0;
+  border-radius: 4px;
+}
+
+.scrollable-panel::-webkit-scrollbar-thumb:hover {
+  background: #a0aec0;
+}
+
+/* Panel Headers */
+.panel-header {
+  position: sticky;
+  top: 0;
+  background: inherit;
+  z-index: 10;
+  border-bottom: 1px solid var(--border);
+  padding: 16px 20px;
+  font-weight: 600;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+}
+
+.panel-header-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.panel-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.task-count, .memory-count {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.add-task-btn, .add-memory-btn {
+  background: var(--primary-gradient);
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.add-task-btn:hover, .add-memory-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(102, 126, 234, 0.3);
+}
+
+/* Panel Content */
+.panel-content {
+  flex: 1;
+  padding: 16px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* CRITICAL: Compact Item Styles - FIXED */
+.compact-task-item, .compact-memory-item {
+  border-bottom: 1px solid #e5e7eb;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  min-height: 60px; /* Consistent height for longer titles */
+  display: flex;
+  flex-direction: column;
+  background: white;
+  overflow: hidden; /* Prevent content overflow */
+}
+
+.compact-task-item:hover, .compact-memory-item:hover {
+  background-color: #f9fafb;
+}
+
+.compact-task-header, .compact-memory-header {
+  display: flex;
+  align-items: flex-start; /* Align to top for multi-line titles */
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 32px;
+}
+
+.compact-task-main, .compact-memory-main {
+  display: flex;
+  align-items: flex-start; /* Align to top */
+  gap: 8px;
+  flex: 1;
+  min-width: 0; /* Allow text to truncate properly */
+  padding-right: 8px;
+}
+
+.expand-button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  padding: 2px;
+  border-radius: 3px;
+  transition: all 0.2s ease;
+  min-width: 16px;
+  flex-shrink: 0; /* Prevent shrinking */
+}
+
+.expand-button:hover {
+  background-color: #e5e7eb;
+  color: var(--text-primary);
+}
+
+.task-status-icon, .memory-icon {
+  font-size: 1rem;
+  min-width: 16px;
+  flex-shrink: 0; /* Prevent shrinking */
+}
+
+.task-priority-icon {
+  font-size: 0.8rem;
+  min-width: 12px;
+  flex-shrink: 0; /* Prevent shrinking */
+}
+
+/* CRITICAL: Enhanced Title Display - FIXED */
+.task-title, .memory-content-preview {
+  flex: 1;
+  font-weight: 500;
+  font-size: 14px;
+  line-height: 1.3;
+  color: #1f2937;
+  overflow: visible; /* Allow text to be fully visible */
+  text-overflow: clip; /* Don't truncate with ellipsis */
+  white-space: normal; /* Allow wrapping */
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  min-width: 0; /* Allow text to truncate properly */
+  margin-bottom: 4px; /* Space for subtitle */
+  max-width: none; /* Remove any max-width constraints */
+  display: block; /* Ensure proper display */
+  width: 100%; /* Take full width */
+}
+
+/* CRITICAL: Extended Title Container */
+.item-title-container {
+  flex: 1;
+  min-width: 0;
+  padding-right: 8px;
+}
+
+.item-subtitle {
+  font-size: 12px;
+  color: #6b7280;
+  line-height: 1.2;
+  margin-top: 2px;
+}
+
+.item-preview {
+  display: block;
+  margin-bottom: 2px;
+  font-style: italic;
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+.item-meta {
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+.memory-type-badge {
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: white;
+  font-size: 0.7rem;
+  font-weight: 500;
+  white-space: nowrap;
+  flex-shrink: 0; /* Prevent shrinking */
+}
+
+.compact-task-meta, .compact-memory-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-shrink: 0; /* Prevent shrinking */
+}
+
+.task-date, .memory-date {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  flex-shrink: 0; /* Prevent shrinking */
+}
+
+.compact-task-actions, .compact-memory-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  flex-shrink: 0; /* Prevent shrinking */
+}
+
+.compact-task-item:hover .compact-task-actions,
+.compact-memory-item:hover .compact-memory-actions {
+  opacity: 1;
+}
+
+.compact-status-select {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.compact-delete-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 2px;
+  border-radius: 3px;
+  transition: all 0.2s ease;
+}
+
+.compact-delete-btn:hover {
+  background-color: #fee2e2;
+  color: #dc2626;
+}
+
+/* CRITICAL: Proper Expansion Behavior Without Overlap - FIXED */
+.compact-task-details, .compact-memory-details {
+  margin-top: 8px;
+  padding-left: 24px;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  border-top: 1px solid #f3f4f6;
+  padding-top: 8px;
+  overflow: hidden; /* Prevent overflow */
+  max-height: 500px; /* Generous max height */
+  transition: max-height 0.3s ease, padding 0.3s ease;
+}
+
+.compact-task-details.hidden, .compact-memory-details.hidden {
+  max-height: 0;
+  padding-top: 0;
+  margin-top: 0;
+}
+
+.compact-task-details.visible, .compact-memory-details.visible {
+  max-height: 500px;
+  padding-top: 8px;
+  margin-top: 8px;
+}
+
+/* CRITICAL: Enhanced details content structure */
+.details-content {
+  border-top: 1px solid #f3f4f6;
+  padding-top: 12px;
+}
+
+.description-section,
+.metadata-section,
+.related-section {
+  margin-bottom: 16px;
+}
+
+.description-section h4,
+.metadata-section h4,
+.related-section h4 {
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.description-section p {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #4b5563;
+  margin: 0;
+  white-space: pre-wrap; /* Preserve line breaks */
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.metadata-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.metadata-grid span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.metadata-grid strong {
+  font-weight: 600;
+  color: #374151;
+}
+
+.related-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.related-list li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  font-size: 12px;
+  color: #4b5563;
+}
+
+.task-description, .memory-full-content {
+  margin: 0 0 8px 0;
+  line-height: 1.4;
+  color: var(--text-secondary);
+  white-space: pre-wrap; /* Preserve line breaks */
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.task-meta-details, .memory-meta-details {
+  display: flex;
+  gap: 12px;
+  font-size: 0.75rem;
+  flex-wrap: wrap; /* Allow wrapping */
+}
+
+.task-status, .task-priority, .memory-type, .memory-date-full {
+  font-weight: 500;
+}
+
+/* View Controls */
+.view-controls {
+  margin-bottom: 16px;
+  padding: 12px;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.view-controls-compact {
+  margin-bottom: 12px;
+  padding: 8px;
+}
+
+.view-toggle {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.view-toggle-btn {
+  background: white;
+  border: 1px solid var(--border);
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex: 1;
+}
+
+.view-toggle-btn.active {
+  background: var(--primary-gradient);
+  color: white;
+  border-color: transparent;
+}
+
+.view-toggle-btn:hover:not(.active) {
+  background: #f3f4f6;
+}
+
+.semantic-options {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.semantic-select {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.depth-control {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.depth-slider {
+  width: 60px;
+}
+
+.depth-value {
+  min-width: 16px;
+  text-align: center;
+}
+
+.refresh-semantic-btn {
+  background: #f3f4f6;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.refresh-semantic-btn:hover {
+  background: #e5e7eb;
+}
+
+/* Semantic Hierarchy */
+.semantic-hierarchical-view {
+  height: 100%;
+  overflow-y: auto;
+}
+
+.semantic-group {
+  margin-bottom: 4px;
+}
+
+.semantic-group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  border-radius: 6px;
+  font-weight: 500;
+  font-size: 0.9rem;
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  transition: all 0.2s ease;
+}
+
+.semantic-group-header:hover {
+  background: #f1f5f9;
+}
+
+.semantic-group-icon {
+  font-size: 1rem;
+}
+
+.semantic-group-name {
+  flex: 1;
+  color: var(--text-primary);
+}
+
+.semantic-group-count {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.semantic-group-expand {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  transition: transform 0.2s ease;
+}
+
+.semantic-group-items {
+  margin-left: 16px;
+  border-left: 1px solid #e5e7eb;
+  padding-left: 8px;
+}
+
+/* Virtualized List */
+.virtualized-list {
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.tasks-virtualized-list, .memories-virtualized-list {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: white;
+}
+
+/* Form Styles */
+.create-task-form, .create-memory-form {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.create-task-form h4, .create-memory-form h4 {
+  margin: 0 0 12px 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.form-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+/* Loading and Empty States */
+.loading-indicator, .empty-state {
+  text-align: center;
+  color: var(--text-secondary);
+  padding: 40px 20px;
+  font-size: 0.9rem;
+}
+
+.semantic-hierarchy-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: var(--text-secondary);
+}
+
+.semantic-hierarchy-empty {
+  text-align: center;
+  color: var(--text-secondary);
+  padding: 40px 20px;
+}
+
+/* CRITICAL: Ensure proper scrolling with expanded items */
+.scrollable-panel {
+  scroll-behavior: smooth;
+}
+
+/* Prevent layout shift during expansion */
+.expanding {
+  transform: translateZ(0); /* Enable hardware acceleration */
+}
+
+/* CRITICAL: Responsive Design - FIXED */
+@media (max-width: 1200px) {
+  .main-container {
+    grid-template-columns: 280px 1fr 280px;
+  }
+  
+  .scrollable-panel {
+    min-width: 250px;
+  }
+}
+
+@media (max-width: 900px) {
+  .main-container {
+    grid-template-columns: 250px 1fr 250px;
+  }
+  
+  .scrollable-panel {
+    min-width: 200px;
+  }
+}
+
+@media (max-width: 768px) {
+  .main-container {
+    grid-template-columns: 1fr;
+  }
+  
+  .scrollable-panel {
+    display: none; /* Hide by default on mobile */
+  }
+  
+  .main-container.memory-visible .memory-panel {
+    display: flex !important;
+    position: fixed;
+    top: var(--header-height);
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 100;
+    background: white;
+  }
+  
+  .main-container.tasks-visible .tasks-panel {
+    display: flex !important;
+    position: fixed;
+    top: var(--header-height);
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 100;
+    background: white;
+  }
+  
+  .layout-controls {
+    flex-direction: column;
+    gap: 4px;
+  }
+  
+  .panel-toggle-btn {
+    font-size: 0.7rem;
+    padding: 4px 8px;
+  }
+} 

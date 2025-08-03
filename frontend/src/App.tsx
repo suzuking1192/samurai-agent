@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import './App.css'
+import './compact-layout.css'
 import Chat from './components/Chat'
 import TaskPanel from './components/TaskPanel'
 import MemoryPanel from './components/MemoryPanel'
@@ -8,9 +9,24 @@ import { Project } from './types'
 
 function App() {
   const [selectedProject, setSelectedProject] = useState<Project | null>(null)
+  const [taskRefreshTrigger, setTaskRefreshTrigger] = useState(0)
+  const [showLeftPanel, setShowLeftPanel] = useState(true)
+  const [showRightPanel, setShowRightPanel] = useState(true)
 
   const handleProjectSelect = (project: Project) => {
     setSelectedProject(project)
+  }
+
+  const handleTaskRefresh = () => {
+    setTaskRefreshTrigger(prev => prev + 1)
+  }
+
+  // Determine grid layout class based on panel visibility
+  const getGridLayoutClass = () => {
+    if (!showLeftPanel && !showRightPanel) return 'both-hidden'
+    if (!showLeftPanel) return 'memory-hidden'
+    if (!showRightPanel) return 'tasks-hidden'
+    return ''
   }
 
   return (
@@ -22,6 +38,22 @@ function App() {
           <span className="header-subtitle">Your AI Vibe Coding Partner With Endless Memory</span>
         </div>
         <div className="header-actions">
+          <div className="layout-controls">
+            <button 
+              className="panel-toggle-btn"
+              onClick={() => setShowLeftPanel(!showLeftPanel)}
+              title={showLeftPanel ? 'Hide Memory Panel' : 'Show Memory Panel'}
+            >
+              {showLeftPanel ? '⬅️ Hide Memory' : '➡️ Show Memory'}
+            </button>
+            <button 
+              className="panel-toggle-btn"
+              onClick={() => setShowRightPanel(!showRightPanel)}
+              title={showRightPanel ? 'Hide Tasks Panel' : 'Show Tasks Panel'}
+            >
+              {showRightPanel ? 'Hide Tasks ➡️' : '⬅️ Show Tasks'}
+            </button>
+          </div>
           <ProjectSelector 
             selectedProject={selectedProject} 
             onProjectSelect={handleProjectSelect} 
@@ -29,32 +61,26 @@ function App() {
         </div>
       </header>
       
-      {/* Three Panel Layout */}
-      <div className="main-container">
+      {/* Three Panel Layout with Independent Scrolling */}
+      <div className={`main-container ${getGridLayoutClass()}`}>
         {/* LEFT: Memory Panel */}
-        <div className="panel memory-panel">
-          <div className="panel-header">
-            🧠 Project Memory
-          </div>
-          <div className="panel-content">
+        {showLeftPanel && (
+          <div className="panel memory-panel scrollable-panel">
             <MemoryPanel projectId={selectedProject?.id} />
           </div>
-        </div>
+        )}
         
         {/* CENTER: Chat Interface */}
         <div className="chat-container">
-          <Chat projectId={selectedProject?.id} />
+          <Chat projectId={selectedProject?.id} onTaskGenerated={handleTaskRefresh} />
         </div>
         
         {/* RIGHT: Tasks Panel */}
-        <div className="panel tasks-panel">
-          <div className="panel-header">
-            📋 Tasks & Prompts
+        {showRightPanel && (
+          <div className="panel tasks-panel scrollable-panel">
+            <TaskPanel projectId={selectedProject?.id} refreshTrigger={taskRefreshTrigger} />
           </div>
-          <div className="panel-content">
-            <TaskPanel projectId={selectedProject?.id} />
-          </div>
-        </div>
+        )}
       </div>
     </div>
   )
