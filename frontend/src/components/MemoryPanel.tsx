@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react'
 import { Memory, MemoryType, MemoryCreate } from '../types'
 import { getMemories, createMemory, deleteMemory } from '../services/api'
+import CompactMemoryItem from './CompactMemoryItem'
+import VirtualizedList from './VirtualizedList'
+import ViewControls, { ViewMode } from './ViewControls'
+import SemanticHierarchicalView from './SemanticHierarchicalView'
 
 interface MemoryPanelProps {
   projectId?: string
@@ -10,6 +14,11 @@ const MemoryPanel: React.FC<MemoryPanelProps> = ({ projectId }) => {
   const [memories, setMemories] = useState<Memory[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [showCreateForm, setShowCreateForm] = useState(false)
+  const [currentView, setCurrentView] = useState<ViewMode>('list')
+  const [semanticOptions, setSemanticOptions] = useState({
+    clustering: 'content',
+    depth: 2
+  })
   const [newMemory, setNewMemory] = useState<MemoryCreate>({
     content: '',
     type: MemoryType.NOTE
@@ -29,9 +38,10 @@ const MemoryPanel: React.FC<MemoryPanelProps> = ({ projectId }) => {
     setIsLoading(true)
     try {
       const projectMemories = await getMemories(projectId)
-      setMemories(projectMemories)
+      setMemories(projectMemories || []) // Ensure we always have an array
     } catch (error) {
       console.error('Error loading memories:', error)
+      setMemories([]) // Set empty array on error
     } finally {
       setIsLoading(false)
     }
@@ -62,36 +72,26 @@ const MemoryPanel: React.FC<MemoryPanelProps> = ({ projectId }) => {
     }
   }
 
-  const getMemoryTypeColor = (type: MemoryType) => {
-    switch (type) {
-      case MemoryType.CONTEXT:
-        return '#3498db'
-      case MemoryType.DECISION:
-        return '#e74c3c'
-      case MemoryType.NOTE:
-        return '#f39c12'
-      default:
-        return '#95a5a6'
-    }
+  const handleSemanticOptionChange = (option: string, value: any) => {
+    setSemanticOptions(prev => ({
+      ...prev,
+      [option]: value
+    }))
   }
 
-  const getMemoryTypeLabel = (type: MemoryType) => {
-    switch (type) {
-      case MemoryType.CONTEXT:
-        return 'Context'
-      case MemoryType.DECISION:
-        return 'Decision'
-      case MemoryType.NOTE:
-        return 'Note'
-      default:
-        return 'Unknown'
-    }
-  }
+  const renderMemoryItem = (memory: Memory, _index: number, style: React.CSSProperties) => (
+    <CompactMemoryItem
+      key={memory.id}
+      memory={memory}
+      onDelete={handleDeleteMemory}
+      style={style}
+    />
+  )
 
   if (!projectId) {
     return (
       <div className="panel-content">
-        <div className="card">
+        <div className="empty-state">
           <p>Please select a project to view memories.</p>
         </div>
       </div>
@@ -100,39 +100,40 @@ const MemoryPanel: React.FC<MemoryPanelProps> = ({ projectId }) => {
 
   return (
     <div className="memory-panel">
-      <div className="panel-content">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-          <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: '600' }}>Memories</h3>
-          <button
-            onClick={() => setShowCreateForm(!showCreateForm)}
-            className="button"
-          >
-            {showCreateForm ? 'Cancel' : 'Add Memory'}
-          </button>
+      <div className="panel-header">
+        <div className="panel-header-content">
+          <h3>💡 Memories</h3>
+          <span className="memory-count">({memories.length})</span>
         </div>
+        <button
+          onClick={() => setShowCreateForm(!showCreateForm)}
+          className="add-memory-btn"
+        >
+          {showCreateForm ? 'Cancel' : 'Add Memory'}
+        </button>
+      </div>
 
+      <div className="panel-content">
         {showCreateForm && (
-          <div className="card">
-            <h3>Create New Memory</h3>
+          <div className="create-memory-form">
+            <h4>Create New Memory</h4>
             <textarea
               placeholder="Memory content"
               value={newMemory.content}
               onChange={(e) => setNewMemory(prev => ({ ...prev, content: e.target.value }))}
               className="input"
               rows={4}
-              style={{ marginBottom: '0.5rem' }}
             />
             <select
               value={newMemory.type}
               onChange={(e) => setNewMemory(prev => ({ ...prev, type: e.target.value as MemoryType }))}
               className="input"
-              style={{ marginBottom: '0.5rem' }}
             >
               <option value={MemoryType.NOTE}>Note</option>
               <option value={MemoryType.CONTEXT}>Context</option>
               <option value={MemoryType.DECISION}>Decision</option>
             </select>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <div className="form-actions">
               <button
                 onClick={handleCreateMemory}
                 disabled={!newMemory.content.trim()}
@@ -150,45 +151,53 @@ const MemoryPanel: React.FC<MemoryPanelProps> = ({ projectId }) => {
           </div>
         )}
 
+        <ViewControls
+          currentView={currentView}
+          onViewChange={setCurrentView}
+          semanticOptions={semanticOptions}
+          onSemanticOptionChange={handleSemanticOptionChange}
+          className="view-controls-compact"
+        />
+
         {isLoading ? (
-          <div className="card">
-            <p>Loading memories...</p>
+          <div className="loading-indicator">
+            <span>Loading memories...</span>
           </div>
         ) : memories.length === 0 ? (
-          <div className="card">
+          <div className="empty-state">
             <p>No memories yet. Add your first memory!</p>
           </div>
         ) : (
-          memories.map((memory) => (
-            <div key={memory.id} className="card memory-card">
-              <div className="memory-header">
-                <span
-                  className="memory-type-badge"
-                  style={{ backgroundColor: getMemoryTypeColor(memory.type) }}
-                >
-                  {getMemoryTypeLabel(memory.type)}
-                </span>
-                <button
-                  onClick={() => handleDeleteMemory(memory.id)}
-                  className="button danger"
-                  style={{ 
-                    padding: '0.25rem 0.5rem', 
-                    fontSize: '0.8rem'
-                  }}
-                >
-                  Delete
-                </button>
+          <div className="memories-content">
+            {currentView === 'list' && (
+              <VirtualizedList
+                items={memories}
+                itemHeight={80}
+                height="calc(100vh - 300px)"
+                renderItem={renderMemoryItem}
+                className="memories-virtualized-list"
+              />
+            )}
+            
+            {currentView === 'semantic' && (
+              <SemanticHierarchicalView
+                tasks={[]}
+                memories={memories}
+                onTaskUpdate={() => {}}
+                onTaskDelete={() => {}}
+                onMemoryDelete={handleDeleteMemory}
+                className="memories-semantic-view"
+                clusteringType={semanticOptions.clustering}
+                depth={semanticOptions.depth}
+              />
+            )}
+            
+            {currentView === 'timeline' && (
+              <div className="timeline-view">
+                <p>Timeline view coming soon...</p>
               </div>
-              
-              <p className="memory-content">{memory.content}</p>
-              
-              <div className="memory-meta">
-                <span className="memory-date">
-                  {new Date(memory.created_at).toLocaleDateString()}
-                </span>
-              </div>
-            </div>
-          ))
+            )}
+          </div>
         )}
       </div>
     </div>

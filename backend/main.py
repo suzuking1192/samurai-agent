@@ -20,8 +20,10 @@ from models import (
 # Import your services  
 from services.gemini_service import GeminiService
 from services.file_service import FileService
+from services.ai_agent import SamuraiAgent
 from services.context_service import context_service
 from services.response_service import handle_long_response, handle_validation_error
+from services.semantic_service import SemanticService
 
 # Load environment variables
 load_dotenv()
@@ -51,6 +53,8 @@ app.add_middleware(
 # Initialize services
 file_service = FileService()
 gemini_service = GeminiService()
+samurai_agent = SamuraiAgent()
+semantic_service = SemanticService()
 
 # Global exception handler
 @app.exception_handler(Exception)
@@ -181,7 +185,7 @@ async def delete_project(project_id: str):
 # Chat endpoint
 @app.post("/projects/{project_id}/chat", response_model=ChatResponse)
 async def chat_with_project(project_id: str, request: ChatRequest):
-    """Chat about the project with intelligent context selection"""
+    """Chat about the project with intelligent task and memory generation"""
     try:
         logger.info(f"Chat request for project {project_id}: {request.message[:50]}...")
         
@@ -191,39 +195,28 @@ async def chat_with_project(project_id: str, request: ChatRequest):
             logger.warning(f"Project not found for chat: {project_id}")
             raise HTTPException(status_code=404, detail="Project not found")
         
-        # 2. Load memories and tasks for context selection
-        logger.info("Loading project memories and tasks for context...")
-        memories = file_service.load_memories(project_id)
-        tasks = file_service.load_tasks(project_id)
-        logger.info(f"Loaded {len(memories)} memories and {len(tasks)} tasks")
+        # 2. Convert project to context dict for SamuraiAgent
+        project_context = {
+            "name": project.name,
+            "description": project.description,
+            "tech_stack": project.tech_stack
+        }
         
-        # 3. Select relevant context using intelligent selection
-        logger.info("Selecting relevant context...")
-        relevant_memories, relevant_tasks = context_service.get_hierarchical_context(
-            user_input=request.message,
+        logger.info(f"Project context: {project.name} - {project.tech_stack}")
+        
+        # 3. Use SamuraiAgent to process the message (this handles task/memory generation)
+        logger.info("Processing message with SamuraiAgent...")
+        result = await samurai_agent.process_message(
+            message=request.message,
             project_id=project_id,
-            memories=memories,
-            tasks=tasks,
-            max_total_items=15
+            project_context=project_context
         )
         
-        # 4. Format context for the AI
-        context = context_service.format_context_for_prompt(
-            memories=relevant_memories,
-            tasks=relevant_tasks,
-            project=project
-        )
+        logger.info(f"SamuraiAgent response type: {result.get('type', 'unknown')}")
         
-        logger.info(f"Selected {len(relevant_memories)} memories and {len(relevant_tasks)} tasks for context")
-        
-        # 5. Use Gemini service to respond with enhanced context
-        logger.info("Generating AI response with context...")
-        ai_response = await gemini_service.chat(request.message, context)
-        logger.info("AI response generated successfully")
-        
-        # 6. Handle long responses gracefully
+        # 4. Handle long responses gracefully
         is_truncated = False
-        final_response = ai_response
+        final_response = result.get("response", "I'm sorry, I couldn't process that request.")
         
         try:
             # Try to create ChatMessage with original response
@@ -231,13 +224,13 @@ async def chat_with_project(project_id: str, request: ChatRequest):
                 id=str(uuid.uuid4()),
                 project_id=project_id,
                 message=request.message,
-                response=ai_response,
+                response=final_response,
                 created_at=datetime.now()
             )
-        except ValidationError as e:
+        except Exception as e:
             # Handle validation error (likely string_too_long)
             logger.warning(f"Response validation error: {e}")
-            final_response = handle_validation_error(e, ai_response)
+            final_response = handle_validation_error(e, final_response)
             is_truncated = True
             
             # Create ChatMessage with truncated response
@@ -249,16 +242,22 @@ async def chat_with_project(project_id: str, request: ChatRequest):
                 created_at=datetime.now()
             )
         
-        # Save chat message
+        # 5. Save chat message
         file_service.save_chat_message(project_id, chat_message)
         logger.info(f"Chat message saved: {chat_message.id}")
         
-        # 7. Return enhanced chat response with relevant context
+        # 6. Load current tasks and memories for response
+        current_tasks = file_service.load_tasks(project_id)
+        current_memories = file_service.load_memories(project_id)
+        
+        logger.info(f"Current state: {len(current_tasks)} tasks, {len(current_memories)} memories")
+        
+        # 7. Return response with generated tasks and memories
         return ChatResponse(
             response=final_response,
-            tasks=relevant_tasks,  # Include relevant tasks
-            memories=relevant_memories,  # Include relevant memories
-            type="chat"
+            tasks=result.get("tasks", []),  # Include any newly generated tasks
+            memories=current_memories,  # Include all memories for context
+            type=result.get("type", "chat")
         )
     except HTTPException:
         raise
@@ -439,6 +438,42 @@ async def chat(request: ChatRequest):
     except Exception as e:
         logger.error(f"Error in legacy chat: {e}")
         raise HTTPException(status_code=500, detail=f"Chat failed: {str(e)}")
+
+@app.route('/api/semantic-hierarchy', methods=['POST'])
+async def get_semantic_hierarchy(request: Request):
+    """Get semantic hierarchy for tasks and memories"""
+    try:
+        data = await request.json()
+        project_id = data.get('project_id')
+        clustering_type = data.get('clustering_type', 'content')
+        depth = data.get('depth', 2)
+        
+        if not project_id:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "Project ID is required"}
+            )
+        
+        # Load tasks and memories for the project
+        tasks = file_service.load_tasks(project_id)
+        memories = file_service.load_memories(project_id)
+        
+        # Generate semantic hierarchy
+        hierarchy = semantic_service.create_advanced_hierarchy(
+            tasks, memories, clustering_type, depth
+        )
+        
+        return JSONResponse(
+            status_code=200,
+            content=hierarchy
+        )
+        
+    except Exception as e:
+        logger.error(f"Error generating semantic hierarchy: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": "Failed to generate semantic hierarchy"}
+        )
 
 if __name__ == "__main__":
     import uvicorn
