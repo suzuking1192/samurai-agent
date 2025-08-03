@@ -75,12 +75,14 @@ class Memory(BaseModel):
     Attributes:
         id: Unique identifier for the memory
         project_id: Project identifier
+        title: Memory title
         content: Memory content
         type: Type of memory (context, decision, note)
         created_at: Timestamp when the memory was created
     """
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Unique memory identifier")
     project_id: str = Field(..., description="Project identifier")
+    title: str = Field(..., max_length=200, description="Memory title")
     content: str = Field(..., max_length=2000, description="Memory content")
     type: str = Field(..., pattern="^(context|decision|note)$", description="Memory type")
     created_at: datetime = Field(default_factory=datetime.utcnow, description="Creation timestamp")

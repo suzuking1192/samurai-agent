@@ -98,16 +98,24 @@ class SamuraiAgent:
                 result = None
                 
                 if intent == "feature_request":
+                        logger.info(f"Processing feature request: {message}")
                         clarity = await self._evaluate_clarity(message, project_context)
                         
+                        logger.info(f"Clarity result: {clarity}")
+                        
                         if clarity["clear"]:
+                            logger.info("Feature request is clear, generating tasks...")
                             result = await self._handle_feature_request(message, project_context, project_id)
                             if result["type"] == "feature_breakdown" and result["tasks"]:
+                                logger.info(f"Generated {len(result['tasks'])} tasks")
                                 for task in result["tasks"]:
                                     task.prompt = self._generate_cursor_prompt(
                                         task.title, task.description, project_context
                                     )
                                 self.file_service.save_tasks(project_id, result["tasks"])
+                                logger.info("Tasks saved to database")
+                            else:
+                                logger.warning(f"Feature breakdown failed or no tasks generated: {result.get('type')}")
                             
                             # Update memory with important information from this conversation
                             if result and result.get("response"):
@@ -117,6 +125,7 @@ class SamuraiAgent:
                             
                             return result
                         else:
+                            logger.info("Feature request needs clarification")
                             result = await self._ask_clarifying_questions(message, project_context)
                             
                             # Update memory
@@ -320,15 +329,20 @@ class SamuraiAgent:
         Evaluate if this feature request is specific enough to break down into implementation tasks.
 
         SUFFICIENTLY CLEAR examples (can implement immediately):
+        - "Add user authentication" (clear enough to create basic auth tasks)
         - "Add email/password authentication with user registration, login, logout, and password reset functionality"
         - "Create a todo list with add, edit, delete, mark complete, and filter by status"
         - "Implement real-time chat with message history, user typing indicators, and emoji support"
+        - "I need to add user authentication to my app" (clear enough)
+        - "I should implement a shopping cart feature" (clear enough)
+        - "TODO: Fix the login bug and add password reset" (clear enough)
+        - "Can you help me create tasks for building a REST API?" (clear enough)
 
         TOO VAGUE examples (need more details):
-        - "Add user authentication" (What type? What features?)
         - "Add notifications" (What triggers them? How displayed?)
         - "Make it real-time" (What specifically should be real-time?)
         - "Add search functionality" (Search what? How should results display?)
+        - "Improve the UI" (What specifically?)
 
         Feature request: "{message}"
 
@@ -338,6 +352,8 @@ class SamuraiAgent:
         try:
             response = await self.gemini_service.chat_with_system_prompt(message, system_prompt.format(message=message))
             is_clear = "CLEAR" in response.upper()
+            
+            logger.info(f"Clarity evaluation for '{message}': {response.strip()} -> {'CLEAR' if is_clear else 'VAGUE'}")
             
             return {
                 "clear": is_clear,
@@ -759,11 +775,23 @@ Please provide helpful, context-aware advice that considers the existing project
         tasks = []
         
         for i, task_data in enumerate(parsed_tasks):
+            # Truncate title if it's too long (max 200 characters)
+            title = task_data.get('title', 'Untitled Task')
+            if len(title) > 200:
+                title = title[:197] + "..."
+                logger.warning(f"Task title truncated: {title}")
+            
+            # Truncate description if it's too long (max 1000 characters)
+            description = task_data.get('description', '')
+            if len(description) > 1000:
+                description = description[:997] + "..."
+                logger.warning(f"Task description truncated: {description[:50]}...")
+            
             task = Task(
                 id=str(uuid.uuid4()),
                 project_id=project_id or "",
-                title=task_data.get('title', 'Untitled Task'),
-                description=task_data.get('description', ''),
+                title=title,
+                description=description,
                 prompt='',  # Will be set later
                 completed=False,
                 order=i + 1,  # Add order field
@@ -834,7 +862,8 @@ Complete implementation of the task with all necessary files, components, and co
                         memory = Memory(
                             id=str(uuid.uuid4()),
                             project_id=project_id,
-                            content=f"{info['title']}: {info['content']}",
+                            title=info['title'],
+                            content=info['content'],
                             type=info['type'] if info['type'] in ['context', 'decision', 'note'] else 'note',
                             created_at=datetime.now()
                         )
@@ -908,10 +937,8 @@ Complete implementation of the task with all necessary files, components, and co
         new_title_words = set(new_info['title'].lower().split())
         
         for memory in existing_memories:
-            # Extract title from content (assuming format "Title: Content")
-            content_parts = memory.content.split(':', 1)
-            existing_title = content_parts[0] if len(content_parts) > 1 else memory.content
-            existing_words = set(existing_title.lower().split())
+            # Use the title field directly
+            existing_words = set(memory.title.lower().split())
             
             # If 50% or more words overlap, consider it similar
             overlap = len(new_title_words.intersection(existing_words))
@@ -1396,8 +1423,9 @@ Available commands:
             from models import ChatMessage
             chat_message = ChatMessage(
                 id=str(uuid.uuid4()),
-                role="user",
-                content=user_input,
+                project_id=test_project.id,
+                message=user_input,
+                response="",
                 created_at=datetime.now()
             )
             agent.file_service.save_chat_message(test_project.id, chat_message)
@@ -1406,8 +1434,9 @@ Available commands:
             if result and result.get("response"):
                 agent_response = ChatMessage(
                     id=str(uuid.uuid4()),
-                    role="assistant", 
-                    content=result["response"],
+                    project_id=test_project.id,
+                    message="",
+                    response=result["response"],
                     created_at=datetime.now()
                 )
                 agent.file_service.save_chat_message(test_project.id, agent_response)
