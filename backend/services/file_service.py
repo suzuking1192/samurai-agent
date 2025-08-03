@@ -354,6 +354,15 @@ class FileService:
                 return task
         return None
 
+    def get_task_by_id_global(self, task_id: str) -> Optional[Task]:
+        """Get a specific task by ID across all projects."""
+        projects = self.load_projects()
+        for project in projects:
+            task = self.get_task_by_id(project.id, task_id)
+            if task:
+                return task
+        return None
+
     def update_task_status(self, project_id: str, task_id: str, completed: bool) -> bool:
         """Update task completion status."""
         tasks = self.load_tasks(project_id)

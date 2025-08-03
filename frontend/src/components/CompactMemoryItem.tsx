@@ -5,24 +5,20 @@ import MemoryDetailModal from './MemoryDetailModal'
 interface CompactMemoryItemProps {
   memory: Memory
   onDelete: (memoryId: string) => void
-  level?: number
   style?: React.CSSProperties
 }
 
 const CompactMemoryItem: React.FC<CompactMemoryItemProps> = ({ 
   memory, 
   onDelete, 
-  level = 0,
   style 
 }) => {
-  const [expanded, setExpanded] = useState(false)
   const [showActions, setShowActions] = useState(false)
-  const [isExpanding, setIsExpanding] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
 
   const getMemoryIcon = (type: MemoryType) => {
     switch (type) {
-      case MemoryType.CONTEXT:
+      case MemoryType.FEATURE:
         return '💡'
       case MemoryType.DECISION:
         return '🎯'
@@ -35,7 +31,7 @@ const CompactMemoryItem: React.FC<CompactMemoryItemProps> = ({
 
   const getMemoryColor = (type: MemoryType) => {
     switch (type) {
-      case MemoryType.CONTEXT:
+      case MemoryType.FEATURE:
         return '#3498db'
       case MemoryType.DECISION:
         return '#e74c3c'
@@ -46,18 +42,7 @@ const CompactMemoryItem: React.FC<CompactMemoryItemProps> = ({
     }
   }
 
-  const getMemoryTypeLabel = (type: MemoryType) => {
-    switch (type) {
-      case MemoryType.CONTEXT:
-        return 'Context'
-      case MemoryType.DECISION:
-        return 'Decision'
-      case MemoryType.NOTE:
-        return 'Note'
-      default:
-        return 'Memory'
-    }
-  }
+
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString)
@@ -69,30 +54,6 @@ const CompactMemoryItem: React.FC<CompactMemoryItemProps> = ({
     if (diffDays === 2) return 'Yesterday'
     if (diffDays <= 7) return `${diffDays - 1} days ago`
     return date.toLocaleDateString()
-  }
-
-  // CRITICAL: Enhanced content display with better truncation
-  const getDisplayContent = () => {
-    const maxLength = 80
-    if (memory.content.length <= maxLength) {
-      return memory.content
-    }
-    return memory.content.substring(0, maxLength) + '...'
-  }
-
-  // CRITICAL: Get preview of content for subtitle
-  const getContentPreview = () => {
-    const maxLength = 60
-    if (memory.content.length <= maxLength) {
-      return null // Don't show preview if content is short
-    }
-    return memory.content.substring(0, maxLength) + '...'
-  }
-
-  const handleToggle = () => {
-    setIsExpanding(true)
-    setExpanded(!expanded)
-    setTimeout(() => setIsExpanding(false), 300) // Match animation duration
   }
 
   const handleItemClick = (e: React.MouseEvent) => {
@@ -112,67 +73,29 @@ const CompactMemoryItem: React.FC<CompactMemoryItemProps> = ({
   return (
     <>
       <div 
-        className={`compact-memory-item ${expanded ? 'expanded' : ''} ${isExpanding ? 'expanding' : ''}`}
-        style={{ 
-          paddingLeft: `${level * 16 + 12}px`,
-          ...style 
-        }}
+        className="compact-memory-item"
+        style={style}
         onMouseEnter={() => setShowActions(true)}
         onMouseLeave={() => setShowActions(false)}
         onClick={handleItemClick}
       >
-      <div className="compact-memory-header">
-        <div className="compact-memory-main">
-          <button
-            className="expand-button"
-            onClick={handleToggle}
-          >
-            {expanded ? '▼' : '▶'}
-          </button>
-          
+        <div className="item-header">
           <span className="memory-icon" style={{ color: getMemoryColor(memory.type) }}>
             {getMemoryIcon(memory.type)}
           </span>
           
-          <span className="memory-type-badge" style={{ backgroundColor: getMemoryColor(memory.type) }}>
-            {getMemoryTypeLabel(memory.type)}
-          </span>
-          
-          {/* CRITICAL: Enhanced content container */}
-          <div className="item-title-container">
-            <div className="memory-content-preview" title={memory.content}>
-              {expanded ? memory.content : getDisplayContent()}
-            </div>
-            
-            {/* CRITICAL: Show content preview as subtitle when not expanded */}
-            {!expanded && getContentPreview() && (
-              <div className="item-subtitle">
-                <div className="item-preview">
-                  {getContentPreview()}
-                </div>
-                <div className="item-meta">
-                  {formatDate(memory.created_at)} • {getMemoryTypeLabel(memory.type)}
-                </div>
-              </div>
-            )}
+          <div className="item-title">
+            {memory.content.substring(0, 50)}...
           </div>
-        </div>
-        
-        <div className="compact-memory-meta">
-          {!expanded && (
-            <span className="memory-date">
-              {formatDate(memory.created_at)}
-            </span>
-          )}
           
           {showActions && (
-            <div className="compact-memory-actions">
+            <div className="item-actions">
               <button
                 onClick={(e) => {
                   e.stopPropagation()
                   onDelete(memory.id)
                 }}
-                className="compact-delete-btn"
+                className="action-btn"
                 title="Delete memory"
               >
                 🗑️
@@ -180,26 +103,16 @@ const CompactMemoryItem: React.FC<CompactMemoryItemProps> = ({
             </div>
           )}
         </div>
-      </div>
-      
-      {/* CRITICAL: Proper expansion behavior without overlap */}
-      <div className={`compact-memory-details ${expanded ? 'visible' : 'hidden'}`}>
-        <div className="details-content">
-          <div className="description-section">
-            <h4>Content:</h4>
-            <p>{memory.content}</p>
-          </div>
-          
-          <div className="metadata-section">
-            <h4>Details:</h4>
-            <div className="metadata-grid">
-              <span><strong>Type:</strong> {getMemoryTypeLabel(memory.type)}</span>
-              <span><strong>Created:</strong> {new Date(memory.created_at).toLocaleString()}</span>
-            </div>
-          </div>
+        
+        <div className="item-description">
+          {memory.content}
+        </div>
+        
+        <div className="item-meta">
+          <span className="preview">{memory.content.substring(0, 40)}...</span>
+          <span className="date">{formatDate(memory.created_at)}</span>
         </div>
       </div>
-    </div>
       
       <MemoryDetailModal
         memory={memory}

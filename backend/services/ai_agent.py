@@ -9,7 +9,8 @@ import sys
 try:
     from .gemini_service import GeminiService
     from .file_service import FileService
-    from models import Task, Memory, Project
+    from .memory_categorization import detect_memory_category, generate_category_specific_title
+    from models import Task, Memory, Project, MemoryCategory
 except ImportError:
     # Fallback for when running the file directly
     import sys
@@ -18,7 +19,8 @@ except ImportError:
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from gemini_service import GeminiService
     from file_service import FileService
-    from models import Task, Memory, Project
+    from memory_categorization import detect_memory_category, generate_category_specific_title
+    from models import Task, Memory, Project, MemoryCategory
 
 logger = logging.getLogger(__name__)
 
@@ -771,15 +773,12 @@ Please provide helpful, context-aware advice that considers the existing project
         return tasks
     
     def _create_task_objects(self, parsed_tasks: List[dict], project_id: str = None) -> List[Task]:
-        """Create Task objects from parsed task data"""
+        """Create Task objects from parsed task data with improved title generation"""
         tasks = []
         
         for i, task_data in enumerate(parsed_tasks):
-            # Truncate title if it's too long (max 200 characters)
-            title = task_data.get('title', 'Untitled Task')
-            if len(title) > 200:
-                title = title[:197] + "..."
-                logger.warning(f"Task title truncated: {title}")
+            # Generate short, readable title
+            title = self._generate_short_title(task_data.get('title', 'Untitled Task'), 'task')
             
             # Truncate description if it's too long (max 1000 characters)
             description = task_data.get('description', '')
@@ -800,6 +799,57 @@ Please provide helpful, context-aware advice that considers the existing project
             tasks.append(task)
         
         return tasks
+
+    def _generate_short_title(self, content: str, type: str = 'task', max_length: int = 35) -> str:
+        """Generate short, scannable titles for tasks and memories"""
+        
+        # Simple title generation logic - could be enhanced with LLM
+        content_lower = content.lower()
+        
+        # Extract key action words for tasks
+        if type == 'task':
+            action_words = ['add', 'create', 'build', 'implement', 'setup', 'configure', 'fix', 'update', 'improve', 'refactor']
+            for word in action_words:
+                if word in content_lower:
+                    # Extract the object after the action word
+                    parts = content_lower.split(word, 1)
+                    if len(parts) > 1:
+                        object_part = parts[1].strip()
+                        # Take first few words as title
+                        words = object_part.split()[:3]
+                        title = f"{word.title()} {' '.join(words)}"
+                        if len(title) <= max_length:
+                            return title
+            
+            # Fallback: take first few meaningful words
+            words = content.split()[:4]
+            title = ' '.join(words)
+            if len(title) > max_length:
+                title = title[:max_length-3] + "..."
+            return title
+        
+        # For memories, focus on key concepts
+        else:
+            # Extract key technical terms
+            tech_terms = ['auth', 'api', 'database', 'ui', 'frontend', 'backend', 'deployment', 'testing']
+            for term in tech_terms:
+                if term in content_lower:
+                    # Find context around the term
+                    idx = content_lower.find(term)
+                    start = max(0, idx - 20)
+                    end = min(len(content), idx + len(term) + 20)
+                    context = content[start:end].strip()
+                    words = context.split()[:3]
+                    title = ' '.join(words)
+                    if len(title) <= max_length:
+                        return title
+            
+            # Fallback: take first few words
+            words = content.split()[:3]
+            title = ' '.join(words)
+            if len(title) > max_length:
+                title = title[:max_length-3] + "..."
+            return title
     
     def _generate_cursor_prompt(self, task_title: str, task_description: str, project_context: dict) -> str:
         """Generate optimized Cursor prompt for a specific task"""
@@ -837,7 +887,7 @@ Complete implementation of the task with all necessary files, components, and co
         return prompt.strip()
     
     async def _update_memory_from_conversation(self, message: str, response: str, project_id: str, project_context: dict) -> None:
-        """Extract and save important decisions/information from conversation"""
+        """Extract and save important decisions/information from conversation with consolidation"""
         
         conversation = f"User: {message}\nAssistant: {response}"
         
@@ -850,24 +900,24 @@ Complete implementation of the task with all necessary files, components, and co
                 existing_memories = self.file_service.load_memories(project_id)
                 
                 for info in important_info:
-                    # Check if similar memory already exists
-                    similar_memory = self._find_similar_memory(info, existing_memories)
+                    # Check if similar memory already exists for consolidation
+                    similar_memory = self._find_similar_memory_for_consolidation(info, existing_memories)
                     
                     if similar_memory:
-                        # Update existing memory
-                        similar_memory.content = f"{similar_memory.content}\n\nUpdate: {info['content']}"
-                        similar_memory.created_at = datetime.now()
+                        # Expand existing memory instead of creating new one
+                        expanded_memory = await self._expand_memory(similar_memory, info)
+                        # Update the memory in the list
+                        for i, memory in enumerate(existing_memories):
+                            if memory.id == similar_memory.id:
+                                existing_memories[i] = expanded_memory
+                                break
+                        logger.info(f"Expanded existing memory: {similar_memory.title}")
                     else:
-                        # Create new memory
-                        memory = Memory(
-                            id=str(uuid.uuid4()),
-                            project_id=project_id,
-                            title=info['title'],
-                            content=info['content'],
-                            type=info['type'] if info['type'] in ['context', 'decision', 'note'] else 'note',
-                            created_at=datetime.now()
-                        )
-                        existing_memories.append(memory)
+                        # Create new comprehensive memory only if significantly different
+                        new_memory = await self._create_comprehensive_memory(info, project_id)
+                        if new_memory:
+                            existing_memories.append(new_memory)
+                            logger.info(f"Created new comprehensive memory: {new_memory.title}")
                 
                 # Save updated memories
                 self.file_service.save_memories(project_id, existing_memories)
@@ -948,6 +998,154 @@ Complete implementation of the task with all necessary files, components, and co
                 return memory
         
         return None
+
+    def _find_similar_memory_for_consolidation(self, new_info: dict, existing_memories: List[Memory]) -> Optional[Memory]:
+        """Find if new information should be merged with existing memory using higher similarity threshold"""
+        new_title_words = set(new_info['title'].lower().split())
+        new_content_words = set(new_info['content'].lower().split())
+        
+        for memory in existing_memories:
+            # Check both title and content for similarity
+            existing_title_words = set(memory.title.lower().split())
+            existing_content_words = set(memory.content.lower().split())
+            
+            # Calculate similarity scores
+            title_overlap = len(new_title_words.intersection(existing_title_words))
+            content_overlap = len(new_content_words.intersection(existing_content_words))
+            
+            # Higher threshold for consolidation (70% similarity)
+            title_similarity = title_overlap / len(new_title_words.union(existing_title_words)) if len(new_title_words.union(existing_title_words)) > 0 else 0
+            content_similarity = content_overlap / len(new_content_words.union(existing_content_words)) if len(new_content_words.union(existing_content_words)) > 0 else 0
+            
+            # If either title or content is very similar, consolidate
+            if title_similarity > 0.7 or content_similarity > 0.7:
+                return memory
+        
+        return None
+
+    async def _expand_memory(self, existing_memory: Memory, new_information: dict) -> Memory:
+        """Expand existing memory with new information using LLM while maintaining category"""
+        
+        try:
+            # Combine content for category detection
+            combined_content = f"{existing_memory.content}\n\n{new_information['content']}"
+            
+            # Detect category from combined content
+            category = detect_memory_category(combined_content)
+            
+            # Generate category-specific title
+            title = await generate_category_specific_title(combined_content, category)
+            
+            # If title generation failed, use fallback
+            if not title or len(title.strip()) < 3:
+                title = self._generate_short_title(combined_content, 'memory', 40)
+            
+            # Create expansion prompt
+            prompt = f"""
+            Expand this existing memory with new information:
+            
+            EXISTING MEMORY:
+            Title: {existing_memory.title}
+            Content: {existing_memory.content}
+            
+            NEW INFORMATION:
+            Title: {new_information['title']}
+            Content: {new_information['content']}
+            
+            Create an updated memory that:
+            - Combines both old and new information
+            - Maintains chronological flow
+            - Keeps important details
+            - Has a concise, descriptive title (max 50 characters)
+            - Content should be comprehensive but focused (max 500 words)
+            
+            Return in format:
+            TITLE: [updated title]
+            CONTENT: [updated content]
+            """
+            
+            response = await self.gemini_service.chat_with_system_prompt("", prompt)
+            
+            # Parse response and update memory
+            parsed_title = self._extract_title_from_response(response)
+            content = self._extract_content_from_response(response)
+            
+            # Use generated title if LLM title is not good
+            if not parsed_title or len(parsed_title.strip()) < 3:
+                parsed_title = title
+            
+            # Update the existing memory
+            existing_memory.title = parsed_title
+            existing_memory.content = content
+            existing_memory.category = category.value
+            existing_memory.updated_at = datetime.now()
+            
+            return existing_memory
+            
+        except Exception as e:
+            logger.error(f"Error expanding memory: {e}")
+            # Fallback: simple concatenation with category update
+            existing_memory.content = f"{existing_memory.content}\n\nUpdate: {new_information['content']}"
+            existing_memory.category = detect_memory_category(existing_memory.content).value
+            existing_memory.updated_at = datetime.now()
+            return existing_memory
+
+    async def _create_comprehensive_memory(self, information: dict, project_id: str) -> Optional[Memory]:
+        """Create a comprehensive memory that captures broader context with proper categorization"""
+        
+        try:
+            # Detect category from content
+            category = detect_memory_category(information['content'])
+            
+            # Generate category-specific title
+            title = await generate_category_specific_title(information['content'], category)
+            
+            # If title generation failed, use fallback
+            if not title or len(title.strip()) < 3:
+                title = self._generate_short_title(information['content'], 'memory', 40)
+            
+            # Only create if we have meaningful content
+            if title and information['content'] and len(information['content'].strip()) > 10:
+                return Memory(
+                    id=str(uuid.uuid4()),
+                    project_id=project_id,
+                    title=title,
+                    content=information['content'],
+                    category=category.value,
+                    type=information['type'] if information['type'] in ['feature', 'decision', 'spec', 'note'] else 'note',
+                    created_at=datetime.now()
+                )
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error creating comprehensive memory: {e}")
+            return None
+
+    def _extract_title_from_response(self, response: str) -> str:
+        """Extract title from LLM response"""
+        lines = response.split('\n')
+        for line in lines:
+            if line.strip().startswith('TITLE:'):
+                return line.split('TITLE:', 1)[1].strip()
+        return "Memory"
+
+    def _extract_content_from_response(self, response: str) -> str:
+        """Extract content from LLM response"""
+        lines = response.split('\n')
+        content_lines = []
+        in_content = False
+        
+        for line in lines:
+            if line.strip().startswith('CONTENT:'):
+                in_content = True
+                content_lines.append(line.split('CONTENT:', 1)[1].strip())
+            elif in_content and line.strip():
+                content_lines.append(line.strip())
+            elif in_content and not line.strip():
+                break
+        
+        return '\n'.join(content_lines) if content_lines else "Memory content"
 
     # Context Management Methods
     def _get_conversation_context(self, project_id: str, max_messages: int = 10) -> str:
@@ -1295,6 +1493,108 @@ Complete implementation of the task with all necessary files, components, and co
             context_parts.append("Pending Tasks:\n" + "\n".join(pending_list))
         
         return "\n\n".join(context_parts) if context_parts else "No relevant tasks found."
+
+    async def get_related_memories_for_task(self, task_id: str, limit: int = 5) -> List[Memory]:
+        """Get semantically related memories for a task using vector similarity"""
+        try:
+            # Get the task
+            task = self.file_service.get_task_by_id_global(task_id)
+            if not task:
+                return []
+            
+            # Create search text from task
+            search_text = f"{task.title} {task.description}"
+            
+            # Get all memories for the project
+            project_memories = self.file_service.load_memories(task.project_id)
+            
+            # Calculate similarity scores using semantic search
+            memory_scores = []
+            for memory in project_memories:
+                # Create memory text for comparison
+                memory_text = f"{memory.title} {memory.content}"
+                
+                # Use simple text similarity for now (can be enhanced with embeddings)
+                similarity = self._calculate_text_similarity(search_text, memory_text)
+                memory_scores.append((memory, similarity))
+            
+            # Sort by similarity and return top results
+            memory_scores.sort(key=lambda x: x[1], reverse=True)
+            related_memories = [memory for memory, score in memory_scores[:limit] if score > 0.1]
+            
+            return related_memories
+            
+        except Exception as e:
+            logger.error(f"Error getting related memories for task {task_id}: {e}")
+            return []
+
+    def _calculate_text_similarity(self, text1: str, text2: str) -> float:
+        """Calculate text similarity using simple word overlap"""
+        words1 = set(text1.lower().split())
+        words2 = set(text2.lower().split())
+        
+        if not words1 or not words2:
+            return 0.0
+        
+        intersection = words1.intersection(words2)
+        union = words1.union(words2)
+        
+        return len(intersection) / len(union) if union else 0.0
+
+    def generate_intelligent_prompt(self, task: Task, project: dict, related_memories: List[Memory]) -> str:
+        """Generate a comprehensive prompt for AI coding tools using task + related memories"""
+        try:
+            # Build context from memories
+            memory_context = ""
+            if related_memories:
+                memory_context = "\n## Related Context from Project Memory:\n"
+                for i, memory in enumerate(related_memories, 1):
+                    memory_context += f"\n### {i}. {memory.title} ({memory.type})\n"
+                    memory_context += f"{memory.content}\n"
+            
+            # Generate comprehensive prompt
+            prompt_template = f"""# Task: {task.title}
+
+## Project Context
+- **Project**: {project.get('name', 'Unknown Project')}
+- **Task Priority**: {task.priority}
+- **Task Status**: {task.status}
+- **Created**: {task.created_at.strftime('%Y-%m-%d %H:%M') if hasattr(task, 'created_at') else 'Not specified'}
+
+## Task Description
+{task.description}
+
+{memory_context}
+
+## Technical Requirements
+Based on the context above, please:
+
+1. **Analyze the task requirements** and break down what needs to be implemented
+2. **Consider the existing project context** and related decisions from the memory
+3. **Implement the solution** following best practices and the patterns established in this project
+4. **Include proper error handling** and validation
+5. **Add appropriate comments** explaining key decisions
+6. **Consider edge cases** and potential issues
+
+## Additional Context
+- Follow the existing code style and architecture patterns shown in the related memories
+- Ensure the implementation integrates well with existing features
+- Consider performance and scalability implications
+- Include tests if applicable
+
+Please provide a complete, production-ready implementation."""
+
+            return prompt_template
+            
+        except Exception as e:
+            logger.error(f"Error generating intelligent prompt: {e}")
+            # Fallback to simple prompt
+            return f"""# Task: {task.title}
+
+## Task Description
+{task.description}
+
+Please implement this task following best practices and include proper error handling."""
 
 
 # CLI Testing Interface
