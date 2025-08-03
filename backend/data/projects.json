@@ -40,5 +40,26 @@
     "description": "Testing API response format",
     "tech_stack": "React + FastAPI + PostgreSQL",
     "created_at": "2025-08-02 18:55:45.493204"
+  },
+  {
+    "id": "b856bbf9-8ab7-4f24-8ac9-b780f1289699",
+    "name": "Samurai Agent",
+    "description": "AI vibe coding partner with better memory, better task management",
+    "tech_stack": "Fast API",
+    "created_at": "2025-08-03 09:41:11.790837"
+  },
+  {
+    "id": "f58390f7-c311-4045-a5c9-b24eff8c4bbe",
+    "name": "Client Work",
+    "description": "Software to manage Japanese skill tests for employees",
+    "tech_stack": "Fast API",
+    "created_at": "2025-08-03 09:41:46.659163"
+  },
+  {
+    "id": "test-api-project",
+    "name": "Test API Project",
+    "description": "Test project for API testing",
+    "tech_stack": "React + FastAPI",
+    "created_at": "2025-08-03 15:09:00.596113"
   }
 ]

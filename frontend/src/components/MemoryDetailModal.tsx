@@ -60,7 +60,7 @@ const MemoryDetailModal: React.FC<MemoryDetailModalProps> = ({
 
   const getTypeIcon = (type: MemoryType) => {
     switch (type) {
-      case MemoryType.CONTEXT:
+      case MemoryType.FEATURE:
         return '💡'
       case MemoryType.DECISION:
         return '🎯'
@@ -73,8 +73,8 @@ const MemoryDetailModal: React.FC<MemoryDetailModalProps> = ({
 
   const getTypeLabel = (type: MemoryType) => {
     switch (type) {
-      case MemoryType.CONTEXT:
-        return 'Context'
+      case MemoryType.FEATURE:
+        return 'Feature'
       case MemoryType.DECISION:
         return 'Decision'
       case MemoryType.NOTE:
@@ -161,7 +161,7 @@ const MemoryDetailModal: React.FC<MemoryDetailModalProps> = ({
                     onChange={e => setFormData({...formData, type: e.target.value as MemoryType})}
                     className="type-select"
                   >
-                    <option value={MemoryType.CONTEXT}>💡 Context</option>
+                    <option value={MemoryType.FEATURE}>💡 Feature</option>
                     <option value={MemoryType.DECISION}>🎯 Decision</option>
                     <option value={MemoryType.NOTE}>📝 Note</option>
                   </select>
