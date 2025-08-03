@@ -111,10 +111,10 @@ const SemanticHierarchicalView: React.FC<SemanticHierarchicalViewProps> = ({
     // Group items by semantic categories
     allItems.forEach(item => {
       let content = ''
-      if ('title' in item) {
+      if ('title' in item && 'description' in item) {
         // Task
         content = `${item.title} ${item.description}`.toLowerCase()
-      } else {
+      } else if ('content' in item) {
         // Memory
         content = item.content.toLowerCase()
       }
@@ -200,29 +200,28 @@ const SemanticHierarchicalView: React.FC<SemanticHierarchicalViewProps> = ({
     return group.items.length
   }
 
-  const renderItem = (item: Task | Memory, level: number = 0) => {
-    if ('title' in item) {
+  const renderItem = (item: Task | Memory) => {
+    if ('title' in item && 'description' in item) {
       // Task
       return (
         <CompactTaskItem
           key={item.id}
-          task={item}
+          task={item as Task}
           onUpdate={onTaskUpdate}
           onDelete={onTaskDelete}
-          level={level}
         />
       )
-    } else {
+    } else if ('content' in item) {
       // Memory
       return (
         <CompactMemoryItem
           key={item.id}
-          memory={item}
+          memory={item as Memory}
           onDelete={onMemoryDelete}
-          level={level}
         />
       )
     }
+    return null
   }
 
   if (loading) {
@@ -276,7 +275,7 @@ const SemanticHierarchicalView: React.FC<SemanticHierarchicalViewProps> = ({
           
           {expandedGroups.has(group.name) && (
             <div className="semantic-group-items">
-              {group.items.map((item) => renderItem(item, 1))}
+              {group.items.map((item) => renderItem(item))}
             </div>
           )}
         </div>
