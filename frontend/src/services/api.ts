@@ -151,6 +151,35 @@ export async function getChatMessages(projectId: string): Promise<ChatMessage[]>
   }
 }
 
+export const getSemanticHierarchy = async (
+  projectId: string, 
+  clusteringType: string = 'content', 
+  depth: number = 2
+): Promise<any> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/semantic-hierarchy`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        project_id: projectId,
+        clustering_type: clusteringType,
+        depth: depth
+      }),
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+
+    return await response.json()
+  } catch (error) {
+    console.error('Error fetching semantic hierarchy:', error)
+    throw error
+  }
+}
+
 // Health check
 export async function healthCheck(): Promise<{ status: string }> {
   return apiRequest<{ status: string }>('/health')

@@ -1,15 +1,25 @@
 import React, { useState, useEffect } from 'react'
-import { Task, TaskStatus, TaskPriority, TaskCreate, TaskUpdate } from '../types'
+import { Task, TaskPriority, TaskCreate, TaskUpdate } from '../types'
 import { getTasks, createTask, updateTask, deleteTask } from '../services/api'
+import CompactTaskItem from './CompactTaskItem'
+import VirtualizedList from './VirtualizedList'
+import ViewControls, { ViewMode } from './ViewControls'
+import SemanticHierarchicalView from './SemanticHierarchicalView'
 
 interface TaskPanelProps {
   projectId?: string
+  refreshTrigger?: number
 }
 
-const TaskPanel: React.FC<TaskPanelProps> = ({ projectId }) => {
+const TaskPanel: React.FC<TaskPanelProps> = ({ projectId, refreshTrigger }) => {
   const [tasks, setTasks] = useState<Task[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [showCreateForm, setShowCreateForm] = useState(false)
+  const [currentView, setCurrentView] = useState<ViewMode>('list')
+  const [semanticOptions, setSemanticOptions] = useState({
+    clustering: 'content',
+    depth: 2
+  })
   const [newTask, setNewTask] = useState<TaskCreate>({
     title: '',
     description: '',
@@ -22,7 +32,7 @@ const TaskPanel: React.FC<TaskPanelProps> = ({ projectId }) => {
     } else {
       setTasks([])
     }
-  }, [projectId])
+  }, [projectId, refreshTrigger])
 
   const loadTasks = async () => {
     if (!projectId) return
@@ -30,9 +40,10 @@ const TaskPanel: React.FC<TaskPanelProps> = ({ projectId }) => {
     setIsLoading(true)
     try {
       const projectTasks = await getTasks(projectId)
-      setTasks(projectTasks)
+      setTasks(projectTasks || []) // Ensure we always have an array
     } catch (error) {
       console.error('Error loading tasks:', error)
+      setTasks([]) // Set empty array on error
     } finally {
       setIsLoading(false)
     }
@@ -75,36 +86,27 @@ const TaskPanel: React.FC<TaskPanelProps> = ({ projectId }) => {
     }
   }
 
-  const getStatusColor = (status: TaskStatus) => {
-    switch (status) {
-      case TaskStatus.PENDING:
-        return 'status-pending'
-      case TaskStatus.IN_PROGRESS:
-        return 'status-in-progress'
-      case TaskStatus.COMPLETED:
-        return 'status-completed'
-      default:
-        return ''
-    }
+  const handleSemanticOptionChange = (option: string, value: any) => {
+    setSemanticOptions(prev => ({
+      ...prev,
+      [option]: value
+    }))
   }
 
-  const getPriorityColor = (priority: TaskPriority) => {
-    switch (priority) {
-      case TaskPriority.HIGH:
-        return 'priority-high'
-      case TaskPriority.MEDIUM:
-        return 'priority-medium'
-      case TaskPriority.LOW:
-        return 'priority-low'
-      default:
-        return ''
-    }
-  }
+  const renderTaskItem = (task: Task, _index: number, style: React.CSSProperties) => (
+    <CompactTaskItem
+      key={task.id}
+      task={task}
+      onUpdate={handleUpdateTask}
+      onDelete={handleDeleteTask}
+      style={style}
+    />
+  )
 
   if (!projectId) {
     return (
       <div className="panel-content">
-        <div className="card">
+        <div className="empty-state">
           <p>Please select a project to view tasks.</p>
         </div>
       </div>
@@ -113,27 +115,29 @@ const TaskPanel: React.FC<TaskPanelProps> = ({ projectId }) => {
 
   return (
     <div className="task-panel">
-      <div className="panel-content">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-          <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: '600' }}>Tasks</h3>
-          <button
-            onClick={() => setShowCreateForm(!showCreateForm)}
-            className="button"
-          >
-            {showCreateForm ? 'Cancel' : 'Add Task'}
-          </button>
+      <div className="panel-header">
+        <div className="panel-header-content">
+          <h3>📋 Tasks</h3>
+          <span className="task-count">({tasks.length})</span>
         </div>
+        <button
+          onClick={() => setShowCreateForm(!showCreateForm)}
+          className="add-task-btn"
+        >
+          {showCreateForm ? 'Cancel' : 'Add Task'}
+        </button>
+      </div>
 
+      <div className="panel-content">
         {showCreateForm && (
-          <div className="card">
-            <h3>Create New Task</h3>
+          <div className="create-task-form">
+            <h4>Create New Task</h4>
             <input
               type="text"
               placeholder="Task title"
               value={newTask.title}
               onChange={(e) => setNewTask(prev => ({ ...prev, title: e.target.value }))}
               className="input"
-              style={{ marginBottom: '0.5rem' }}
             />
             <textarea
               placeholder="Task description"
@@ -141,19 +145,17 @@ const TaskPanel: React.FC<TaskPanelProps> = ({ projectId }) => {
               onChange={(e) => setNewTask(prev => ({ ...prev, description: e.target.value }))}
               className="input"
               rows={3}
-              style={{ marginBottom: '0.5rem' }}
             />
             <select
               value={newTask.priority}
               onChange={(e) => setNewTask(prev => ({ ...prev, priority: e.target.value as TaskPriority }))}
               className="input"
-              style={{ marginBottom: '0.5rem' }}
             >
               <option value={TaskPriority.LOW}>Low Priority</option>
               <option value={TaskPriority.MEDIUM}>Medium Priority</option>
               <option value={TaskPriority.HIGH}>High Priority</option>
             </select>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <div className="form-actions">
               <button
                 onClick={handleCreateTask}
                 disabled={!newTask.title.trim()}
@@ -171,55 +173,53 @@ const TaskPanel: React.FC<TaskPanelProps> = ({ projectId }) => {
           </div>
         )}
 
+        <ViewControls
+          currentView={currentView}
+          onViewChange={setCurrentView}
+          semanticOptions={semanticOptions}
+          onSemanticOptionChange={handleSemanticOptionChange}
+          className="view-controls-compact"
+        />
+
         {isLoading ? (
-          <div className="card">
-            <p>Loading tasks...</p>
+          <div className="loading-indicator">
+            <span>Loading tasks...</span>
           </div>
         ) : tasks.length === 0 ? (
-          <div className="card">
+          <div className="empty-state">
             <p>No tasks yet. Create your first task!</p>
           </div>
         ) : (
-          tasks.map((task) => (
-            <div key={task.id} className="card task-card">
-              <div className="task-header">
-                <h4>{task.title}</h4>
-                <div className="task-actions">
-                  <select
-                    value={task.status}
-                    onChange={(e) => handleUpdateTask(task.id, { status: e.target.value as TaskStatus })}
-                    className="input"
-                    style={{ width: 'auto', marginRight: '0.5rem' }}
-                  >
-                    <option value={TaskStatus.PENDING}>Pending</option>
-                    <option value={TaskStatus.IN_PROGRESS}>In Progress</option>
-                    <option value={TaskStatus.COMPLETED}>Completed</option>
-                  </select>
-                  <button
-                    onClick={() => handleDeleteTask(task.id)}
-                    className="button danger"
-                    style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
-                  >
-                    Delete
-                  </button>
-                </div>
+          <div className="tasks-content">
+            {currentView === 'list' && (
+              <VirtualizedList
+                items={tasks}
+                itemHeight={60}
+                height="calc(100vh - 300px)"
+                renderItem={renderTaskItem}
+                className="tasks-virtualized-list"
+              />
+            )}
+            
+            {currentView === 'semantic' && (
+              <SemanticHierarchicalView
+                tasks={tasks}
+                memories={[]}
+                onTaskUpdate={handleUpdateTask}
+                onTaskDelete={handleDeleteTask}
+                onMemoryDelete={() => {}}
+                className="tasks-semantic-view"
+                clusteringType={semanticOptions.clustering}
+                depth={semanticOptions.depth}
+              />
+            )}
+            
+            {currentView === 'timeline' && (
+              <div className="timeline-view">
+                <p>Timeline view coming soon...</p>
               </div>
-              
-              <p className="task-description">{task.description}</p>
-              
-              <div className="task-meta">
-                <span className={`task-status ${getStatusColor(task.status)}`}>
-                  {task.status.replace('_', ' ')}
-                </span>
-                <span className={`task-priority ${getPriorityColor(task.priority)}`}>
-                  {task.priority} priority
-                </span>
-                <span className="task-date">
-                  {new Date(task.created_at).toLocaleDateString()}
-                </span>
-              </div>
-            </div>
-          ))
+            )}
+          </div>
         )}
       </div>
     </div>

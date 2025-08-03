@@ -5,6 +5,7 @@ import { sendChatMessage, getChatMessages } from '../services/api'
 
 interface ChatProps {
   projectId?: string
+  onTaskGenerated?: () => void
 }
 
 interface OptimisticMessage extends ChatMessage {
@@ -12,7 +13,7 @@ interface OptimisticMessage extends ChatMessage {
   isError?: boolean
 }
 
-const Chat: React.FC<ChatProps> = ({ projectId }) => {
+const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated }) => {
   const [messages, setMessages] = useState<OptimisticMessage[]>([])
   const [inputMessage, setInputMessage] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -118,6 +119,12 @@ const Chat: React.FC<ChatProps> = ({ projectId }) => {
       // Clear activity
       clearInterval(activityInterval)
       setAgentActivity('')
+      
+      // Check if tasks were generated and notify parent component
+      if (response.tasks && response.tasks.length > 0) {
+        console.log(`Generated ${response.tasks.length} new tasks, notifying TaskPanel to refresh`)
+        onTaskGenerated?.()
+      }
       
       // Check if response was truncated
       const isTruncated = response.response.includes('[Response truncated') || 
