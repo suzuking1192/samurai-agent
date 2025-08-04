@@ -1,5 +1,6 @@
 import uuid
 import re
+import json
 from datetime import datetime
 from typing import List, Dict, Optional
 import logging
@@ -42,25 +43,56 @@ class SamuraiAgent:
         self.consolidated_memory_service = ConsolidatedMemoryService()
     
     async def process_message(self, message: str, project_id: str, project_context: dict) -> dict:
-        """Enhanced message processing with tool calling capabilities"""
+        """Enhanced message processing with context understanding and tool calling capabilities"""
         
         try:
-            # Use the enhanced agent with tool calling capabilities
-            result = await self.enhanced_agent.process_message(message, project_id, project_context)
+            # Get conversation history for context understanding
+            conversation_history = self._get_conversation_history_for_planning(project_id, max_messages=10)
             
-            # Add any additional processing if needed
-            if "tool_calls_made" not in result:
-                result["tool_calls_made"] = 0
-                result["tool_results"] = []
+            # Extract context from recent conversation
+            context_info = await self.extract_conversation_context(conversation_history)
+            logger.info(f"Extracted context: {context_info}")
             
-            return result
+            # Enhanced tool detection with context
+            tool_plan = await self.should_use_tools_enhanced(message, context_info)
+            logger.info(f"Tool plan: {tool_plan}")
+            
+            # Execute tools if needed
+            tool_results = []
+            if tool_plan.get("requires_tools", False):
+                tool_results = await self.execute_planned_tools(
+                    tool_plan['tool_calls'], project_id, context_info
+                )
+                logger.info(f"Tool results: {tool_results}")
+            
+            # Generate response based on tool execution
+            if tool_results:
+                response = await self.generate_response_with_tools(
+                    message, tool_results, context_info
+                )
+                response_type = "tool_response"
+            else:
+                # Use existing enhanced agent for regular processing
+                result = await self.enhanced_agent.process_message(message, project_id, project_context)
+                response = result.get("response", "I couldn't process your request.")
+                response_type = result.get("type", "response")
+            
+            return {
+                "type": response_type,
+                "response": response,
+                "tool_calls_made": len(tool_results),
+                "tool_results": tool_results,
+                "context_used": context_info
+            }
                 
         except Exception as e:
             logger.error(f"Error processing message: {e}")
             return {
                 "type": "error",
                 "response": "I encountered an error processing your message. Please try again.",
-                "tasks": []
+                "tool_calls_made": 0,
+                "tool_results": [],
+                "context_used": {}
             }
     
     async def _analyze_intent(self, message: str) -> str:
@@ -1048,9 +1080,23 @@ Complete implementation of the task with all necessary files, components, and co
             # Convert to planning format
             planning_history = []
             for msg in recent_messages:
+                # Determine role based on message content
+                # If message is empty and response has content, it's an assistant message
+                # If message has content, it's a user message
+                if msg.message and not msg.response:
+                    role = "user"
+                    content = msg.message
+                elif msg.response and not msg.message:
+                    role = "assistant"
+                    content = msg.response
+                else:
+                    # Fallback: assume user message if both are present
+                    role = "user"
+                    content = msg.message or msg.response
+                
                 planning_history.append({
-                    "role": msg.role,
-                    "content": msg.content,
+                    "role": role,
+                    "content": content,
                     "timestamp": msg.created_at.isoformat() if hasattr(msg, 'created_at') else None
                 })
             
@@ -1075,8 +1121,19 @@ Complete implementation of the task with all necessary files, components, and co
             # Format for context
             context_parts = []
             for msg in recent_messages:
-                role_prefix = "User" if msg.role == "user" else "Agent"
-                context_parts.append(f"{role_prefix}: {msg.content}")
+                # Determine role and content
+                if msg.message and not msg.response:
+                    role_prefix = "User"
+                    content = msg.message
+                elif msg.response and not msg.message:
+                    role_prefix = "Agent"
+                    content = msg.response
+                else:
+                    # Fallback
+                    role_prefix = "User"
+                    content = msg.message or msg.response
+                
+                context_parts.append(f"{role_prefix}: {content}")
             
             context = "\n".join(context_parts)
             
@@ -1095,11 +1152,28 @@ Complete implementation of the task with all necessary files, components, and co
         
         if len(messages) <= 3:
             # If few messages, return as-is
-            return "\n".join([f"{msg.role}: {msg.content}" for msg in messages])
+            formatted_messages = []
+            for msg in messages:
+                if msg.message and not msg.response:
+                    formatted_messages.append(f"User: {msg.message}")
+                elif msg.response and not msg.message:
+                    formatted_messages.append(f"Agent: {msg.response}")
+                else:
+                    formatted_messages.append(f"User: {msg.message or msg.response}")
+            return "\n".join(formatted_messages)
         
         # Extract key information
-        user_messages = [msg.content for msg in messages if msg.role == "user"]
-        agent_responses = [msg.content for msg in messages if msg.role == "assistant"]
+        user_messages = []
+        agent_responses = []
+        
+        for msg in messages:
+            if msg.message and not msg.response:
+                user_messages.append(msg.message)
+            elif msg.response and not msg.message:
+                agent_responses.append(msg.response)
+            else:
+                # Fallback
+                user_messages.append(msg.message or msg.response)
         
         # Create structured summary
         summary_parts = []
@@ -1543,6 +1617,293 @@ Please provide a complete, production-ready implementation."""
 
 Please implement this task following best practices and include proper error handling."""
 
+    # ============================================================================
+    # ENHANCED CONTEXT UNDERSTANDING AND TOOL CALLING METHODS
+    # ============================================================================
+    
+    async def extract_conversation_context(self, conversation_history: List[Dict]) -> Dict:
+        """
+        Extract context from recent conversation for reference resolution
+        """
+        if not conversation_history:
+            return {"referenced_items": [], "user_intent": "unknown", "context_clarity": "low"}
+        
+        # Get last 5 messages for context
+        recent_messages = conversation_history[-5:]
+        conversation_text = "\n".join([
+            f"{msg.get('role', 'user')}: {msg.get('content', '')}" 
+            for msg in recent_messages
+        ])
+        
+        context_prompt = f"""
+        Analyze this conversation to understand what the user is referring to:
+        
+        RECENT CONVERSATION:
+        {conversation_text}
+        
+        When the user says "those", "these", or "them", what specific items are they referring to?
+        What action do they want to take?
+        
+        Look for:
+        1. Numbered lists (1. item, 2. item, etc.)
+        2. Specific features or tasks mentioned
+        3. User intent (create_tasks, create_memory, etc.)
+        
+        Return JSON:
+        {{
+            "referenced_items": ["item1", "item2", "item3"],
+            "user_intent": "create_tasks|update_tasks|create_memory|general_question",
+            "context_clarity": "high|medium|low"
+        }}
+        """
+        
+        try:
+            response = await self.gemini_service.chat_with_system_prompt(
+                context_prompt, 
+                "You are a context analysis assistant. Return only valid JSON."
+            )
+            return json.loads(response)
+        except Exception as e:
+            logger.error(f"Context extraction error: {e}")
+            return {"referenced_items": [], "user_intent": "unknown", "context_clarity": "low"}
+    
+    def enhance_user_message_with_context(self, user_message: str, context_info: Dict) -> str:
+        """
+        Enhance user message with context information
+        """
+        if not context_info.get("referenced_items"):
+            return user_message
+        
+        enhanced_message = f"""
+        User message: {user_message}
+        
+        CONTEXT: When user says "those" or "these", they are referring to:
+        {chr(10).join(f"- {item}" for item in context_info['referenced_items'])}
+        
+        User intent: {context_info.get('user_intent', 'unknown')}
+        """
+        
+        return enhanced_message
+
+    async def should_use_tools_enhanced(self, user_message: str, context_info: Dict) -> Dict:
+        """
+        Enhanced tool detection that considers context
+        """
+        # Combine original message with context
+        enhanced_message = self.enhance_user_message_with_context(user_message, context_info)
+        
+        tool_detection_prompt = f"""
+        Analyze this message and decide if tools should be used:
+        
+        {enhanced_message}
+        
+        AVAILABLE TOOLS:
+        - create_task: Create new tasks
+        - update_task: Modify existing tasks
+        - change_task_status: Update task status  
+        - create_memory: Store new memories
+        - search_tasks: Find tasks
+        - search_memories: Find memories
+        
+        EXAMPLES THAT NEED TOOLS:
+        - "Create a task for implementing authentication" → create_task
+        - "Can you create those tasks for me?" (with context showing specific tasks) → create_task (multiple)
+        - "Mark the login task as completed" → change_task_status
+        - "Add a memory about database choice" → create_memory
+        
+        EXAMPLES THAT DON'T NEED TOOLS:
+        - "How do I implement authentication?" → No tools (just explanation)
+        - "What's the best database?" → No tools (just advice)
+        
+        IMPORTANT: If user says "create those tasks" and context has referenced items, 
+        use create_task tool for each referenced item.
+        
+        Return JSON:
+        {{
+            "requires_tools": true/false,
+            "tool_calls": [
+                {{
+                    "tool": "create_task",
+                    "parameters": {{"title": "Task Title", "description": "Task Description"}},
+                    "reasoning": "User asked to create specific task"
+                }}
+            ],
+            "confidence": 0.9
+        }}
+        """
+        
+        try:
+            response = await self.gemini_service.chat_with_system_prompt(
+                tool_detection_prompt,
+                "You are a tool detection assistant. Return only valid JSON."
+            )
+            return json.loads(response)
+        except Exception as e:
+            logger.error(f"Tool detection error: {e}")
+            return {"requires_tools": False, "tool_calls": []}
+
+    async def execute_planned_tools(self, tool_calls: List[Dict], project_id: str, context_info: Dict) -> List[Dict]:
+        """
+        Execute tools based on planning with context awareness
+        """
+        results = []
+        
+        for tool_call in tool_calls:
+            tool_name = tool_call.get("tool")
+            params = tool_call.get("parameters", {})
+            
+            try:
+                if tool_name == "create_task":
+                    # Handle context-based task creation
+                    if context_info.get("user_intent") == "create_tasks" and context_info.get("referenced_items"):
+                        # Create multiple tasks from context
+                        for item in context_info["referenced_items"]:
+                            result = await self.create_task_tool(
+                                title=item,
+                                description=f"Task from conversation: {item}",
+                                project_id=project_id
+                            )
+                            results.append(result)
+                    else:
+                        # Single task creation
+                        result = await self.create_task_tool(
+                            title=params.get("title", "New Task"),
+                            description=params.get("description", ""),
+                            project_id=project_id
+                        )
+                        results.append(result)
+                
+                elif tool_name == "create_memory":
+                    result = await self.create_memory_tool(
+                        title=params.get("title", "New Memory"),
+                        content=params.get("content", ""),
+                        project_id=project_id
+                    )
+                    results.append(result)
+                
+                # Add other tool executions as needed
+                
+            except Exception as e:
+                logger.error(f"Tool execution error for {tool_name}: {e}")
+                results.append({
+                    "tool": tool_name,
+                    "success": False,
+                    "error": str(e)
+                })
+        
+        return results
+
+    async def create_task_tool(self, title: str, description: str, project_id: str) -> Dict:
+        """
+        Tool execution for task creation
+        """
+        try:
+            # Create task object
+            task = Task(
+                id=str(uuid.uuid4()),
+                title=title,
+                description=description,
+                status="pending",
+                priority="medium",
+                project_id=project_id,
+                created_at=datetime.now(),
+                updated_at=datetime.now()
+            )
+            
+            # Save to file system using existing file service
+            existing_tasks = self.file_service.load_tasks(project_id)
+            existing_tasks.append(task)
+            self.file_service.save_tasks(project_id, existing_tasks)
+            
+            return {
+                "tool": "create_task",
+                "success": True,
+                "task_id": task.id,
+                "title": title,
+                "message": f"✅ Created task: {title}"
+            }
+        except Exception as e:
+            return {
+                "tool": "create_task", 
+                "success": False,
+                "error": str(e),
+                "message": f"❌ Failed to create task: {str(e)}"
+            }
+
+    async def create_memory_tool(self, title: str, content: str, project_id: str) -> Dict:
+        """
+        Tool execution for memory creation
+        """
+        try:
+            # Create memory object
+            memory = Memory(
+                id=str(uuid.uuid4()),
+                title=title,
+                content=content,
+                category=MemoryCategory.GENERAL,
+                type="note",  # Add required type field
+                project_id=project_id,
+                created_at=datetime.now(),
+                updated_at=datetime.now()
+            )
+            
+            # Save to file system using existing file service
+            existing_memories = self.file_service.load_memories(project_id)
+            existing_memories.append(memory)
+            self.file_service.save_memories(project_id, existing_memories)
+            
+            return {
+                "tool": "create_memory",
+                "success": True,
+                "memory_id": memory.id,
+                "title": title,
+                "message": f"💡 Created memory: {title}"
+            }
+        except Exception as e:
+            return {
+                "tool": "create_memory",
+                "success": False, 
+                "error": str(e),
+                "message": f"❌ Failed to create memory: {str(e)}"
+            }
+
+    async def generate_response_with_tools(self, user_message: str, tool_results: List[Dict], context_info: Dict) -> str:
+        """
+        Generate response that incorporates tool execution results
+        """
+        successful_results = [r for r in tool_results if r.get("success", False)]
+        
+        if not successful_results:
+            return "I attempted to help but encountered some issues. Please try again."
+        
+        # Generate contextual response
+        response_prompt = f"""
+        The user asked: "{user_message}"
+        
+        Context: {context_info.get('user_intent', 'unknown')}
+        
+        I executed these actions successfully:
+        {json.dumps(successful_results, indent=2)}
+        
+        Generate a helpful response that:
+        1. Confirms what actions were taken
+        2. Shows the results
+        3. Is conversational and friendly
+        4. Uses appropriate emojis from the results
+        
+        Example: "✅ I've created 3 tasks for you: 1. Task A, 2. Task B, 3. Task C"
+        """
+        
+        try:
+            response = await self.gemini_service.chat_with_system_prompt(
+                response_prompt,
+                "You are a helpful assistant. Generate a friendly, concise response."
+            )
+            return response.strip()
+        except Exception as e:
+            logger.error(f"Response generation error: {e}")
+            return f"✅ I completed {len(successful_results)} action(s) for you."
+
 
 # CLI Testing Interface
 async def cli_test():
@@ -1713,6 +2074,13 @@ Available commands:
             break
         except Exception as e:
             print(f"\n❌ Error: {e}")
+
+
+# Main CLI execution
+if __name__ == "__main__":
+    print("Starting Samurai Agent CLI...")
+    asyncio.run(cli_test())
+
 
 # Main CLI execution
 if __name__ == "__main__":
