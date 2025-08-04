@@ -434,6 +434,97 @@ class FileService:
         self._save_json(file_path, [m.dict() for m in messages])
         logger.info(f"Saved {len(messages)} chat messages for project {project_id}")
     
+    # Session management methods
+    def load_sessions(self, project_id: str) -> List['Session']:
+        """Load sessions for a project."""
+        self.ensure_data_dir()
+        file_path = self._get_project_file_path(project_id, "sessions")
+        data = self._load_json(file_path)
+        
+        sessions = []
+        for item in data:
+            try:
+                # Import Session here to avoid circular imports
+                from models import Session
+                sessions.append(Session(**item))
+            except Exception as e:
+                logger.warning(f"Invalid session data: {e}")
+                continue
+        
+        # Sort by last_activity (most recent first)
+        sessions.sort(key=lambda x: x.last_activity, reverse=True)
+        logger.debug(f"Loaded {len(sessions)} sessions for project {project_id}")
+        return sessions
+    
+    def save_session(self, project_id: str, session: 'Session') -> None:
+        """Save a single session."""
+        sessions = self.load_sessions(project_id)
+        
+        # Update existing session or add new one
+        existing_index = next((i for i, s in enumerate(sessions) if s.id == session.id), None)
+        if existing_index is not None:
+            sessions[existing_index] = session
+        else:
+            sessions.append(session)
+        
+        file_path = self._get_project_file_path(project_id, "sessions")
+        self._save_json(file_path, [s.dict() for s in sessions])
+        logger.debug(f"Saved session: {session.id}")
+    
+    def get_session_by_id(self, project_id: str, session_id: str) -> Optional['Session']:
+        """Get a session by ID."""
+        sessions = self.load_sessions(project_id)
+        return next((s for s in sessions if s.id == session_id), None)
+    
+    def get_latest_session(self, project_id: str) -> Optional['Session']:
+        """Get the most recent session for a project."""
+        sessions = self.load_sessions(project_id)
+        return sessions[0] if sessions else None
+    
+    def create_session(self, project_id: str, name: Optional[str] = None) -> 'Session':
+        """Create a new session for a project."""
+        from models import Session
+        
+        # Generate session name if not provided
+        if not name:
+            sessions = self.load_sessions(project_id)
+            session_number = len(sessions) + 1
+            name = f"Session {session_number}"
+        
+        session = Session(
+            project_id=project_id,
+            name=name
+        )
+        
+        self.save_session(project_id, session)
+        logger.info(f"Created new session: {session.id} for project {project_id}")
+        return session
+    
+    def update_session_activity(self, project_id: str, session_id: str) -> None:
+        """Update the last activity timestamp for a session."""
+        session = self.get_session_by_id(project_id, session_id)
+        if session:
+            from datetime import datetime
+            session.last_activity = datetime.now()
+            self.save_session(project_id, session)
+    
+    def load_chat_messages_by_session(self, project_id: str, session_id: str) -> List[ChatMessage]:
+        """Load chat messages for a specific session."""
+        messages = self.load_chat_history(project_id)
+        logger.info(f"Total messages loaded for project {project_id}: {len(messages)}")
+        
+        # Debug: Check session_id field in messages
+        for i, msg in enumerate(messages[:5]):  # Check first 5 messages
+            logger.info(f"Message {i}: session_id = {getattr(msg, 'session_id', 'MISSING')}")
+        
+        session_messages = [m for m in messages if getattr(m, 'session_id', None) == session_id]
+        logger.info(f"Messages matching session {session_id}: {len(session_messages)}")
+        
+        # Sort by created_at
+        session_messages.sort(key=lambda x: x.created_at)
+        logger.debug(f"Loaded {len(session_messages)} messages for session {session_id}")
+        return session_messages
+    
     # Utility methods
     def get_project_stats(self, project_id: str) -> Dict[str, int]:
         """Get statistics for a project."""
