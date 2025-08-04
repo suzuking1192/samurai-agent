@@ -42,12 +42,12 @@ class SamuraiAgent:
         self.enhanced_agent = EnhancedSamuraiAgent()
         self.consolidated_memory_service = ConsolidatedMemoryService()
     
-    async def process_message(self, message: str, project_id: str, project_context: dict) -> dict:
+    async def process_message(self, message: str, project_id: str, project_context: dict, session_id: str = None) -> dict:
         """Enhanced message processing with context understanding and tool calling capabilities"""
         
         try:
             # Get conversation history for context understanding
-            conversation_history = self._get_conversation_history_for_planning(project_id, max_messages=10)
+            conversation_history = self._get_conversation_history_for_planning(project_id, session_id, max_messages=10)
             
             # Extract context from recent conversation
             context_info = await self.extract_conversation_context(conversation_history)
@@ -1065,11 +1065,16 @@ Complete implementation of the task with all necessary files, components, and co
         return '\n'.join(content_lines) if content_lines else "Memory content"
 
     # Context Management Methods
-    def _get_conversation_history_for_planning(self, project_id: str, max_messages: int = 10) -> List[Dict]:
+    def _get_conversation_history_for_planning(self, project_id: str, session_id: str = None, max_messages: int = 10) -> List[Dict]:
         """Get recent conversation history for planning phase"""
         
         try:
-            chat_history = self.file_service.load_chat_history(project_id)
+            if session_id:
+                # Get messages for specific session
+                chat_history = self.file_service.load_chat_messages_by_session(project_id, session_id)
+            else:
+                # Get all messages (fallback for backward compatibility)
+                chat_history = self.file_service.load_chat_history(project_id)
             
             if not chat_history:
                 return []
@@ -1106,11 +1111,16 @@ Complete implementation of the task with all necessary files, components, and co
             logger.error(f"Error getting conversation history for planning: {e}")
             return []
     
-    def _get_conversation_context(self, project_id: str, max_messages: int = 10) -> str:
+    def _get_conversation_context(self, project_id: str, session_id: str = None, max_messages: int = 10) -> str:
         """Get recent conversation context with smart truncation"""
         
         try:
-            chat_history = self.file_service.load_chat_history(project_id)
+            if session_id:
+                # Get messages for specific session
+                chat_history = self.file_service.load_chat_messages_by_session(project_id, session_id)
+            else:
+                # Get all messages (fallback for backward compatibility)
+                chat_history = self.file_service.load_chat_history(project_id)
             
             if not chat_history:
                 return ""

@@ -363,12 +363,14 @@ class ChatMessage(BaseModel):
     Attributes:
         id: Unique identifier for the message
         project_id: Project identifier
+        session_id: Session identifier for conversation grouping
         message: User message content
         response: AI response content
         created_at: Message timestamp
     """
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Unique message identifier")
     project_id: str = Field(..., description="Project identifier")
+    session_id: str = Field(..., description="Session identifier for conversation grouping")
     message: str = Field(..., max_length=5000, description="User message content")
     response: str = Field(default="", max_length=15000, description="AI response content")
     created_at: datetime = Field(default_factory=datetime.utcnow, description="Message timestamp")
@@ -380,10 +382,18 @@ class ChatMessage(BaseModel):
         }
         json_schema_extra = {
             "example": {
-                "id": "550e8400-e29b-41d4-a716-446655440003",
-                "role": "user",
-                "content": "How do I implement authentication?",
-                "timestamp": "2024-01-01T00:00:00"
+                "id": "550e8400-e29b-41d4-a716-446655440001",
+                "project_id": "080e1b81-a37e-4e7a-81a6-cb185bd02e91",
+                "session_id": "550e8400-e29b-41d4-a716-446655440000",
+                "message": "Hello, how can you help me?",
+                "response": "I'm here to help you with your project!",
+                "created_at": "2024-01-01T00:00:00Z"
+            }
+        }
+        # Add model_config for Pydantic v2 compatibility
+        model_config = {
+            "json_encoders": {
+                datetime: lambda v: v.isoformat()
             }
         }
 
@@ -440,7 +450,7 @@ class ChatResponse(BaseModel):
     response: str = Field(..., max_length=15000, description="Assistant response")
     tasks: Optional[List[Task]] = Field(default=None, description="Generated tasks")
     memories: Optional[List[Memory]] = Field(default=None, description="Relevant memories")
-    type: str = Field(..., pattern="^(chat|feature_breakdown|error)$", description="Response type")
+    type: str = Field(..., description="Response type")
 
     class Config:
         json_schema_extra = {
@@ -543,6 +553,64 @@ class TaskListResponse(BaseModel):
     """
     tasks: List[Task] = Field(..., description="List of tasks")
     total: int = Field(..., ge=0, description="Total number of tasks")
+
+class Session(BaseModel):
+    """
+    Session data model for conversation sessions.
+    
+    Attributes:
+        id: Unique identifier for the session
+        project_id: Project identifier
+        name: Session name (optional, can be auto-generated)
+        created_at: Session creation timestamp
+        last_activity: Last activity timestamp
+    """
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Unique session identifier")
+    project_id: str = Field(..., description="Project identifier")
+    name: Optional[str] = Field(None, max_length=200, description="Session name")
+    created_at: datetime = Field(default_factory=datetime.utcnow, description="Session creation timestamp")
+    last_activity: datetime = Field(default_factory=datetime.utcnow, description="Last activity timestamp")
+    
+    class Config:
+        """Pydantic configuration for JSON serialization."""
+        json_encoders = {
+            datetime: lambda v: v.isoformat()
+        }
+        json_schema_extra = {
+            "example": {
+                "id": "550e8400-e29b-41d4-a716-446655440000",
+                "project_id": "080e1b81-a37e-4e7a-81a6-cb185bd02e91",
+                "name": "Session 1",
+                "created_at": "2024-01-01T00:00:00Z",
+                "last_activity": "2024-01-01T00:00:00Z"
+            }
+        }
+        # Add model_config for Pydantic v2 compatibility
+        model_config = {
+            "json_encoders": {
+                datetime: lambda v: v.isoformat()
+            }
+        }
+
+class SessionCreateRequest(BaseModel):
+    """
+    Request model for creating a new session.
+    
+    Attributes:
+        name: Optional session name
+    """
+    name: Optional[str] = Field(None, max_length=200, description="Optional session name")
+
+class SessionListResponse(BaseModel):
+    """
+    Response model for listing sessions.
+    
+    Attributes:
+        sessions: List of sessions
+        total: Total number of sessions
+    """
+    sessions: List[Session] = Field(..., description="List of sessions")
+    total: int = Field(..., ge=0, description="Total number of sessions")
 
 class ChatHistoryResponse(BaseModel):
     """

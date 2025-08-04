@@ -15,7 +15,8 @@ import json
 from models import (
     Project, ProjectCreateRequest, 
     ChatRequest, ChatResponse,
-    TaskUpdateRequest, Task, Memory, ChatMessage
+    TaskUpdateRequest, Task, Memory, ChatMessage,
+    Session, SessionCreateRequest, SessionListResponse
 )
 
 # Import your services  
@@ -198,7 +199,14 @@ async def chat_with_project(project_id: str, request: ChatRequest):
             logger.warning(f"Project not found for chat: {project_id}")
             raise HTTPException(status_code=404, detail="Project not found")
         
-        # 2. Convert project to context dict for SamuraiAgent
+        # 2. Get or create current session
+        current_session = file_service.get_latest_session(project_id)
+        if not current_session:
+            # Create a new session if none exists
+            current_session = file_service.create_session(project_id)
+            logger.info(f"Created new session: {current_session.id}")
+        
+        # 3. Convert project to context dict for SamuraiAgent
         project_context = {
             "name": project.name,
             "description": project.description,
@@ -207,42 +215,47 @@ async def chat_with_project(project_id: str, request: ChatRequest):
         
         logger.info(f"Project context: {project.name} - {project.tech_stack}")
         
-        # 3. Use SamuraiAgent to process the message (this handles task/memory generation)
+        # 4. Use SamuraiAgent to process the message (this handles task/memory generation)
         logger.info("Processing message with SamuraiAgent...")
         result = await samurai_agent.process_message(
             message=request.message,
             project_id=project_id,
-            project_context=project_context
+            project_context=project_context,
+            session_id=current_session.id
         )
         
         logger.info(f"SamuraiAgent response type: {result.get('type', 'unknown')}")
         
-        # 4. Handle long responses seamlessly without user-facing error messages
+        # 5. Handle long responses seamlessly without user-facing error messages
         final_response = result.get("response", "I'm sorry, I couldn't process that request.")
         
         # Apply seamless response handling
         final_response = handle_agent_response(final_response)
         
-        # Create ChatMessage with processed response
+        # 6. Create ChatMessage with processed response and session_id
         chat_message = ChatMessage(
             id=str(uuid.uuid4()),
             project_id=project_id,
+            session_id=current_session.id,
             message=request.message,
             response=final_response,
             created_at=datetime.now()
         )
         
-        # 5. Save chat message
+        # 7. Save chat message
         file_service.save_chat_message(project_id, chat_message)
         logger.info(f"Chat message saved: {chat_message.id}")
         
-        # 6. Load current tasks and memories for response
+        # 8. Update session activity
+        file_service.update_session_activity(project_id, current_session.id)
+        
+        # 9. Load current tasks and memories for response
         current_tasks = file_service.load_tasks(project_id)
         current_memories = file_service.load_memories(project_id)
         
         logger.info(f"Current state: {len(current_tasks)} tasks, {len(current_memories)} memories")
         
-        # 7. Return response with generated tasks and memories
+        # 10. Return response with generated tasks and memories
         return ChatResponse(
             response=final_response,
             tasks=result.get("tasks", []),  # Include any newly generated tasks
@@ -277,6 +290,13 @@ async def chat_with_progress(project_id: str, request: ChatRequest):
                 "description": project.description,
                 "tech_stack": project.tech_stack
             }
+            
+            # 2.5. Get or create current session
+            current_session = file_service.get_latest_session(project_id)
+            if not current_session:
+                # Create a new session if none exists
+                current_session = file_service.create_session(project_id)
+                logger.info(f"Created new session: {current_session.id}")
             
             # 3. Set up progress tracking with deduplication
             progress_queue = []
@@ -333,7 +353,8 @@ async def chat_with_progress(project_id: str, request: ChatRequest):
                     conversation_history,
                     memories_dict,
                     tasks_dict,
-                    project_context
+                    project_context,
+                    session_id=current_session.id
                 )
             )
             
@@ -355,11 +376,15 @@ async def chat_with_progress(project_id: str, request: ChatRequest):
             chat_message = ChatMessage(
                 id=str(uuid.uuid4()),
                 project_id=project_id,
+                session_id=current_session.id,
                 message=request.message,
                 response=final_response,
                 created_at=datetime.now()
             )
             file_service.save_chat_message(project_id, chat_message)
+            
+            # 7.5. Update session activity
+            file_service.update_session_activity(project_id, current_session.id)
             
             # 8. Send final response
             yield f"data: {json.dumps({'type': 'complete', 'response': final_response})}\n\n"
@@ -472,15 +497,110 @@ async def create_task(project_id: str, task_data: dict):
 # Chat messages endpoint
 @app.get("/projects/{project_id}/chat-messages", response_model=List[ChatMessage])
 async def get_project_chat_messages(project_id: str):
-    """Get all chat messages for a project"""
+    """Get chat messages for a project."""
     try:
-        logger.info(f"Loading chat messages for project: {project_id}")
-        messages = file_service.load_chat_messages(project_id)
-        logger.info(f"Loaded {len(messages)} chat messages for project {project_id}")
+        messages = file_service.load_chat_history(project_id)
         return messages
     except Exception as e:
         logger.error(f"Error loading chat messages for project {project_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to load chat messages: {str(e)}")
+
+# Session management endpoints
+@app.get("/projects/{project_id}/session-messages/{session_id}", response_model=List[ChatMessage])
+async def get_session_messages(project_id: str, session_id: str):
+    """Get chat messages for a specific session."""
+    logger.info(f"DEBUG: Route matched! project_id={project_id}, session_id={session_id}")
+    try:
+        # Verify project exists
+        project = file_service.get_project_by_id(project_id)
+        logger.info(f"Project found: {project is not None}")
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Load all sessions to debug
+        all_sessions = file_service.load_sessions(project_id)
+        logger.info(f"All sessions for project: {[s.id for s in all_sessions]}")
+        
+        # Verify session exists
+        session = file_service.get_session_by_id(project_id, session_id)
+        logger.info(f"Looking for session {session_id}, found: {session is not None}")
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        messages = file_service.load_chat_messages_by_session(project_id, session_id)
+        logger.info(f"Loaded {len(messages)} messages for session {session_id}")
+        return messages
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error loading messages for session {session_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to load session messages: {str(e)}")
+
+@app.get("/projects/{project_id}/sessions", response_model=SessionListResponse)
+async def get_project_sessions(project_id: str):
+    """Get all sessions for a project."""
+    try:
+        logger.info(f"Loading sessions for project: {project_id}")
+        
+        # Verify project exists
+        project = file_service.get_project_by_id(project_id)
+        if not project:
+            logger.warning(f"Project not found: {project_id}")
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        logger.info(f"Project found: {project.name}")
+        
+        sessions = file_service.load_sessions(project_id)
+        logger.info(f"Loaded {len(sessions)} sessions")
+        
+        response = SessionListResponse(sessions=sessions, total=len(sessions))
+        logger.info(f"Created response with {len(response.sessions)} sessions")
+        
+        return response
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error loading sessions for project {project_id}: {e}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Failed to load sessions: {str(e)}")
+
+@app.post("/projects/{project_id}/sessions", response_model=Session)
+async def create_project_session(project_id: str, request: SessionCreateRequest):
+    """Create a new session for a project."""
+    try:
+        # Verify project exists
+        project = file_service.get_project_by_id(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        session = file_service.create_session(project_id, request.name)
+        return session
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating session for project {project_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create session: {str(e)}")
+
+@app.get("/projects/{project_id}/current-session", response_model=Session)
+async def get_current_session(project_id: str):
+    """Get the current (most recent) session for a project."""
+    try:
+        # Verify project exists
+        project = file_service.get_project_by_id(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        session = file_service.get_latest_session(project_id)
+        if not session:
+            # Create a new session if none exists
+            session = file_service.create_session(project_id)
+        
+        return session
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting current session for project {project_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get current session: {str(e)}")
 
 # Memory endpoints
 @app.get("/projects/{project_id}/memories", response_model=List[Memory])

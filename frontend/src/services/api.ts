@@ -8,7 +8,8 @@ import {
   ProjectCreate,
   TaskCreate,
   TaskUpdate,
-  MemoryCreate
+  MemoryCreate,
+  Session
 } from '../types'
 
 const API_BASE_URL = 'http://localhost:8000'
@@ -217,6 +218,26 @@ export async function getChatMessages(projectId: string): Promise<ChatMessage[]>
     console.warn('Chat messages endpoint not implemented yet')
     return []
   }
+}
+
+// Session management API functions
+export async function getSessions(projectId: string): Promise<{sessions: Session[], total: number}> {
+  return apiRequest<{sessions: Session[], total: number}>(`/projects/${projectId}/sessions`)
+}
+
+export async function createSession(projectId: string, name?: string): Promise<Session> {
+  return apiRequest<Session>(`/projects/${projectId}/sessions`, {
+    method: 'POST',
+    body: JSON.stringify({ name }),
+  })
+}
+
+export async function getSessionMessages(projectId: string, sessionId: string): Promise<ChatMessage[]> {
+  return apiRequest<ChatMessage[]>(`/projects/${projectId}/sessions/${sessionId}/messages`)
+}
+
+export async function getCurrentSession(projectId: string): Promise<Session> {
+  return apiRequest<Session>(`/projects/${projectId}/current-session`)
 }
 
 export const getSemanticHierarchy = async (

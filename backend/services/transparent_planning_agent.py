@@ -26,7 +26,8 @@ class TransparentPlanningAgent:
                                                conversation_history: List[Dict],
                                                project_memories: List[Dict],
                                                tasks: List[Dict],
-                                               project_context: Dict[str, Any]) -> Dict[str, Any]:
+                                               project_context: Dict[str, Any],
+                                               session_id: str = None) -> Dict[str, Any]:
         """
         Process user message with detailed progress tracking
         """
