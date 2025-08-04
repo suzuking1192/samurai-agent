@@ -10,6 +10,9 @@ try:
     from .gemini_service import GeminiService
     from .file_service import FileService
     from .memory_categorization import detect_memory_category, generate_category_specific_title
+    from .agent_planning import AgentPlanningPhase, IntelligentAgent, CommonIssuePatterns, ResponseLengthHandler
+    from .tool_calling_agent import EnhancedSamuraiAgent
+    from .consolidated_memory import ConsolidatedMemoryService
     from models import Task, Memory, Project, MemoryCategory
 except ImportError:
     # Fallback for when running the file directly
@@ -20,6 +23,9 @@ except ImportError:
     from gemini_service import GeminiService
     from file_service import FileService
     from memory_categorization import detect_memory_category, generate_category_specific_title
+    from agent_planning import AgentPlanningPhase, IntelligentAgent, CommonIssuePatterns, ResponseLengthHandler
+    from tool_calling_agent import EnhancedSamuraiAgent
+    from consolidated_memory import ConsolidatedMemoryService
     from models import Task, Memory, Project, MemoryCategory
 
 logger = logging.getLogger(__name__)
@@ -31,129 +37,21 @@ class SamuraiAgent:
     def __init__(self):
         self.gemini_service = GeminiService()
         self.file_service = FileService()
+        self.intelligent_agent = IntelligentAgent()
+        self.enhanced_agent = EnhancedSamuraiAgent()
+        self.consolidated_memory_service = ConsolidatedMemoryService()
     
     async def process_message(self, message: str, project_id: str, project_context: dict) -> dict:
-        """Enhanced message processing with conversation context"""
+        """Enhanced message processing with tool calling capabilities"""
         
         try:
-            # Get conversation context
-            conversation_context = self._get_conversation_context(project_id)
+            # Use the enhanced agent with tool calling capabilities
+            result = await self.enhanced_agent.process_message(message, project_id, project_context)
             
-            # Determine if this is a continuation
-            is_continuation = self._is_conversation_continuation(message, conversation_context)
-            
-            if is_continuation and conversation_context:
-                # Use smart context analysis for continuation
-                analysis = await self._smart_context_analysis(message, conversation_context, project_context)
-                
-                if analysis["ready_for_tasks"]:
-                    # We have enough context, create tasks
-                    combined_request = f"{analysis['accumulated_info']} {message}"
-                    result = await self._handle_feature_request(combined_request, project_context, project_id)
-                    
-                    if result["type"] == "feature_breakdown" and result["tasks"]:
-                        # Update prompts and save tasks
-                        for task in result["tasks"]:
-                            task.prompt = self._generate_cursor_prompt(
-                                task.title, task.description, project_context
-                            )
-                        self.file_service.save_tasks(project_id, result["tasks"])
-                    
-                    # Update memory with important information from this conversation
-                    if result and result.get("response"):
-                        await self._update_memory_from_conversation(
-                            message, result["response"], project_id, project_context
-                        )
-                    
-                    return result
-                
-                elif analysis["context_status"] == "needs_clarification":
-                    # Continue clarification process
-                    result = await self._ask_clarifying_questions(message, project_context)
-                    
-                    # Update memory
-                    if result and result.get("response"):
-                        await self._update_memory_from_conversation(
-                            message, result["response"], project_id, project_context
-                        )
-                    
-                    return result
-                
-                else:
-                    # Handle based on detected intent
-                    if "task_management" in analysis["intent"]:
-                        result = await self._handle_task_management(message, project_id)
-                    else:
-                        result = await self._handle_regular_chat(message, project_context, project_id)
-                    
-                    # Update memory
-                    if result and result.get("response"):
-                        await self._update_memory_from_conversation(
-                            message, result["response"], project_id, project_context
-                        )
-                    
-                    return result
-            
-            else:
-                # New conversation or no context - use original logic
-                intent = await self._analyze_intent(message)
-                result = None
-                
-                if intent == "feature_request":
-                        logger.info(f"Processing feature request: {message}")
-                        clarity = await self._evaluate_clarity(message, project_context)
-                        
-                        logger.info(f"Clarity result: {clarity}")
-                        
-                        if clarity["clear"]:
-                            logger.info("Feature request is clear, generating tasks...")
-                            result = await self._handle_feature_request(message, project_context, project_id)
-                            if result["type"] == "feature_breakdown" and result["tasks"]:
-                                logger.info(f"Generated {len(result['tasks'])} tasks")
-                                for task in result["tasks"]:
-                                    task.prompt = self._generate_cursor_prompt(
-                                        task.title, task.description, project_context
-                                    )
-                                self.file_service.save_tasks(project_id, result["tasks"])
-                                logger.info("Tasks saved to database")
-                            else:
-                                logger.warning(f"Feature breakdown failed or no tasks generated: {result.get('type')}")
-                            
-                            # Update memory with important information from this conversation
-                            if result and result.get("response"):
-                                await self._update_memory_from_conversation(
-                                    message, result["response"], project_id, project_context
-                                )
-                            
-                            return result
-                        else:
-                            logger.info("Feature request needs clarification")
-                            result = await self._ask_clarifying_questions(message, project_context)
-                            
-                            # Update memory
-                            if result and result.get("response"):
-                                await self._update_memory_from_conversation(
-                                    message, result["response"], project_id, project_context
-                                )
-                            
-                            return result
-                
-                elif intent == "task_management":
-                    result = await self._handle_task_management(message, project_id)
-                    return result
-                
-                else:
-                    result = await self._handle_regular_chat(message, project_context, project_id)
-                    return result
-            
-            # Update memory with important information from this conversation
-            if result and result.get("response"):
-                await self._update_memory_from_conversation(
-                    message, 
-                    result["response"], 
-                    project_id, 
-                    project_context
-                )
+            # Add any additional processing if needed
+            if "tool_calls_made" not in result:
+                result["tool_calls_made"] = 0
+                result["tool_results"] = []
             
             return result
                 
@@ -887,7 +785,7 @@ Complete implementation of the task with all necessary files, components, and co
         return prompt.strip()
     
     async def _update_memory_from_conversation(self, message: str, response: str, project_id: str, project_context: dict) -> None:
-        """Extract and save important decisions/information from conversation with consolidation"""
+        """Extract and save important decisions/information from conversation using consolidated memory system"""
         
         conversation = f"User: {message}\nAssistant: {response}"
         
@@ -896,35 +794,22 @@ Complete implementation of the task with all necessary files, components, and co
             important_info = await self._extract_important_decisions(conversation, project_context)
             
             if important_info:
-                # Load existing memories
-                existing_memories = self.file_service.load_memories(project_id)
-                
                 for info in important_info:
-                    # Check if similar memory already exists for consolidation
-                    similar_memory = self._find_similar_memory_for_consolidation(info, existing_memories)
+                    # Detect category for the information
+                    category = detect_memory_category(info['content'])
                     
-                    if similar_memory:
-                        # Expand existing memory instead of creating new one
-                        expanded_memory = await self._expand_memory(similar_memory, info)
-                        # Update the memory in the list
-                        for i, memory in enumerate(existing_memories):
-                            if memory.id == similar_memory.id:
-                                existing_memories[i] = expanded_memory
-                                break
-                        logger.info(f"Expanded existing memory: {similar_memory.title}")
-                    else:
-                        # Create new comprehensive memory only if significantly different
-                        new_memory = await self._create_comprehensive_memory(info, project_id)
-                        if new_memory:
-                            existing_memories.append(new_memory)
-                            logger.info(f"Created new comprehensive memory: {new_memory.title}")
-                
-                # Save updated memories
-                self.file_service.save_memories(project_id, existing_memories)
-                logger.info(f"Updated memories for project {project_id}")
+                    # Add to consolidated memory for the category
+                    result = self.consolidated_memory_service.add_information_to_consolidated_memory(
+                        category.value,
+                        project_id,
+                        info['content'],
+                        info['title']
+                    )
+                    
+                    logger.info(f"Consolidated memory update: {result.get('message', 'No update')}")
                 
         except Exception as e:
-            logger.error(f"Error updating memory: {e}")
+            logger.error(f"Error updating consolidated memory: {e}")
 
     async def _extract_important_decisions(self, conversation: str, project_context: dict) -> List[dict]:
         """Use AI to extract important decisions or technical information"""
@@ -1148,6 +1033,33 @@ Complete implementation of the task with all necessary files, components, and co
         return '\n'.join(content_lines) if content_lines else "Memory content"
 
     # Context Management Methods
+    def _get_conversation_history_for_planning(self, project_id: str, max_messages: int = 10) -> List[Dict]:
+        """Get recent conversation history for planning phase"""
+        
+        try:
+            chat_history = self.file_service.load_chat_history(project_id)
+            
+            if not chat_history:
+                return []
+            
+            # Get recent messages (last N messages)
+            recent_messages = chat_history[-max_messages:]
+            
+            # Convert to planning format
+            planning_history = []
+            for msg in recent_messages:
+                planning_history.append({
+                    "role": msg.role,
+                    "content": msg.content,
+                    "timestamp": msg.created_at.isoformat() if hasattr(msg, 'created_at') else None
+                })
+            
+            return planning_history
+            
+        except Exception as e:
+            logger.error(f"Error getting conversation history for planning: {e}")
+            return []
+    
     def _get_conversation_context(self, project_id: str, max_messages: int = 10) -> str:
         """Get recent conversation context with smart truncation"""
         
@@ -1353,7 +1265,7 @@ Complete implementation of the task with all necessary files, components, and co
 
     # Memory & Task Retrieval Methods
     def _retrieve_relevant_memories(self, message: str, project_id: str) -> List[Memory]:
-        """Retrieve memories relevant to the current message"""
+        """Retrieve memories relevant to the current message, prioritizing consolidated memories"""
         
         try:
             all_memories = self.file_service.load_memories(project_id)
@@ -1361,15 +1273,25 @@ Complete implementation of the task with all necessary files, components, and co
             if not all_memories:
                 return []
             
-            # Simple keyword matching for relevance
+            # Prioritize consolidated memories
+            consolidated_memories = [m for m in all_memories if m.id.endswith('_consolidated')]
+            regular_memories = [m for m in all_memories if not m.id.endswith('_consolidated')]
+            
             message_words = set(message.lower().split())
             relevant_memories = []
             
-            for memory in all_memories:
-                # Check title and content for relevance
+            # Check consolidated memories first (they contain more comprehensive information)
+            for memory in consolidated_memories:
                 memory_words = set((memory.title + " " + memory.content).lower().split())
+                overlap = len(message_words.intersection(memory_words))
                 
-                # Calculate relevance score
+                if overlap > 0:
+                    # Boost score for consolidated memories
+                    relevant_memories.append((memory, overlap * 2))
+            
+            # Then check regular memories
+            for memory in regular_memories:
+                memory_words = set((memory.title + " " + memory.content).lower().split())
                 overlap = len(message_words.intersection(memory_words))
                 
                 if overlap > 0:
@@ -1528,6 +1450,31 @@ Complete implementation of the task with all necessary files, components, and co
             logger.error(f"Error getting related memories for task {task_id}: {e}")
             return []
 
+    def _determine_response_type(self, response: str, original_message: str) -> str:
+        """Determine the type of response based on content and original message"""
+        
+        response_lower = response.lower()
+        message_lower = original_message.lower()
+        
+        # Check for specific response patterns
+        if any(word in response_lower for word in ["step", "steps", "first", "then", "next"]):
+            return "guided_help"
+        
+        if any(word in response_lower for word in ["could you", "can you", "what", "how", "?"]):
+            return "clarification"
+        
+        if any(word in response_lower for word in ["solution", "fix", "problem", "issue"]):
+            return "direct_solution"
+        
+        if any(word in message_lower for word in ["add", "create", "build", "implement"]):
+            return "feature_breakdown"
+        
+        if any(word in message_lower for word in ["done", "complete", "finish", "delete"]):
+            return "task_update"
+        
+        # Default to chat
+        return "chat"
+    
     def _calculate_text_similarity(self, text1: str, text2: str) -> float:
         """Calculate text similarity using simple word overlap"""
         words1 = set(text1.lower().split())
