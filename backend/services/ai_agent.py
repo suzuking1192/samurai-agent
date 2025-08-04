@@ -14,7 +14,8 @@ try:
     from .agent_planning import AgentPlanningPhase, IntelligentAgent, CommonIssuePatterns, ResponseLengthHandler
     from .tool_calling_agent import EnhancedSamuraiAgent
     from .consolidated_memory import ConsolidatedMemoryService
-    from models import Task, Memory, Project, MemoryCategory
+    from .vector_context_service import vector_context_service
+    from models import Task, Memory, Project, MemoryCategory, ChatMessage
 except ImportError:
     # Fallback for when running the file directly
     import sys
@@ -27,7 +28,8 @@ except ImportError:
     from agent_planning import AgentPlanningPhase, IntelligentAgent, CommonIssuePatterns, ResponseLengthHandler
     from tool_calling_agent import EnhancedSamuraiAgent
     from consolidated_memory import ConsolidatedMemoryService
-    from models import Task, Memory, Project, MemoryCategory
+    from vector_context_service import vector_context_service
+    from models import Task, Memory, Project, MemoryCategory, ChatMessage
 
 logger = logging.getLogger(__name__)
 
@@ -43,36 +45,39 @@ class SamuraiAgent:
         self.consolidated_memory_service = ConsolidatedMemoryService()
     
     async def process_message(self, message: str, project_id: str, project_context: dict, session_id: str = None) -> dict:
-        """Enhanced message processing with context understanding and tool calling capabilities"""
+        """Enhanced message processing with vector-enhanced context understanding and tool calling capabilities"""
         
         try:
-            # Get conversation history for context understanding
-            conversation_history = self._get_conversation_history_for_planning(project_id, session_id, max_messages=10)
+            # Get all messages from current session for full conversation context
+            session_messages = self._get_session_messages(project_id, session_id)
             
-            # Extract context from recent conversation
-            context_info = await self.extract_conversation_context(conversation_history)
-            logger.info(f"Extracted context: {context_info}")
+            # Generate vector-enhanced context using full conversation
+            vector_context = await self._build_vector_enhanced_context(
+                message, project_id, session_messages, project_context
+            )
             
-            # Enhanced tool detection with context
-            tool_plan = await self.should_use_tools_enhanced(message, context_info)
+            logger.info(f"Vector context summary: {vector_context.get('summary', {})}")
+            
+            # Enhanced tool detection with vector context
+            tool_plan = await self.should_use_tools_enhanced(message, vector_context.get('context_info', {}))
             logger.info(f"Tool plan: {tool_plan}")
             
             # Execute tools if needed
             tool_results = []
             if tool_plan.get("requires_tools", False):
                 tool_results = await self.execute_planned_tools(
-                    tool_plan['tool_calls'], project_id, context_info
+                    tool_plan['tool_calls'], project_id, vector_context.get('context_info', {})
                 )
                 logger.info(f"Tool results: {tool_results}")
             
             # Generate response based on tool execution
             if tool_results:
                 response = await self.generate_response_with_tools(
-                    message, tool_results, context_info
+                    message, tool_results, vector_context.get('context_info', {})
                 )
                 response_type = "tool_response"
             else:
-                # Use existing enhanced agent for regular processing
+                # Use existing enhanced agent for regular processing with vector context
                 result = await self.enhanced_agent.process_message(message, project_id, project_context)
                 response = result.get("response", "I couldn't process your request.")
                 response_type = result.get("type", "response")
@@ -82,7 +87,8 @@ class SamuraiAgent:
                 "response": response,
                 "tool_calls_made": len(tool_results),
                 "tool_results": tool_results,
-                "context_used": context_info
+                "context_used": vector_context.get('context_info', {}),
+                "vector_context_summary": vector_context.get('summary', {})
             }
                 
         except Exception as e:
@@ -92,8 +98,158 @@ class SamuraiAgent:
                 "response": "I encountered an error processing your message. Please try again.",
                 "tool_calls_made": 0,
                 "tool_results": [],
-                "context_used": {}
+                "context_used": {},
+                "vector_context_summary": {}
             }
+    
+    async def _build_vector_enhanced_context(
+        self, 
+        message: str, 
+        project_id: str, 
+        session_messages: List[ChatMessage], 
+        project_context: dict
+    ) -> dict:
+        """
+        Build comprehensive context using vector-enhanced semantic similarity.
+        
+        Args:
+            message: Current user message
+            project_id: Project identifier
+            session_messages: All messages from current session
+            project_context: Project context information
+            
+        Returns:
+            Dictionary containing assembled context and summary
+        """
+        try:
+            # Generate embedding for full conversation context
+            conversation_embedding = vector_context_service.get_conversation_context_embedding(
+                session_messages, message
+            )
+            
+            if not conversation_embedding:
+                logger.warning("Failed to generate conversation embedding, falling back to basic context")
+                return self._build_fallback_context(message, project_id, session_messages, project_context)
+            
+            # Get all tasks and memories for the project
+            all_tasks = self.file_service.load_tasks(project_id)
+            all_memories = self.file_service.load_memories(project_id)
+            
+            # Find relevant tasks and memories using vector similarity
+            relevant_tasks = vector_context_service.find_relevant_tasks(
+                conversation_embedding, all_tasks, project_id
+            )
+            
+            relevant_memories = vector_context_service.find_relevant_memories(
+                conversation_embedding, all_memories, project_id
+            )
+            
+            # Assemble comprehensive context
+            assembled_context = vector_context_service.assemble_vector_context(
+                session_messages, relevant_tasks, relevant_memories, message
+            )
+            
+            # Get context summary for monitoring
+            context_summary = vector_context_service.get_vector_context_summary(
+                session_messages, relevant_tasks, relevant_memories
+            )
+            
+            # Build context info for tool calling
+            context_info = {
+                "conversation_context": assembled_context,
+                "relevant_tasks": [task for task, _ in relevant_tasks],
+                "relevant_memories": [memory for memory, _ in relevant_memories],
+                "session_messages": session_messages,
+                "project_context": project_context
+            }
+            
+            return {
+                "assembled_context": assembled_context,
+                "context_info": context_info,
+                "summary": context_summary,
+                "relevant_tasks_with_scores": relevant_tasks,
+                "relevant_memories_with_scores": relevant_memories
+            }
+            
+        except Exception as e:
+            logger.error(f"Error building vector-enhanced context: {e}")
+            return self._build_fallback_context(message, project_id, session_messages, project_context)
+    
+    async def _build_fallback_context(
+        self, 
+        message: str, 
+        project_id: str, 
+        session_messages: List[ChatMessage], 
+        project_context: dict
+    ) -> dict:
+        """
+        Build fallback context when vector enhancement fails.
+        
+        Args:
+            message: Current user message
+            project_id: Project identifier
+            session_messages: All messages from current session
+            project_context: Project context information
+            
+        Returns:
+            Dictionary containing fallback context
+        """
+        try:
+            # Use existing context retrieval methods as fallback
+            conversation_history = self._get_conversation_history_for_planning(project_id, None, max_messages=10)
+            context_info = await self.extract_conversation_context(conversation_history)
+            
+            # Get basic relevant memories and tasks
+            relevant_memories = self._retrieve_relevant_memories(message, project_id)
+            relevant_tasks = self._retrieve_relevant_tasks(message, project_id)
+            
+            # Build basic context
+            assembled_context = self._build_enhanced_context(message, project_id, project_context)
+            
+            return {
+                "assembled_context": assembled_context.get("conversation", ""),
+                "context_info": context_info,
+                "summary": {
+                    "session_messages_count": len(session_messages),
+                    "relevant_tasks_count": len(relevant_tasks),
+                    "relevant_memories_count": len(relevant_memories),
+                    "fallback_used": True
+                },
+                "relevant_tasks_with_scores": [(task, 0.0) for task in relevant_tasks],
+                "relevant_memories_with_scores": [(memory, 0.0) for memory in relevant_memories]
+            }
+            
+        except Exception as e:
+            logger.error(f"Error building fallback context: {e}")
+            return {
+                "assembled_context": "",
+                "context_info": {},
+                "summary": {"error": str(e)},
+                "relevant_tasks_with_scores": [],
+                "relevant_memories_with_scores": []
+            }
+    
+    def _get_session_messages(self, project_id: str, session_id: str = None) -> List[ChatMessage]:
+        """
+        Get all messages from the current session.
+        
+        Args:
+            project_id: Project identifier
+            session_id: Session identifier (optional)
+            
+        Returns:
+            List of chat messages from the session
+        """
+        try:
+            if session_id:
+                # Get messages for specific session
+                return self.file_service.load_chat_messages_by_session(project_id, session_id)
+            else:
+                # Get all messages (fallback for backward compatibility)
+                return self.file_service.load_chat_history(project_id)
+        except Exception as e:
+            logger.error(f"Error getting session messages: {e}")
+            return []
     
     async def _analyze_intent(self, message: str) -> str:
         """Use LLM to intelligently determine user intent with fallback to keyword analysis"""
