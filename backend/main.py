@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 from typing import List, Optional
 import os
@@ -9,6 +9,7 @@ import uuid
 from datetime import datetime
 import logging
 import traceback
+import json
 
 # Import your models
 from models import (
@@ -24,6 +25,8 @@ from services.ai_agent import SamuraiAgent
 from services.context_service import context_service
 from services.response_service import handle_agent_response, handle_validation_error
 from services.semantic_service import SemanticService
+from services.progress_tracker import ProgressTracker
+from services.transparent_planning_agent import TransparentPlanningAgent
 
 # Load environment variables
 load_dotenv()
@@ -252,6 +255,128 @@ async def chat_with_project(project_id: str, request: ChatRequest):
         logger.error(f"Error in chat with project {project_id}: {e}")
         logger.error(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Chat failed: {str(e)}")
+
+
+@app.post("/projects/{project_id}/chat-with-progress")
+async def chat_with_progress(project_id: str, request: ChatRequest):
+    """
+    Chat endpoint with real-time progress streaming
+    """
+    async def stream_response():
+        try:
+            # 1. Verify project exists
+            project = file_service.get_project_by_id(project_id)
+            if not project:
+                logger.warning(f"Project not found for chat: {project_id}")
+                yield f"data: {json.dumps({'type': 'error', 'error': 'Project not found'})}\n\n"
+                return
+            
+            # 2. Convert project to context dict
+            project_context = {
+                "name": project.name,
+                "description": project.description,
+                "tech_stack": project.tech_stack
+            }
+            
+            # 3. Set up progress tracking with deduplication
+            progress_queue = []
+            sent_progress_keys = set()
+            
+            async def progress_callback(progress_data):
+                """Queue progress update for streaming with deduplication"""
+                # Create unique key for deduplication (step + message only)
+                progress_key = f"{progress_data.get('step', '')}-{progress_data.get('message', '')}"
+                
+                # Skip if already sent
+                if progress_key in sent_progress_keys:
+                    return
+                
+                sent_progress_keys.add(progress_key)
+                progress_queue.append(progress_data)
+            
+            # 4. Get context
+            conversation_history = file_service.load_chat_history(project_id)
+            project_memories = file_service.load_memories(project_id)
+            tasks = file_service.load_tasks(project_id)
+            
+            # Convert to dict format for transparent agent
+            memories_dict = []
+            for memory in project_memories:
+                memories_dict.append({
+                    "id": memory.id,
+                    "title": memory.title,
+                    "content": memory.content,
+                    "type": memory.type,
+                    "category": memory.category
+                })
+            
+            tasks_dict = []
+            for task in tasks:
+                tasks_dict.append({
+                    "id": task.id,
+                    "title": task.title,
+                    "description": task.description,
+                    "status": getattr(task, 'status', 'pending'),
+                    "completed": task.completed
+                })
+            
+            # 5. Process with transparent agent
+            progress_tracker = ProgressTracker(progress_callback)
+            agent = TransparentPlanningAgent(progress_tracker)
+            
+            # Start processing in background
+            import asyncio
+            processing_task = asyncio.create_task(
+                agent.process_user_message_with_progress(
+                    request.message,
+                    project_id,
+                    conversation_history,
+                    memories_dict,
+                    tasks_dict,
+                    project_context
+                )
+            )
+            
+            # Stream progress updates
+            while not processing_task.done():
+                if progress_queue:
+                    progress_data = progress_queue.pop(0)
+                    yield f"data: {json.dumps({'type': 'progress', 'progress': progress_data})}\n\n"
+                await asyncio.sleep(0.1)
+            
+            # Get final result
+            result = await processing_task
+            
+            # 6. Handle long responses seamlessly
+            final_response = result.get("response", "I'm sorry, I couldn't process that request.")
+            final_response = handle_agent_response(final_response)
+            
+            # 7. Save chat message
+            chat_message = ChatMessage(
+                id=str(uuid.uuid4()),
+                project_id=project_id,
+                message=request.message,
+                response=final_response,
+                created_at=datetime.now()
+            )
+            file_service.save_chat_message(project_id, chat_message)
+            
+            # 8. Send final response
+            yield f"data: {json.dumps({'type': 'complete', 'response': final_response})}\n\n"
+            
+        except Exception as e:
+            logger.error(f"Chat with progress error: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
+    
+    return StreamingResponse(
+        stream_response(),
+        media_type="text/plain",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Content-Type": "text/event-stream"
+        }
+    )
 
 # Task endpoints
 @app.get("/projects/{project_id}/tasks")

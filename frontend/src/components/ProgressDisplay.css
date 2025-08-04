@@ -1,0 +1,230 @@
+.agent-progress {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 16px;
+  margin: 12px 0;
+  max-width: 100%;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.progress-title {
+  font-weight: 600;
+  color: #1f2937;
+  font-size: 14px;
+}
+
+.progress-count {
+  font-size: 12px;
+  color: #6b7280;
+  background: #f3f4f6;
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+
+.progress-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.progress-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 8px;
+  border-left: 3px solid transparent;
+  transition: all 0.3s ease;
+  background: white;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.progress-step.current {
+  border-left-color: #3b82f6;
+  background: rgba(59, 130, 246, 0.05);
+  animation: currentStepPulse 2s infinite;
+}
+
+.progress-step.completed {
+  border-left-color: #10b981;
+  opacity: 0.8;
+}
+
+.progress-step.error {
+  border-left-color: #ef4444;
+  background: rgba(239, 68, 68, 0.05);
+}
+
+@keyframes currentStepPulse {
+  0%, 100% { 
+    opacity: 1;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  }
+  50% { 
+    opacity: 0.9;
+    box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);
+  }
+}
+
+.step-icon {
+  font-size: 18px;
+  min-width: 24px;
+  text-align: center;
+  margin-top: 2px;
+}
+
+.step-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.step-message {
+  font-size: 14px;
+  color: #1f2937;
+  font-weight: 500;
+  line-height: 1.4;
+  margin-bottom: 4px;
+}
+
+.step-details {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.detail-badge {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.detail-badge.tool {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.detail-badge.search {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.detail-badge.task {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.detail-badge.memory {
+  background: #f3e8ff;
+  color: #7c3aed;
+}
+
+.detail-badge.status {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.detail-badge.count {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.detail-badge.intent {
+  background: #ecfdf5;
+  color: #059669;
+}
+
+.detail-badge.confidence {
+  background: #fef7cd;
+  color: #a16207;
+}
+
+.step-timestamp {
+  font-size: 11px;
+  color: #9ca3af;
+  white-space: nowrap;
+  margin-top: 2px;
+}
+
+/* Different step type styling */
+.progress-step.analyzing_request .step-message { 
+  color: #8b5cf6; 
+}
+
+.progress-step.detecting_intent .step-message { 
+  color: #059669; 
+}
+
+.progress-step.gathering_context .step-message { 
+  color: #dc2626; 
+}
+
+.progress-step.planning_actions .step-message { 
+  color: #ea580c; 
+}
+
+.progress-step.searching_data .step-message { 
+  color: #0891b2; 
+}
+
+.progress-step.executing_tools .step-message { 
+  color: #7c3aed; 
+}
+
+.progress-step.generating_response .step-message { 
+  color: #7c3aed; 
+}
+
+.progress-step.complete .step-message { 
+  color: #16a34a; 
+  font-weight: 600; 
+}
+
+.progress-step.error .step-message { 
+  color: #dc2626; 
+  font-weight: 600; 
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .agent-progress {
+    padding: 12px;
+    margin: 8px 0;
+  }
+  
+  .progress-step {
+    padding: 8px;
+    gap: 8px;
+  }
+  
+  .step-icon {
+    font-size: 16px;
+    min-width: 20px;
+  }
+  
+  .step-message {
+    font-size: 13px;
+  }
+  
+  .detail-badge {
+    font-size: 10px;
+    padding: 1px 4px;
+  }
+  
+  .step-timestamp {
+    font-size: 10px;
+  }
+} 
