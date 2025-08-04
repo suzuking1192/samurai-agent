@@ -139,6 +139,74 @@ export async function sendChatMessage(request: ChatRequest): Promise<ChatRespons
   })
 }
 
+// Streaming chat with progress updates
+export async function sendChatMessageWithProgress(
+  request: ChatRequest,
+  onProgress?: (progress: any) => void,
+  onComplete?: (response: string) => void,
+  onError?: (error: string) => void
+): Promise<void> {
+  const url = `${API_BASE_URL}/projects/${request.project_id}/chat-with-progress`
+  
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ message: request.message }),
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new ApiError(
+        errorData.detail || `HTTP error! status: ${response.status}`,
+        response.status,
+        errorData.details
+      )
+    }
+
+    const reader = response.body?.getReader()
+    if (!reader) {
+      throw new Error('No response body')
+    }
+
+    const decoder = new TextDecoder()
+    
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      
+      const chunk = decoder.decode(value)
+      const lines = chunk.split('\n')
+      
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const data = JSON.parse(line.slice(6))
+            
+            if (data.type === 'progress' && onProgress) {
+              onProgress(data.progress)
+            } else if (data.type === 'complete' && onComplete) {
+              onComplete(data.response)
+            } else if (data.type === 'error' && onError) {
+              onError(data.error)
+            }
+          } catch (e) {
+            console.error('Error parsing progress data:', e)
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error in streaming chat:', error)
+    if (onError) {
+      onError(error instanceof Error ? error.message : 'Unknown error')
+    }
+    throw error
+  }
+}
+
 // Chat message history (if implemented in backend)
 export async function getChatMessages(projectId: string): Promise<ChatMessage[]> {
   // This endpoint might not exist yet, but we'll include it for future use
