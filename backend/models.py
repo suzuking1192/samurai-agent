@@ -285,6 +285,9 @@ class Memory(BaseModel):
         category: Software engineering category (frontend, backend, etc.)
         type: Type of memory (feature, decision, spec, note)
         created_at: Timestamp when the memory was created
+        session_id: Session identifier for conversation linking
+        embedding: Vector embedding for semantic search
+        embedding_text: Text used to generate the embedding
     """
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Unique memory identifier")
     project_id: str = Field(..., description="Project identifier")
@@ -293,6 +296,9 @@ class Memory(BaseModel):
     category: str = Field(default="general", description="Software engineering category")
     type: str = Field(..., pattern="^(feature|decision|spec|note)$", description="Memory type")
     created_at: datetime = Field(default_factory=datetime.utcnow, description="Creation timestamp")
+    session_id: Optional[str] = Field(None, description="Session identifier for conversation linking")
+    embedding: Optional[List[float]] = Field(None, description="Vector embedding for semantic search")
+    embedding_text: Optional[str] = Field(None, description="Text used to generate the embedding")
 
     class Config:
         """Pydantic configuration for JSON serialization."""
@@ -326,6 +332,8 @@ class Task(BaseModel):
         order: Task order/priority (legacy field)
         created_at: Timestamp when the task was created
         updated_at: Timestamp when the task was last updated
+        embedding: Vector embedding for semantic search
+        embedding_text: Text used to generate the embedding
     """
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Unique task identifier")
     project_id: str = Field(..., description="Project identifier")
@@ -338,6 +346,8 @@ class Task(BaseModel):
     order: int = Field(default=0, ge=0, description="Task order/priority (legacy)")
     created_at: datetime = Field(default_factory=datetime.utcnow, description="Creation timestamp")
     updated_at: datetime = Field(default_factory=datetime.utcnow, description="Last update timestamp")
+    embedding: Optional[List[float]] = Field(None, description="Vector embedding for semantic search")
+    embedding_text: Optional[str] = Field(None, description="Text used to generate the embedding")
 
     class Config:
         """Pydantic configuration for JSON serialization."""
@@ -367,6 +377,8 @@ class ChatMessage(BaseModel):
         message: User message content
         response: AI response content
         created_at: Message timestamp
+        embedding: Vector embedding for semantic search (optional)
+        embedding_text: Text used to generate the embedding (optional)
     """
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Unique message identifier")
     project_id: str = Field(..., description="Project identifier")
@@ -374,6 +386,8 @@ class ChatMessage(BaseModel):
     message: str = Field(..., max_length=5000, description="User message content")
     response: str = Field(default="", max_length=15000, description="AI response content")
     created_at: datetime = Field(default_factory=datetime.utcnow, description="Message timestamp")
+    embedding: Optional[List[float]] = Field(None, description="Vector embedding for semantic search")
+    embedding_text: Optional[str] = Field(None, description="Text used to generate the embedding")
 
     class Config:
         """Pydantic configuration for JSON serialization."""

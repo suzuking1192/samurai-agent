@@ -61,5 +61,12 @@
     "description": "Test project for API testing",
     "tech_stack": "React + FastAPI",
     "created_at": "2025-08-03 15:09:00.596113"
+  },
+  {
+    "id": "4f92aaad-a109-488d-b9e2-b01b1a9f2c5b",
+    "name": "Vector Context Demo Project",
+    "description": "A demonstration project for vector-enhanced context engineering",
+    "tech_stack": "Python, FastAPI, PostgreSQL, JWT, bcrypt",
+    "created_at": "2025-08-04 17:40:31.873817"
   }
 ]
