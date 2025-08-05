@@ -5,19 +5,21 @@ from datetime import datetime
 
 try:
     from .gemini_service import GeminiService
+    from .agent_tools import AgentToolRegistry
     from models import Task, Memory, Project
 except ImportError:
     import sys
     import os
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from gemini_service import GeminiService
+    from agent_tools import AgentToolRegistry
     from models import Task, Memory, Project
 
 logger = logging.getLogger(__name__)
 
 
-class AgentPlanningPhase:
-    """Intelligent planning phase for agent responses with context understanding"""
+class SpecificationPlanningPhase:
+    """Intelligent planning phase for development specification and implementation guidance"""
     
     def __init__(self, user_message: str, conversation_history: List[Dict], 
                  project_memories: List[Memory], tasks: List[Task], project_context: Dict):
@@ -31,40 +33,34 @@ class AgentPlanningPhase:
     
     async def analyze_and_plan(self) -> Dict[str, Any]:
         """
-        Analyze the user's message and create a comprehensive response plan
+        Analyze the user's message and create a comprehensive development response plan
         """
         try:
-            # Step 1: Situation Analysis
-            situation = await self.analyze_situation()
-            logger.info(f"Situation analysis: {situation}")
+            # Step 1: Conversation Stage Detection
+            stage_analysis = await self.detect_conversation_stage()
+            logger.info(f"Conversation stage: {stage_analysis}")
             
-            # Step 2: Context Integration
-            relevant_context = await self.gather_relevant_context(situation)
-            logger.info(f"Relevant context gathered: {len(relevant_context['relevant_memories'])} memories, {len(relevant_context['related_tasks'])} tasks")
+            # Step 2: Clarification Strategy Planning
+            clarification_strategy = await self.plan_clarification_strategy(stage_analysis)
+            logger.info(f"Clarification strategy: {clarification_strategy}")
             
-            # Step 3: Response Planning
-            response_plan = await self.create_response_plan(situation, relevant_context)
-            logger.info(f"Response plan created: {response_plan['response_type']}")
+            # Step 3: Action Planning
+            action_plan = await self.create_action_plan(stage_analysis, clarification_strategy)
+            logger.info(f"Action plan: {action_plan}")
             
-            self.plan = response_plan
-            return response_plan
+            self.plan = action_plan
+            return action_plan
             
         except Exception as e:
-            logger.error(f"Error in planning phase: {e}")
+            logger.error(f"Error in specification planning phase: {e}")
             return self._create_fallback_plan()
     
-    async def analyze_situation(self) -> Dict[str, Any]:
+    async def detect_conversation_stage(self) -> Dict[str, Any]:
         """
-        Understand what the user is actually asking about
+        Detect what stage of development clarity the user is at
         """
-        # Check for common issue patterns first
-        common_issue = self._detect_common_issue_patterns()
-        if common_issue:
-            return common_issue
-        
-        # Use LLM for sophisticated analysis
-        analysis_prompt = f"""
-        Analyze this user message and determine what they're asking about:
+        stage_detection_prompt = f"""
+        Analyze this user message to determine their development conversation stage:
         
         USER MESSAGE: "{self.user_message}"
         
@@ -75,330 +71,179 @@ class AgentPlanningPhase:
         - Project: {self.project_context.get('name', 'Unknown')}
         - Tech Stack: {self.project_context.get('tech_stack', 'Unknown')}
         
-        Determine:
-        1. What is the user's main concern or problem?
-        2. What type of help do they need? (technical_issue, feature_request, bug_report, general_question, task_management)
-        3. Is this referring to something mentioned before in the conversation?
-        4. What specific area of the system/project are they talking about?
-        5. Are there any error messages or specific symptoms mentioned?
-        6. What is their emotional state or urgency level?
+        Determine the conversation stage:
+        1. **Conversation Stage**: vague_discussion | clear_intent | detailed_specification | ready_for_implementation | post_implementation
+        2. **Clarity Level**: How well-defined is their request (1-10 scale)
+        3. **Decision Readiness**: Are they ready to make technical decisions?
+        4. **Specification Completeness**: What level of detail do they have?
+        5. **Next Action Needed**: What type of push-back or guidance is required?
+        6. **Memory Opportunities**: What concrete information should be stored?
         
         Return a JSON object with:
         {{
-            "main_concern": "brief description",
-            "help_type": "technical_issue|feature_request|bug_report|general_question|task_management",
-            "references_previous": true/false,
-            "system_area": "backend|frontend|ui|agent_responses|task_management|memory|deployment|testing|etc",
-            "error_indicators": ["list", "of", "error", "symptoms"],
-            "urgency_level": "low|medium|high",
+            "conversation_stage": "vague_discussion|clear_intent|detailed_specification|ready_for_implementation|post_implementation",
+            "clarity_level": 1-10,
+            "decision_readiness": true/false,
+            "specification_completeness": "low|medium|high|complete",
+            "next_action_needed": "pushback_questions|detailed_clarification|task_breakdown|cursor_prompt|testing_strategy",
+            "memory_opportunities": ["list", "of", "concrete", "information", "to", "store"],
             "confidence_level": 0.8,
-            "specific_issue": "detailed description of the specific problem"
+            "development_focus": "feature_request|improvement|new_implementation|testing|refactoring"
         }}
         """
         
         try:
             response = await self.gemini_service.chat_with_system_prompt(
                 self.user_message, 
-                analysis_prompt
+                stage_detection_prompt
             )
             
             # Check for API errors
             if "I'm having trouble processing that request" in response or "Error:" in response:
-                logger.warning("LLM API error in situation analysis, using fallback")
-                return self._create_fallback_situation_analysis()
+                logger.warning("LLM API error in stage detection, using fallback")
+                return self._create_fallback_stage_analysis()
             
             # Parse JSON response
             try:
                 return json.loads(response)
             except json.JSONDecodeError:
                 logger.warning("Failed to parse JSON from LLM response, using fallback")
-                return self._create_fallback_situation_analysis()
+                return self._create_fallback_stage_analysis()
                 
         except Exception as e:
-            logger.error(f"Error in situation analysis: {e}")
-            return self._create_fallback_situation_analysis()
+            logger.error(f"Error in conversation stage detection: {e}")
+            return self._create_fallback_stage_analysis()
     
-    def _detect_common_issue_patterns(self) -> Optional[Dict[str, Any]]:
+    async def plan_clarification_strategy(self, stage_analysis: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Detect common issue patterns before using LLM
+        Plan what clarification questions or guidance to provide
         """
-        message_lower = self.user_message.lower()
+        clarification_prompt = f"""
+        Based on this conversation stage analysis, plan the clarification strategy:
         
-        # Response length issues
-        response_length_indicators = [
-            "response was very detailed", "exceeded our limits", 
-            "processing a shorter version", "response too long",
-            "this shows up every time", "truncation message"
-        ]
-        if any(indicator in message_lower for indicator in response_length_indicators):
-            return {
-                "main_concern": "Response length limits causing truncation messages",
-                "help_type": "technical_issue",
-                "references_previous": True,
-                "system_area": "agent_responses",
-                "error_indicators": ["truncation message", "response limits"],
-                "urgency_level": "medium",
-                "confidence_level": 0.9,
-                "specific_issue": "Agent responses are being truncated due to length limits, causing repeated error messages"
-            }
+        STAGE ANALYSIS: {json.dumps(stage_analysis, indent=2)}
         
-        # UI issues
-        ui_indicators = [
-            "can't see", "not showing", "white space", "overlapping", "broken layout",
-            "button not working", "click doesn't work", "interface issues"
-        ]
-        if any(indicator in message_lower for indicator in ui_indicators):
-            return {
-                "main_concern": "User interface display or interaction problems",
-                "help_type": "bug_report",
-                "references_previous": False,
-                "system_area": "frontend",
-                "error_indicators": ["display issues", "interaction problems"],
-                "urgency_level": "high",
-                "confidence_level": 0.8,
-                "specific_issue": "UI elements not displaying or functioning correctly"
-            }
-        
-        # Task management issues
-        task_indicators = [
-            "task not", "doesn't work", "can't complete", "task management",
-            "tasks not showing", "can't see tasks"
-        ]
-        if any(indicator in message_lower for indicator in task_indicators):
-            return {
-                "main_concern": "Task management functionality problems",
-                "help_type": "technical_issue",
-                "references_previous": False,
-                "system_area": "task_management",
-                "error_indicators": ["task functionality issues"],
-                "urgency_level": "medium",
-                "confidence_level": 0.8,
-                "specific_issue": "Task management features not working as expected"
-            }
-        
-        # Memory issues
-        memory_indicators = [
-            "memory not", "can't remember", "forgot", "not saving",
-            "memories not showing", "can't see memories"
-        ]
-        if any(indicator in message_lower for indicator in memory_indicators):
-            return {
-                "main_concern": "Memory storage or retrieval problems",
-                "help_type": "technical_issue",
-                "references_previous": False,
-                "system_area": "memory",
-                "error_indicators": ["memory functionality issues"],
-                "urgency_level": "medium",
-                "confidence_level": 0.8,
-                "specific_issue": "Memory features not working as expected"
-            }
-        
-        return None
-    
-    async def gather_relevant_context(self, situation: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Gather relevant memories, tasks, and conversation history
-        """
-        context = {
-            "relevant_memories": [],
-            "related_tasks": [],
-            "conversation_patterns": [],
-            "similar_issues": []
-        }
-        
-        # Find relevant memories based on situation
-        if situation.get("system_area"):
-            context["relevant_memories"] = await self._find_memories_by_topic(
-                situation["system_area"], situation.get("main_concern", "")
-            )
-        
-        # Find related tasks
-        if situation.get("help_type") in ["technical_issue", "bug_report", "task_management"]:
-            context["related_tasks"] = await self._find_tasks_by_keywords(
-                situation.get("main_concern", "")
-            )
-        
-        # Look for conversation patterns (recurring issues)
-        context["conversation_patterns"] = self._find_recurring_patterns()
-        
-        # Find similar issues from memories
-        context["similar_issues"] = await self._find_similar_issues(situation)
-        
-        return context
-    
-    async def _find_memories_by_topic(self, system_area: str, main_concern: str) -> List[Memory]:
-        """
-        Find memories relevant to the system area and concern
-        """
-        relevant_memories = []
-        
-        for memory in self.project_memories:
-            # Check if memory is relevant to the system area
-            memory_text = f"{memory.title} {memory.content}".lower()
-            system_area_lower = system_area.lower()
-            
-            # Direct area matching
-            if system_area_lower in memory_text:
-                relevant_memories.append(memory)
-                continue
-            
-            # Keyword matching for main concern
-            if main_concern:
-                concern_words = main_concern.lower().split()
-                memory_words = memory_text.split()
-                overlap = len(set(concern_words).intersection(set(memory_words)))
-                
-                if overlap > 0:
-                    relevant_memories.append(memory)
-        
-        return relevant_memories[:3]  # Limit to top 3
-    
-    async def _find_tasks_by_keywords(self, main_concern: str) -> List[Task]:
-        """
-        Find tasks related to the main concern
-        """
-        relevant_tasks = []
-        
-        if not main_concern:
-            return relevant_tasks
-        
-        concern_words = set(main_concern.lower().split())
-        
-        for task in self.tasks:
-            task_text = f"{task.title} {task.description}".lower()
-            task_words = set(task_text.split())
-            
-            # Calculate relevance score
-            overlap = len(concern_words.intersection(task_words))
-            
-            if overlap > 0:
-                relevant_tasks.append((task, overlap))
-        
-        # Sort by relevance and return top 3
-        relevant_tasks.sort(key=lambda x: x[1], reverse=True)
-        return [task for task, score in relevant_tasks[:3]]
-    
-    def _find_recurring_patterns(self) -> List[Dict[str, Any]]:
-        """
-        Identify if this is a recurring issue
-        """
-        patterns = []
-        
-        # Look for repeated error messages
-        error_messages = []
-        for msg in self.conversation_history[-10:]:  # Last 10 messages
-            content = msg.get("content", "").lower()
-            if any(word in content for word in ["error", "issue", "problem", "bug", "broken"]):
-                error_messages.append(content)
-        
-        # Look for repeated phrases
-        if len(error_messages) > 1:
-            patterns.append({
-                "type": "recurring_error",
-                "count": len(error_messages),
-                "description": "User has mentioned similar issues before"
-            })
-        
-        # Look for repeated system areas
-        system_areas = []
-        for msg in self.conversation_history[-5:]:
-            content = msg.get("content", "").lower()
-            if any(area in content for area in ["ui", "frontend", "backend", "api", "database"]):
-                system_areas.append(content)
-        
-        if len(system_areas) > 1:
-            patterns.append({
-                "type": "recurring_system_area",
-                "count": len(system_areas),
-                "description": "User has mentioned similar system areas before"
-            })
-        
-        return patterns
-    
-    async def _find_similar_issues(self, situation: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """
-        Find similar issues from memories
-        """
-        similar_issues = []
-        
-        for memory in self.project_memories:
-            memory_text = f"{memory.title} {memory.content}".lower()
-            
-            # Check if memory is about similar issues
-            if any(word in memory_text for word in ["issue", "problem", "bug", "error", "fix"]):
-                # Calculate similarity to current situation
-                situation_text = f"{situation.get('main_concern', '')} {situation.get('system_area', '')}".lower()
-                
-                situation_words = set(situation_text.split())
-                memory_words = set(memory_text.split())
-                
-                overlap = len(situation_words.intersection(memory_words))
-                
-                if overlap > 0:
-                    similar_issues.append({
-                        "memory": memory,
-                        "similarity_score": overlap,
-                        "description": f"Similar issue found in memory: {memory.title}"
-                    })
-        
-        # Sort by similarity and return top 2
-        similar_issues.sort(key=lambda x: x["similarity_score"], reverse=True)
-        return similar_issues[:2]
-    
-    async def create_response_plan(self, situation: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Create a specific plan for how to respond
-        """
-        planning_prompt = f"""
-        Create a response plan based on this analysis:
-        
-        SITUATION: {json.dumps(situation, indent=2)}
-        CONTEXT: {json.dumps({
-            "relevant_memories_count": len(context["relevant_memories"]),
-            "related_tasks_count": len(context["related_tasks"]),
-            "conversation_patterns": context["conversation_patterns"],
-            "similar_issues_count": len(context["similar_issues"])
-        }, indent=2)}
-        
-        Create a response plan with:
-        1. UNDERSTANDING: Show you understand the specific issue
-        2. SOLUTION: Provide specific, actionable help
-        3. CONTEXT_USE: How to use the gathered context
-        4. FOLLOW_UP: What questions to ask if needed
+        Plan the clarification strategy:
+        1. **Question Generation**: What specific questions will move them to the next stage?
+        2. **Decision Points**: What concrete decisions need to be made?
+        3. **Information Gaps**: What critical details are missing?
+        4. **Memory Opportunities**: What concrete information should be stored?
+        5. **Progression Path**: How to guide them toward implementable specifications?
         
         Return JSON:
         {{
-            "response_type": "direct_solution|guided_help|clarifying_questions",
-            "understanding_statement": "I understand you're experiencing...",
-            "main_solution": "specific solution or help",
-            "context_integration": "how to reference memories/tasks/history",
-            "follow_up_actions": ["action1", "action2"],
-            "confidence": 0.8,
-            "urgency_handling": "immediate|deferred|escalated"
+            "question_strategy": {{
+                "primary_questions": ["list", "of", "key", "questions"],
+                "follow_up_questions": ["list", "of", "follow", "up", "questions"],
+                "technical_decisions": ["list", "of", "technical", "choices", "needed"]
+            }},
+            "decision_points": ["list", "of", "concrete", "decisions"],
+            "information_gaps": ["list", "of", "missing", "details"],
+            "memory_opportunities": ["list", "of", "concrete", "info", "to", "store"],
+            "progression_guidance": "how to move to next stage",
+            "response_type": "vague_discussion_pushback|specification_pushback|task_breakdown_and_prompt|testing_strategy|memory_storage"
         }}
         """
         
         try:
             response = await self.gemini_service.chat_with_system_prompt(
-                self.user_message, 
-                planning_prompt
+                "Plan clarification strategy", 
+                clarification_prompt
             )
             
             # Check for API errors
             if "I'm having trouble processing that request" in response or "Error:" in response:
-                logger.warning("LLM API error in response planning, using fallback")
-                return self._create_fallback_response_plan(situation)
+                logger.warning("LLM API error in clarification planning, using fallback")
+                return self._create_fallback_clarification_strategy(stage_analysis)
             
             # Parse JSON response
             try:
                 return json.loads(response)
             except json.JSONDecodeError:
                 logger.warning("Failed to parse JSON from LLM response, using fallback")
-                return self._create_fallback_response_plan(situation)
+                return self._create_fallback_clarification_strategy(stage_analysis)
                 
         except Exception as e:
-            logger.error(f"Error in response planning: {e}")
-            return self._create_fallback_response_plan(situation)
+            logger.error(f"Error in clarification strategy planning: {e}")
+            return self._create_fallback_clarification_strategy(stage_analysis)
+    
+    async def create_action_plan(self, stage_analysis: Dict[str, Any], clarification_strategy: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Create specific action plan for response and task/memory management
+        """
+        action_planning_prompt = f"""
+        Create an action plan based on this analysis:
+        
+        STAGE ANALYSIS: {json.dumps(stage_analysis, indent=2)}
+        CLARIFICATION STRATEGY: {json.dumps(clarification_strategy, indent=2)}
+        
+        Create an action plan with:
+        1. **Response Type**: What type of response to provide
+        2. **Task Management**: What tasks need to be created and added to the system?
+        3. **Memory Storage**: What concrete decisions/information should be stored?
+        4. **Cursor Prompt Preparation**: Is specification complete enough for implementation prompts?
+        5. **Next Steps**: What should happen after this interaction?
+        
+        Return JSON:
+        {{
+            "response_type": "vague_discussion_pushback|specification_pushback|task_breakdown_and_prompt|testing_strategy|memory_storage",
+            "response_content": {{
+                "understanding_statement": "I understand you want to...",
+                "main_guidance": "specific guidance or questions",
+                "context_integration": "how to reference project context",
+                "next_steps": "what happens next"
+            }},
+            "task_management": {{
+                "tasks_to_create": [
+                    {{
+                        "title": "task title",
+                        "description": "task description",
+                        "priority": "high|medium|low"
+                    }}
+                ],
+                "should_create_tasks": true/false
+            }},
+            "memory_storage": {{
+                "memories_to_create": [
+                    {{
+                        "title": "memory title",
+                        "content": "memory content",
+                        "category": "technical_decision|requirement|specification"
+                    }}
+                ],
+                "should_store_memories": true/false
+            }},
+            "cursor_prompt": {{
+                "should_generate": true/false,
+                "prompt_content": "full cursor prompt if ready",
+                "implementation_context": "technical context for implementation"
+            }},
+            "confidence": 0.8,
+            "progression_ready": true/false
+        }}
+        """
+        
+        try:
+            response = await self.gemini_service.chat_with_system_prompt(
+                "Create action plan", 
+                action_planning_prompt
+            )
+            
+            # Check for API errors
+            if "I'm having trouble processing that request" in response or "Error:" in response:
+                logger.warning("LLM API error in action planning, using fallback")
+                return self._create_fallback_action_plan(stage_analysis)
+            
+            # Parse JSON response
+            try:
+                return json.loads(response)
+            except json.JSONDecodeError:
+                logger.warning("Failed to parse JSON from LLM response, using fallback")
+                return self._create_fallback_action_plan(stage_analysis)
+                
+        except Exception as e:
+            logger.error(f"Error in action planning: {e}")
+            return self._create_fallback_action_plan(stage_analysis)
     
     def _get_recent_conversation_context(self) -> str:
         """
@@ -418,45 +263,175 @@ class AgentPlanningPhase:
         
         return "\n".join(context_parts)
     
-    def _create_fallback_situation_analysis(self) -> Dict[str, Any]:
+    def _create_fallback_stage_analysis(self) -> Dict[str, Any]:
         """
-        Create fallback situation analysis when LLM fails
+        Create fallback stage analysis when LLM fails
         """
         message_lower = self.user_message.lower()
         
-        # Simple keyword-based analysis
-        if any(word in message_lower for word in ["add", "create", "build", "implement"]):
-            help_type = "feature_request"
-        elif any(word in message_lower for word in ["done", "complete", "finish", "delete"]):
-            help_type = "task_management"
-        elif any(word in message_lower for word in ["what", "how", "why", "explain"]):
-            help_type = "general_question"
+        # Check for detailed specifications (multiple technical details)
+        detailed_spec_indicators = [
+            "jwt", "oauth", "google", "facebook", "github", "role-based", "permissions", 
+            "password reset", "email verification", "two-factor", "2fa", "sso",
+            "dashboard", "charts", "filters", "real-time", "websockets", "api",
+            "database", "postgresql", "mongodb", "redis", "elasticsearch",
+            "docker", "kubernetes", "aws", "azure", "gcp", "deployment"
+        ]
+        
+        detailed_count = sum(1 for indicator in detailed_spec_indicators if indicator in message_lower)
+        
+        # Check for post-implementation indicators
+        post_impl_indicators = [
+            "implemented", "done", "finished", "completed", "built", "created",
+            "what should i test", "testing", "test", "deployed", "live"
+        ]
+        
+        # Check for memory opportunities (concrete decisions)
+        memory_indicators = [
+            "decided", "chose", "selected", "using", "will use", "going with",
+            "prefer", "preference", "choice", "decision", "architecture"
+        ]
+        
+        memory_opportunities = []
+        if any(indicator in message_lower for indicator in memory_indicators):
+            memory_opportunities = ["technical_decision"]
+        
+        if any(indicator in message_lower for indicator in post_impl_indicators):
+            stage = "post_implementation"
+            clarity = 9
+            completeness = "complete"
+        elif detailed_count >= 3:  # Multiple technical details indicate detailed specification
+            stage = "detailed_specification"
+            clarity = 8
+            completeness = "high"
+        elif any(word in message_lower for word in ["somehow", "maybe", "thinking", "improve", "better"]):
+            stage = "vague_discussion"
+            clarity = 3
+            completeness = "low"
+        elif any(word in message_lower for word in ["add", "create", "build", "implement", "want"]):
+            stage = "clear_intent"
+            clarity = 6
+            completeness = "medium"
         else:
-            help_type = "general_chat"
+            stage = "vague_discussion"
+            clarity = 4
+            completeness = "low"
         
         return {
-            "main_concern": "User needs assistance",
-            "help_type": help_type,
-            "references_previous": False,
-            "system_area": "general",
-            "error_indicators": [],
-            "urgency_level": "low",
+            "conversation_stage": stage,
+            "clarity_level": clarity,
+            "decision_readiness": clarity > 5,
+            "specification_completeness": completeness,
+            "next_action_needed": "pushback_questions" if clarity < 5 else "detailed_clarification" if clarity < 8 else "task_breakdown",
+            "memory_opportunities": memory_opportunities,
             "confidence_level": 0.5,
-            "specific_issue": "General assistance needed"
+            "development_focus": "feature_request"
         }
     
-    def _create_fallback_response_plan(self, situation: Dict[str, Any]) -> Dict[str, Any]:
+    def _create_fallback_clarification_strategy(self, stage_analysis: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Create fallback response plan when LLM fails
+        Create fallback clarification strategy when LLM fails
         """
+        stage = stage_analysis.get("conversation_stage", "vague_discussion")
+        memory_opportunities = stage_analysis.get("memory_opportunities", [])
+        
+        if stage == "vague_discussion":
+            questions = ["What specific problems do your users face?", "What features do you feel are missing?"]
+            response_type = "vague_discussion_pushback"
+        elif stage == "clear_intent":
+            questions = ["What specific implementation details do you need?", "What are your technical preferences?"]
+            response_type = "specification_pushback"
+        elif stage == "detailed_specification":
+            questions = ["What specific implementation details do you need?"]
+            response_type = "task_breakdown_and_prompt"
+        elif stage == "post_implementation":
+            questions = ["What specific testing do you need?"]
+            response_type = "testing_strategy"
+        else:
+            questions = ["What specific details do you need help with?"]
+            response_type = "specification_pushback"
+        
         return {
-            "response_type": "direct_solution",
-            "understanding_statement": f"I understand you're asking about {situation.get('main_concern', 'your request')}",
-            "main_solution": "Let me help you with that. Could you provide more specific details?",
-            "context_integration": "I'll consider your project context when helping",
-            "follow_up_actions": ["Ask for more details", "Provide general guidance"],
+            "question_strategy": {
+                "primary_questions": questions,
+                "follow_up_questions": [],
+                "technical_decisions": []
+            },
+            "decision_points": [],
+            "information_gaps": [],
+            "memory_opportunities": memory_opportunities,
+            "progression_guidance": "Ask clarifying questions to move forward",
+            "response_type": response_type
+        }
+    
+    def _create_fallback_action_plan(self, stage_analysis: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Create fallback action plan when LLM fails
+        """
+        stage = stage_analysis.get("conversation_stage", "vague_discussion")
+        memory_opportunities = stage_analysis.get("memory_opportunities", [])
+        
+        # Determine response type based on stage
+        if stage == "vague_discussion":
+            response_type = "vague_discussion_pushback"
+            guidance = "Let me help you clarify your requirements. Could you provide more specific details?"
+        elif stage == "clear_intent":
+            response_type = "specification_pushback"
+            guidance = "Let me help you specify the implementation details. What are your technical preferences?"
+        elif stage == "detailed_specification":
+            response_type = "task_breakdown_and_prompt"
+            guidance = "Great! I'll help you break this down into implementable tasks."
+        elif stage == "post_implementation":
+            response_type = "testing_strategy"
+            guidance = "Let me help you plan the testing strategy for your implementation."
+        else:
+            response_type = "vague_discussion_pushback"
+            guidance = "Let me help you clarify your requirements. Could you provide more specific details?"
+        
+        # Generate sample tasks for detailed specifications
+        tasks_to_create = []
+        if stage == "detailed_specification":
+            tasks_to_create = [
+                {
+                    "title": "Setup project structure",
+                    "description": "Create the basic project structure and configuration",
+                    "priority": "high"
+                },
+                {
+                    "title": "Implement core functionality",
+                    "description": "Build the main feature components",
+                    "priority": "high"
+                },
+                {
+                    "title": "Add tests",
+                    "description": "Create comprehensive test coverage",
+                    "priority": "medium"
+                }
+            ]
+        
+        return {
+            "response_type": response_type,
+            "response_content": {
+                "understanding_statement": f"I understand you're at the {stage} stage",
+                "main_guidance": guidance,
+                "context_integration": "I'll consider your project context when helping",
+                "next_steps": "We'll work through the details step by step"
+            },
+            "task_management": {
+                "tasks_to_create": tasks_to_create,
+                "should_create_tasks": stage == "detailed_specification"
+            },
+            "memory_storage": {
+                "memories_to_create": [],
+                "should_store_memories": len(memory_opportunities) > 0
+            },
+            "cursor_prompt": {
+                "should_generate": stage == "detailed_specification",
+                "prompt_content": "",
+                "implementation_context": ""
+            },
             "confidence": 0.6,
-            "urgency_handling": "deferred"
+            "progression_ready": stage in ["detailed_specification", "post_implementation"]
         }
     
     def _create_fallback_plan(self) -> Dict[str, Any]:
@@ -464,298 +439,301 @@ class AgentPlanningPhase:
         Create complete fallback plan when planning phase fails
         """
         return {
-            "response_type": "direct_solution",
-            "understanding_statement": "I understand you need help",
-            "main_solution": "Let me assist you with your request",
-            "context_integration": "I'll use available context to help",
-            "follow_up_actions": ["Ask for clarification if needed"],
+            "response_type": "vague_discussion_pushback",
+            "response_content": {
+                "understanding_statement": "I understand you need help with development",
+                "main_guidance": "Let me help you clarify your requirements and move toward implementation",
+                "context_integration": "I'll use your project context to provide relevant guidance",
+                "next_steps": "We'll work through this step by step"
+            },
+            "task_management": {
+                "tasks_to_create": [],
+                "should_create_tasks": False
+            },
+            "memory_storage": {
+                "memories_to_create": [],
+                "should_store_memories": False
+            },
+            "cursor_prompt": {
+                "should_generate": False,
+                "prompt_content": "",
+                "implementation_context": ""
+            },
             "confidence": 0.5,
-            "urgency_handling": "deferred"
+            "progression_ready": False
         }
 
 
-class CommonIssuePatterns:
+class DevelopmentAgent:
     """
-    Recognize and handle common user issues
-    """
-    
-    PATTERNS = {
-        "response_length": {
-            "indicators": ["exceeded limits", "processing shorter", "response too long", "truncation", "response was very detailed"],
-            "handler": "ResponseLengthHandler",
-            "priority": "high"
-        },
-        "ui_issues": {
-            "indicators": ["can't see", "not showing", "white space", "overlapping", "broken layout"],
-            "handler": "UIIssueHandler", 
-            "priority": "high"
-        },
-        "task_problems": {
-            "indicators": ["task not", "doesn't work", "button not working", "can't complete"],
-            "handler": "TaskIssueHandler",
-            "priority": "medium"
-        },
-        "memory_issues": {
-            "indicators": ["memory not", "can't remember", "forgot", "not saving"],
-            "handler": "MemoryIssueHandler",
-            "priority": "medium"
-        },
-        "api_errors": {
-            "indicators": ["api error", "endpoint", "server error", "connection"],
-            "handler": "APIErrorHandler",
-            "priority": "high"
-        }
-    }
-    
-    @classmethod
-    def detect_issue_type(cls, user_message: str) -> Dict[str, Any]:
-        """
-        Detect what type of issue user is describing
-        """
-        message_lower = user_message.lower()
-        
-        for issue_type, config in cls.PATTERNS.items():
-            if any(indicator in message_lower for indicator in config["indicators"]):
-                return {
-                    "type": issue_type,
-                    "handler": config["handler"],
-                    "priority": config["priority"],
-                    "confidence": 0.8
-                }
-        
-        return {"type": "general", "handler": "GeneralHandler", "priority": "low", "confidence": 0.3}
-
-
-class ResponseLengthHandler:
-    """
-    Specific handler for the response length limit issue
-    """
-    
-    @staticmethod
-    def detect_response_length_issue(user_message: str) -> bool:
-        """
-        Detect if user is talking about response length limits
-        """
-        indicators = [
-            "response was very detailed",
-            "exceeded our limits", 
-            "processing a shorter version",
-            "response too long",
-            "this shows up every time",
-            "truncation message"
-        ]
-        
-        message_lower = user_message.lower()
-        return any(indicator in message_lower for indicator in indicators)
-    
-    @staticmethod
-    async def handle_response_length_issue(context: Dict[str, Any]) -> str:
-        """
-        Provide specific solution for response length issues
-        """
-        return f"""
-I understand you're experiencing the "response exceeded limits" error repeatedly. This is a known issue with our response length handling. Here's how to fix it:
-
-## The Problem
-The agent is generating responses longer than our 5000 character limit, causing the truncation message to appear.
-
-## Immediate Solutions
-
-### 1. Backend Fix (Recommended)
-```python
-# In your chat handler, increase the response limit:
-MAX_RESPONSE_LENGTH = 15000  # Increase from 5000
-
-# Or implement smart truncation:
-def handle_long_response(response):
-    if len(response) <= 5000:
-        return response
-    
-    # Find last complete sentence within limit
-    truncated = response[:4800]
-    last_period = truncated.rfind('.')
-    if last_period > 0:
-        return response[:last_period + 1] + "\\n\\n[Continue this topic if you need more details]"
-    
-    return truncated + "..."
-```
-
-### 2. Response Chunking
-Break long responses into multiple shorter messages automatically.
-
-### 3. Smarter Agent Prompting
-Modify agent prompts to be more concise while maintaining helpfulness.
-
-## Next Steps
-1. Which solution would you prefer to implement first?
-2. Do you want help with the specific code changes?
-3. Are you seeing this error in specific situations (like task generation, memory creation)?
-
-This should eliminate the truncation message and provide better user experience.
-"""
-
-
-class IntelligentAgent:
-    """
-    Enhanced agent with planning phase for intelligent responses
+    Enhanced agent focused on development workflow and specification guidance with tool execution
     """
     
     def __init__(self):
         self.gemini_service = GeminiService()
         self.planning_phase = None
+        self.tool_registry = AgentToolRegistry()
     
     async def process_user_message(self, user_message: str, conversation_history: List[Dict], 
                                  project_memories: List[Memory], tasks: List[Task], 
                                  project_context: Dict[str, Any]) -> str:
         """
-        Main agent processing with planning phase
+        Main agent processing with development-focused planning phase and tool execution
         """
         try:
-            # Check for common patterns first
-            issue_pattern = CommonIssuePatterns.detect_issue_type(user_message)
-            
-            if issue_pattern["confidence"] > 0.7:
-                # Handle known patterns directly
-                if issue_pattern["type"] == "response_length":
-                    return await ResponseLengthHandler.handle_response_length_issue({
-                        "message": user_message,
-                        "history": conversation_history
-                    })
-                else:
-                    # Use intelligent agent with planning for other patterns
-                    return await self._process_with_planning(user_message, conversation_history, 
-                                                          project_memories, tasks, project_context)
-            else:
-                # Use intelligent agent with planning
-                return await self._process_with_planning(user_message, conversation_history, 
-                                                      project_memories, tasks, project_context)
+            # Use development-focused planning with tool execution
+            return await self._process_with_planning(user_message, conversation_history, 
+                                                  project_memories, tasks, project_context)
                 
         except Exception as e:
-            logger.error(f"Error in intelligent agent processing: {e}")
+            logger.error(f"Error in development agent processing: {e}")
             return "I encountered an issue processing your request. Could you try rephrasing your question?"
     
     async def _process_with_planning(self, user_message: str, conversation_history: List[Dict],
                                    project_memories: List[Memory], tasks: List[Task], 
                                    project_context: Dict[str, Any]) -> str:
         """
-        Process message with planning phase
+        Process message with development-focused planning phase and tool execution
         """
         # Phase 1: Planning
-        self.planning_phase = AgentPlanningPhase(
+        self.planning_phase = SpecificationPlanningPhase(
             user_message, conversation_history, project_memories, tasks, project_context
         )
         
         plan = await self.planning_phase.analyze_and_plan()
         
-        # Phase 2: Execution based on plan
-        if plan["response_type"] == "direct_solution":
-            return await self._provide_direct_solution(plan)
-        elif plan["response_type"] == "guided_help":
-            return await self._provide_guided_help(plan)
+        # Phase 2: Execute plan actions (ACTUALLY CREATE TASKS/MEMORIES)
+        project_id = project_context.get("id", "default")
+        execution_results = await self._execute_plan_actions(plan, project_id)
+        
+        # Phase 3: Generate response based on plan AND execution results
+        if plan["response_type"] == "vague_discussion_pushback":
+            response = await self._provide_vague_discussion_pushback(plan)
+        elif plan["response_type"] == "specification_pushback":
+            response = await self._provide_specification_pushback(plan)
+        elif plan["response_type"] == "task_breakdown_and_prompt":
+            response = await self._provide_task_breakdown_and_prompt(plan, execution_results)
+        elif plan["response_type"] == "testing_strategy":
+            response = await self._provide_testing_strategy(plan, execution_results)
         else:
-            return await self._ask_clarifying_questions(plan)
+            response = await self._provide_memory_storage(plan, execution_results)
+        
+        return response
     
-    async def _provide_direct_solution(self, plan: Dict[str, Any]) -> str:
+    async def _execute_plan_actions(self, plan: Dict[str, Any], project_id: str) -> Dict[str, Any]:
         """
-        Provide specific solution when we understand the issue
+        Execute the actions specified in the plan using tool registry
         """
-        solution_prompt = f"""
-        The user has this issue: {plan["understanding_statement"]}
+        execution_results = {
+            "tasks_created": [],
+            "memories_created": [],
+            "errors": []
+        }
         
-        Provide a specific, actionable solution that:
-        1. Acknowledges their specific problem
-        2. Gives step-by-step solution
-        3. References relevant context if helpful
-        4. Offers follow-up assistance
+        try:
+            # Execute task creation
+            task_management = plan.get("task_management", {})
+            if task_management.get("should_create_tasks", False):
+                tasks_to_create = task_management.get("tasks_to_create", [])
+                
+                for task_data in tasks_to_create:
+                    try:
+                        result = self.tool_registry.execute_tool(
+                            "create_task",
+                            title=task_data.get("title", "Untitled Task"),
+                            description=task_data.get("description", ""),
+                            priority=task_data.get("priority", "medium"),
+                            project_id=project_id
+                        )
+                        
+                        if result.get("success"):
+                            execution_results["tasks_created"].append(result)
+                        else:
+                            execution_results["errors"].append(f"Task creation failed: {result.get('message', 'Unknown error')}")
+                            
+                    except Exception as e:
+                        execution_results["errors"].append(f"Task creation error: {str(e)}")
+            
+            # Execute memory storage
+            memory_storage = plan.get("memory_storage", {})
+            if memory_storage.get("should_store_memories", False):
+                memories_to_create = memory_storage.get("memories_to_create", [])
+                
+                for memory_data in memories_to_create:
+                    try:
+                        result = self.tool_registry.execute_tool(
+                            "create_memory",
+                            title=memory_data.get("title", "Untitled Memory"),
+                            content=memory_data.get("content", ""),
+                            category=memory_data.get("category", "general"),
+                            project_id=project_id
+                        )
+                        
+                        if result.get("success"):
+                            execution_results["memories_created"].append(result)
+                        else:
+                            execution_results["errors"].append(f"Memory creation failed: {result.get('message', 'Unknown error')}")
+                            
+                    except Exception as e:
+                        execution_results["errors"].append(f"Memory creation error: {str(e)}")
+            
+            return execution_results
+            
+        except Exception as e:
+            logger.error(f"Error executing plan actions: {e}")
+            execution_results["errors"].append(f"Plan execution error: {str(e)}")
+            return execution_results
+    
+    async def _provide_vague_discussion_pushback(self, plan: Dict[str, Any]) -> str:
+        """
+        Provide push-back questions for vague discussions
+        """
+        pushback_prompt = f"""
+        The user is in the vague discussion stage: {plan["response_content"]["understanding_statement"]}
         
-        Main solution approach: {plan["main_solution"]}
-        Context to integrate: {plan["context_integration"]}
+        Create push-back questions that:
+        1. Show understanding of their general interest
+        2. Ask open-ended questions about their goals and pain points
+        3. Help them identify specific problems or opportunities
+        4. Guide them toward concrete feature ideas
+        5. Store any concrete insights as memories
         
-        Write a helpful, specific response (not generic):
+        Main guidance: {plan["response_content"]["main_guidance"]}
+        Context integration: {plan["response_content"]["context_integration"]}
+        
+        Write helpful push-back questions that move them from vague to clear intent:
         """
         
         try:
             response = await self.gemini_service.chat_with_system_prompt(
-                "Provide solution", 
-                solution_prompt
+                "Provide push-back questions", 
+                pushback_prompt
             )
             
             # Check for API errors
             if "I'm having trouble processing that request" in response or "Error:" in response:
-                return f"I understand {plan['understanding_statement']}. {plan['main_solution']}"
+                return f"{plan['response_content']['understanding_statement']}. {plan['response_content']['main_guidance']}"
             
             return response
             
         except Exception as e:
-            logger.error(f"Error providing direct solution: {e}")
-            return f"I understand {plan['understanding_statement']}. {plan['main_solution']}"
+            logger.error(f"Error providing vague discussion pushback: {e}")
+            return f"{plan['response_content']['understanding_statement']}. {plan['response_content']['main_guidance']}"
     
-    async def _provide_guided_help(self, plan: Dict[str, Any]) -> str:
+    async def _provide_specification_pushback(self, plan: Dict[str, Any]) -> str:
         """
-        Guide user through solution when issue is complex
+        Provide detailed specification push-back questions
         """
-        guidance_prompt = f"""
-        The user needs guided help with: {plan["understanding_statement"]}
+        specification_prompt = f"""
+        The user has clear intent but needs specification details: {plan["response_content"]["understanding_statement"]}
         
-        Create a step-by-step guidance response that:
-        1. Shows understanding of their situation
-        2. Breaks down the solution into steps
-        3. Asks for specific information needed
-        4. Provides context from their project
+        Create detailed specification questions that:
+        1. Ask specific technical questions (authentication method, data structure, UI requirements)
+        2. Explore implementation preferences and constraints
+        3. Gather all details needed for implementation
+        4. Store all technical decisions as memories
         
-        Solution approach: {plan["main_solution"]}
-        Follow-up actions: {plan["follow_up_actions"]}
+        Main guidance: {plan["response_content"]["main_guidance"]}
+        Context integration: {plan["response_content"]["context_integration"]}
         
-        Write a structured, helpful response:
+        Write detailed specification questions that move them to complete specifications:
         """
         
         try:
             response = await self.gemini_service.chat_with_system_prompt(
-                "Provide guidance", 
-                guidance_prompt
+                "Provide specification questions", 
+                specification_prompt
             )
             
             # Check for API errors
             if "I'm having trouble processing that request" in response or "Error:" in response:
-                return f"I understand {plan['understanding_statement']}. Let me guide you through this step by step: {plan['main_solution']}"
+                return f"{plan['response_content']['understanding_statement']}. {plan['response_content']['main_guidance']}"
             
             return response
             
         except Exception as e:
-            logger.error(f"Error providing guided help: {e}")
-            return f"I understand {plan['understanding_statement']}. Let me guide you through this step by step: {plan['main_solution']}"
+            logger.error(f"Error providing specification pushback: {e}")
+            return f"{plan['response_content']['understanding_statement']}. {plan['response_content']['main_guidance']}"
     
-    async def _ask_clarifying_questions(self, plan: Dict[str, Any]) -> str:
+    async def _provide_task_breakdown_and_prompt(self, plan: Dict[str, Any], execution_results: Dict[str, Any] = None) -> str:
         """
-        Ask clarifying questions when we need more information
+        Break down complete specifications into tasks and generate Cursor prompt with actual results
         """
-        clarification_prompt = f"""
-        The user needs clarification for: {plan["understanding_statement"]}
+        if execution_results is None:
+            execution_results = {"tasks_created": [], "memories_created": [], "errors": []}
         
-        Create clarifying questions that:
-        1. Show you understand their general concern
-        2. Ask specific questions to get needed details
-        3. Help them provide the right information
-        4. Guide them toward a solution
+        tasks_created = execution_results.get("tasks_created", [])
+        memories_created = execution_results.get("memories_created", [])
+        errors = execution_results.get("errors", [])
         
-        Main issue: {plan["main_solution"]}
-        Context: {plan["context_integration"]}
-        
-        Write helpful clarifying questions:
-        """
-        
-        try:
-            response = await self.gemini_service.chat_with_system_prompt(
-                "Ask clarifying questions", 
-                clarification_prompt
-            )
+        # If tasks were actually created, confirm it in the response
+        if tasks_created:
+            task_confirmations = [f"✅ {task.get('message', 'Task created')}" for task in tasks_created]
+            confirmation_text = "\n".join(task_confirmations)
             
-            # Check for API errors
-            if "I'm having trouble processing that request" in response or "Error:" in response:
-                return f"I understand you're asking about {plan['understanding_statement']}. Could you provide more specific details about what you need help with?"
+            response = f"""Perfect! I've analyzed your complete specification and created the implementation tasks:
+
+{confirmation_text}
+
+You now have {len(tasks_created)} concrete tasks ready for implementation. Each task is designed to be completed in 30-60 minutes and is suitable for AI coding tools like Cursor.
+
+{plan['response_content']['main_guidance']}"""
             
             return response
+        else:
+            # Fallback if no tasks were created
+            return f"{plan['response_content']['understanding_statement']}. {plan['response_content']['main_guidance']}"
+    
+    async def _provide_testing_strategy(self, plan: Dict[str, Any], execution_results: Dict[str, Any] = None) -> str:
+        """
+        Provide testing strategy after implementation with execution results
+        """
+        if execution_results is None:
+            execution_results = {"tasks_created": [], "memories_created": [], "errors": []}
+        
+        tasks_created = execution_results.get("tasks_created", [])
+        memories_created = execution_results.get("memories_created", [])
+        errors = execution_results.get("errors", [])
+        
+        # If testing tasks were created, confirm them
+        if tasks_created:
+            task_confirmations = [f"✅ {task.get('message', 'Testing task created')}" for task in tasks_created]
+            confirmation_text = "\n".join(task_confirmations)
             
-        except Exception as e:
-            logger.error(f"Error asking clarifying questions: {e}")
-            return f"I understand you're asking about {plan['understanding_statement']}. Could you provide more specific details about what you need help with?" 
+            response = f"""Great! I've analyzed your implemented feature and created a comprehensive testing strategy:
+
+{confirmation_text}
+
+{plan['response_content']['main_guidance']}"""
+            
+            return response
+        else:
+            # Fallback if no tasks were created
+            return f"{plan['response_content']['understanding_statement']}. {plan['response_content']['main_guidance']}"
+    
+    async def _provide_memory_storage(self, plan: Dict[str, Any], execution_results: Dict[str, Any] = None) -> str:
+        """
+        Store concrete decisions and information as memories with execution results
+        """
+        if execution_results is None:
+            execution_results = {"tasks_created": [], "memories_created": [], "errors": []}
+        
+        tasks_created = execution_results.get("tasks_created", [])
+        memories_created = execution_results.get("memories_created", [])
+        errors = execution_results.get("errors", [])
+        
+        # If memories were created, confirm them
+        if memories_created:
+            memory_confirmations = [f"💡 {memory.get('message', 'Memory stored')}" for memory in memories_created]
+            confirmation_text = "\n".join(memory_confirmations)
+            
+            response = f"""Perfect! I've captured the important decisions and information:
+
+{confirmation_text}
+
+{plan['response_content']['main_guidance']}"""
+            
+            return response
+        else:
+            # Fallback if no memories were created
+            return f"{plan['response_content']['understanding_statement']}. {plan['response_content']['main_guidance']}" 

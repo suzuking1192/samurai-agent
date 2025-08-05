@@ -11,7 +11,7 @@ try:
     from .gemini_service import GeminiService
     from .file_service import FileService
     from .memory_categorization import detect_memory_category, generate_category_specific_title
-    from .agent_planning import AgentPlanningPhase, IntelligentAgent, CommonIssuePatterns, ResponseLengthHandler
+    from .agent_planning import SpecificationPlanningPhase, DevelopmentAgent
     from .tool_calling_agent import EnhancedSamuraiAgent
     from .consolidated_memory import ConsolidatedMemoryService
     from .vector_context_service import vector_context_service
@@ -25,7 +25,7 @@ except ImportError:
     from gemini_service import GeminiService
     from file_service import FileService
     from memory_categorization import detect_memory_category, generate_category_specific_title
-    from agent_planning import AgentPlanningPhase, IntelligentAgent, CommonIssuePatterns, ResponseLengthHandler
+    from agent_planning import SpecificationPlanningPhase, DevelopmentAgent
     from tool_calling_agent import EnhancedSamuraiAgent
     from consolidated_memory import ConsolidatedMemoryService
     from vector_context_service import vector_context_service
@@ -40,7 +40,7 @@ class SamuraiAgent:
     def __init__(self):
         self.gemini_service = GeminiService()
         self.file_service = FileService()
-        self.intelligent_agent = IntelligentAgent()
+        self.development_agent = DevelopmentAgent()
         self.enhanced_agent = EnhancedSamuraiAgent()
         self.consolidated_memory_service = ConsolidatedMemoryService()
     
@@ -77,10 +77,17 @@ class SamuraiAgent:
                 )
                 response_type = "tool_response"
             else:
-                # Use existing enhanced agent for regular processing with vector context
-                result = await self.enhanced_agent.process_message(message, project_id, project_context)
-                response = result.get("response", "I couldn't process your request.")
-                response_type = result.get("type", "response")
+                # Use enhanced development agent for regular processing with vector context
+                # Get conversation history, memories, and tasks for the development agent
+                conversation_history = self._get_conversation_history_for_planning(project_id, session_id)
+                project_memories = self._retrieve_relevant_memories(message, project_id)
+                tasks = self._retrieve_relevant_tasks(message, project_id)
+                
+                # Use the enhanced development agent with tool execution
+                response = await self.development_agent.process_user_message(
+                    message, conversation_history, project_memories, tasks, project_context
+                )
+                response_type = "development_response"
             
             return {
                 "type": response_type,
