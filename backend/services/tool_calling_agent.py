@@ -6,7 +6,7 @@ from datetime import datetime
 
 try:
     from .agent_tools import AgentToolRegistry
-    from .agent_planning import AgentPlanningPhase, IntelligentAgent
+    from .agent_planning import SpecificationPlanningPhase, DevelopmentAgent
     from .gemini_service import GeminiService
     from models import Task, Memory, Project
 except ImportError:
@@ -14,7 +14,7 @@ except ImportError:
     import os
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from agent_tools import AgentToolRegistry
-    from agent_planning import AgentPlanningPhase, IntelligentAgent
+    from agent_planning import SpecificationPlanningPhase, DevelopmentAgent
     from gemini_service import GeminiService
     from models import Task, Memory, Project
 
