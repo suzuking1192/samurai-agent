@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { ChatMessage, ChatRequest, ChatResponse, Session } from '../types'
-import { sendChatMessage, sendChatMessageWithProgress, getChatMessages, createSession, getCurrentSession, getSessionMessages } from '../services/api'
+import { sendChatMessage, sendChatMessageWithProgress, getChatMessages, createSession, getCurrentSession, getSessionMessages, getConversationHistory } from '../services/api'
 import ProgressDisplay from './ProgressDisplay'
 
 interface ChatProps {
@@ -23,8 +23,8 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated }) => {
   const [agentActivity, setAgentActivity] = useState<string>('')
   const [notification, setNotification] = useState<{type: 'info' | 'warning' | 'error', message: string} | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false)
   const [currentSession, setCurrentSession] = useState<Session | null>(null)
-  const [isNewConversationReady, setIsNewConversationReady] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const chatMessagesRef = useRef<HTMLDivElement>(null)
 
@@ -51,15 +51,52 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated }) => {
     }
   }, [projectId])
 
+  // Reload conversation history when session changes
+  useEffect(() => {
+    if (currentSession && projectId) {
+      loadConversationHistory(currentSession.id)
+    }
+  }, [currentSession?.id, projectId])
+
   const loadCurrentSession = async () => {
     if (!projectId) return
     
     try {
       const session = await getCurrentSession(projectId)
       setCurrentSession(session)
-      await loadChatMessages(session.id)
+      
+      // Immediately load conversation history when session is available
+      if (session) {
+        await loadConversationHistory(session.id)
+      }
     } catch (error) {
       console.error('Error loading current session:', error)
+      setCurrentSession(null)
+      setMessages([])
+    }
+  }
+
+  const loadConversationHistory = async (sessionId?: string) => {
+    const targetSessionId = sessionId || currentSession?.id
+    if (!projectId || !targetSessionId) return
+    
+    setIsLoadingHistory(true)
+    try {
+      console.log('Loading conversation history for session:', targetSessionId)
+      const sessionMessages = await getSessionMessages(projectId, targetSessionId)
+      console.log('Loaded session messages:', sessionMessages.length, 'messages')
+      
+      // Sort messages by creation time to ensure proper order
+      const sortedMessages = sessionMessages.sort((a, b) => 
+        new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      )
+      
+      setMessages(sortedMessages)
+    } catch (error) {
+      console.error('Error loading conversation history:', error)
+      setMessages([])
+    } finally {
+      setIsLoadingHistory(false)
     }
   }
 
@@ -98,11 +135,17 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated }) => {
     }
     
     try {
-      setIsNewConversationReady(true)
+      // Create a new session
+      const newSession = await createSession(projectId)
+      console.log('Created new session:', newSession)
+      setCurrentSession(newSession)
+      
+      // Clear messages for new conversation
       setMessages([])
+      
       setNotification({
         type: 'info',
-        message: 'New conversation ready! Send your first message to start.'
+        message: 'New conversation started! Send your first message.'
       })
       
       // Clear notification after 3 seconds
@@ -140,7 +183,7 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated }) => {
   }
 
   const handleSendMessage = useCallback(async () => {
-    console.log('handleSendMessage called, projectId:', projectId, 'isNewConversationReady:', isNewConversationReady)
+    console.log('handleSendMessage called, projectId:', projectId)
     if (!inputMessage.trim() || isLoading) return
     
     if (!projectId) {
@@ -163,7 +206,7 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated }) => {
     const optimisticMessage: OptimisticMessage = {
       id: `optimistic-${Date.now()}`,
       project_id: projectId,
-      session_id: currentSession?.id || 'temp-session',
+      session_id: currentSession?.id || '',
       message: userMessage,
       response: '',
       created_at: new Date().toISOString(),
@@ -176,24 +219,19 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated }) => {
     try {
       let response: ChatResponse
       
-      // If this is a new conversation, create a new session first
-      if (isNewConversationReady) {
-        console.log('Creating new session for projectId:', projectId)
-        const newSession = await createSession(projectId)
-        console.log('New session created:', newSession)
-        setCurrentSession(newSession)
-        setIsNewConversationReady(false)
-        // Update the optimistic message with the new session ID
-        optimisticMessage.session_id = newSession.id
-      }
-      
       // Send message with progress tracking
       await sendChatMessageWithProgress(
         { message: userMessage, project_id: projectId },
         (progress) => {
+          // Add timestamp to progress
+          const progressWithTimestamp = {
+            ...progress,
+            timestamp: new Date().toISOString()
+          }
+          
           setMessages(prev => prev.map(msg => 
             msg.id === optimisticMessage.id 
-              ? { ...msg, progress: [...(msg.progress || []), progress] }
+              ? { ...msg, progress: [...(msg.progress || []), progressWithTimestamp] }
               : msg
           ))
           updateAgentActivity(progress.message || 'Processing...')
@@ -256,7 +294,7 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated }) => {
       setIsLoading(false)
       updateAgentActivity('')
     }
-  }, [inputMessage, projectId, isLoading, currentSession, isNewConversationReady, onTaskGenerated])
+  }, [inputMessage, projectId, isLoading, currentSession, onTaskGenerated])
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -323,7 +361,18 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated }) => {
         ref={chatMessagesRef}
         onScroll={handleScroll}
       >
-        {messages.length === 0 ? (
+        {isLoadingHistory ? (
+          <div className="empty-state">
+            <div className="loading-indicator">
+              <div className="loading-dots">
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
+              <p>Loading conversation history...</p>
+            </div>
+          </div>
+        ) : messages.length === 0 ? (
           <div className="empty-state">
             {!projectId ? (
               <p>Please select a project from the dropdown above to start chatting with Samurai Agent!</p>
@@ -409,18 +458,30 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated }) => {
                 </div>
               )}
               
-              {/* Show progress for optimistic messages only - removed duplicate display */}
-              {message.isOptimistic && message.progress && message.progress.length > 0 && (
+              {/* Show progress for optimistic messages */}
+              {message.isOptimistic && (
                 <div className="message ai-message">
                   <div className="message-content">
                     <div className="message-header">
                       <strong>Samurai Agent</strong>
                       <span className="message-time">Processing...</span>
                     </div>
-                    <ProgressDisplay 
-                      progress={message.progress} 
-                      isVisible={true}
-                    />
+                    
+                                         {message.progress && message.progress.length > 0 ? (
+                       <ProgressDisplay 
+                         progress={message.progress} 
+                         isVisible={true}
+                       />
+                     ) : (
+                       <div className="typing-indicator">
+                         <div className="typing-dots">
+                           <span></span>
+                           <span></span>
+                           <span></span>
+                         </div>
+                         <span className="typing-text">Samurai Agent is thinking...</span>
+                       </div>
+                     )}
                   </div>
                 </div>
               )}

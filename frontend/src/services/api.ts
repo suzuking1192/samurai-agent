@@ -233,11 +233,15 @@ export async function createSession(projectId: string, name?: string): Promise<S
 }
 
 export async function getSessionMessages(projectId: string, sessionId: string): Promise<ChatMessage[]> {
-  return apiRequest<ChatMessage[]>(`/projects/${projectId}/sessions/${sessionId}/messages`)
+  return apiRequest<ChatMessage[]>(`/projects/${projectId}/session-messages/${sessionId}`)
 }
 
 export async function getCurrentSession(projectId: string): Promise<Session> {
   return apiRequest<Session>(`/projects/${projectId}/current-session`)
+}
+
+export async function getConversationHistory(projectId: string): Promise<ChatMessage[]> {
+  return apiRequest<ChatMessage[]>(`/projects/${projectId}/conversation-history`)
 }
 
 export const getSemanticHierarchy = async (

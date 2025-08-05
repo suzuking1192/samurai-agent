@@ -26,8 +26,7 @@ from services.ai_agent import SamuraiAgent
 from services.context_service import context_service
 from services.response_service import handle_agent_response, handle_validation_error
 from services.semantic_service import SemanticService
-from services.progress_tracker import ProgressTracker
-from services.transparent_planning_agent import TransparentPlanningAgent
+
 
 # Load environment variables
 load_dotenv()
@@ -206,7 +205,11 @@ async def chat_with_project(project_id: str, request: ChatRequest):
             current_session = file_service.create_session(project_id)
             logger.info(f"Created new session: {current_session.id}")
         
-        # 3. Convert project to context dict for SamuraiAgent
+        # 3. Load conversation history for context extraction
+        conversation_history = file_service.load_chat_messages_by_session(project_id, current_session.id)
+        logger.info(f"Loaded {len(conversation_history)} conversation messages for context extraction")
+        
+        # 4. Convert project to context dict for SamuraiAgent
         project_context = {
             "name": project.name,
             "description": project.description,
@@ -215,13 +218,14 @@ async def chat_with_project(project_id: str, request: ChatRequest):
         
         logger.info(f"Project context: {project.name} - {project.tech_stack}")
         
-        # 4. Use SamuraiAgent to process the message (this handles task/memory generation)
+        # 5. Use SamuraiAgent to process the message with conversation history
         logger.info("Processing message with SamuraiAgent...")
         result = await samurai_agent.process_message(
             message=request.message,
             project_id=project_id,
             project_context=project_context,
-            session_id=current_session.id
+            session_id=current_session.id,
+            conversation_history=conversation_history
         )
         
         logger.info(f"SamuraiAgent response type: {result.get('type', 'unknown')}")
@@ -298,72 +302,46 @@ async def chat_with_progress(project_id: str, request: ChatRequest):
                 current_session = file_service.create_session(project_id)
                 logger.info(f"Created new session: {current_session.id}")
             
-            # 3. Set up progress tracking with deduplication
-            progress_queue = []
-            sent_progress_keys = set()
+
             
-            async def progress_callback(progress_data):
-                """Queue progress update for streaming with deduplication"""
-                # Create unique key for deduplication (step + message only)
-                progress_key = f"{progress_data.get('step', '')}-{progress_data.get('message', '')}"
-                
-                # Skip if already sent
-                if progress_key in sent_progress_keys:
-                    return
-                
-                sent_progress_keys.add(progress_key)
-                progress_queue.append(progress_data)
-            
-            # 4. Get context
+            # 4. Get conversation history for planning-first agent
             conversation_history = file_service.load_chat_history(project_id)
-            project_memories = file_service.load_memories(project_id)
-            tasks = file_service.load_tasks(project_id)
             
-            # Convert to dict format for transparent agent
-            memories_dict = []
-            for memory in project_memories:
-                memories_dict.append({
-                    "id": memory.id,
-                    "title": memory.title,
-                    "content": memory.content,
-                    "type": memory.type,
-                    "category": memory.category
-                })
+            # 5. Process with planning-first agent (SamuraiAgent)
+            # The conversation_history is already in ChatMessage format, so we can use it directly
+            chat_messages = conversation_history
             
-            tasks_dict = []
-            for task in tasks:
-                tasks_dict.append({
-                    "id": task.id,
-                    "title": task.title,
-                    "description": task.description,
-                    "status": getattr(task, 'status', 'pending'),
-                    "completed": task.completed
-                })
-            
-            # 5. Process with transparent agent
-            progress_tracker = ProgressTracker(progress_callback)
-            agent = TransparentPlanningAgent(progress_tracker)
+            # Use SamuraiAgent with planning-first architecture
+            from services.ai_agent import SamuraiAgent
+            samurai_agent = SamuraiAgent()
             
             # Start processing in background
             import asyncio
             processing_task = asyncio.create_task(
-                agent.process_user_message_with_progress(
-                    request.message,
-                    project_id,
-                    conversation_history,
-                    memories_dict,
-                    tasks_dict,
-                    project_context,
-                    session_id=current_session.id
+                samurai_agent.process_message(
+                    message=request.message,
+                    project_id=project_id,
+                    project_context=project_context,
+                    session_id=current_session.id,
+                    conversation_history=chat_messages
                 )
             )
             
-            # Stream progress updates
-            while not processing_task.done():
-                if progress_queue:
-                    progress_data = progress_queue.pop(0)
-                    yield f"data: {json.dumps({'type': 'progress', 'progress': progress_data})}\n\n"
-                await asyncio.sleep(0.1)
+            # Set up real-time progress streaming
+            from services.progress_streaming import create_planning_progress_tracker, simulate_planning_progress
+            
+            streamer, tracker = await create_planning_progress_tracker()
+            
+            # Start progress streaming in background
+            progress_task = asyncio.create_task(simulate_planning_progress(streamer, tracker))
+            
+            # Stream progress updates as they occur
+            async for progress_update in streamer.get_progress_updates():
+                yield progress_update
+                
+                # Check if progress simulation is complete
+                if progress_task.done():
+                    break
             
             # Get final result
             result = await processing_task
@@ -601,6 +579,32 @@ async def get_current_session(project_id: str):
     except Exception as e:
         logger.error(f"Error getting current session for project {project_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get current session: {str(e)}")
+
+@app.get("/projects/{project_id}/conversation-history", response_model=List[ChatMessage])
+async def get_conversation_history(project_id: str):
+    """Get conversation history for the current session of a project."""
+    try:
+        # Verify project exists
+        project = file_service.get_project_by_id(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Get current session
+        session = file_service.get_latest_session(project_id)
+        if not session:
+            # Return empty list if no session exists
+            return []
+        
+        # Load conversation history for the current session
+        messages = file_service.load_chat_messages_by_session(project_id, session.id)
+        logger.info(f"Loaded {len(messages)} conversation messages for project {project_id}, session {session.id}")
+        
+        return messages
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error loading conversation history for project {project_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to load conversation history: {str(e)}")
 
 # Memory endpoints
 @app.get("/projects/{project_id}/memories", response_model=List[Memory])
