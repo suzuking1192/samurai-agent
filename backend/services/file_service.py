@@ -20,7 +20,7 @@ except ImportError:
     # Add parent directory to path
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from models import Project, Memory, Task, ChatMessage
-    from embedding_service import embedding_service
+    from services.embedding_service import embedding_service
 
 # Constants
 DATA_DIR = "data"
@@ -492,19 +492,60 @@ class FileService:
     
     # Chat operations
     def load_chat_history(self, project_id: str) -> List[ChatMessage]:
-        """Load all chat messages for a project."""
+        """Load all chat messages for a project with backward compatibility for legacy format."""
         self.ensure_data_dir()
         file_path = self._get_project_file_path(project_id, "chat")
         data = self._load_json(file_path)
         
         messages = []
         for item in data:
-            if self._validate_chat_message_data(item):
-                try:
-                    messages.append(ChatMessage(**item))
-                except Exception as e:
-                    logger.warning(f"Invalid chat message data: {e}")
-                    continue
+            try:
+                # Handle legacy format (role/content) vs new format (message/response)
+                if "role" in item and "content" in item:
+                    # Legacy format - convert to new format
+                    if item["role"] == "user":
+                        # User message
+                        converted_item = {
+                            "id": item.get("id", str(uuid.uuid4())),
+                            "project_id": project_id,
+                            "session_id": item.get("session_id", ""),
+                            "message": item["content"],
+                            "response": "",
+                            "created_at": item.get("timestamp", datetime.now().isoformat())
+                        }
+                    elif item["role"] == "assistant":
+                        # Assistant response - find the previous user message to pair with
+                        if messages and messages[-1].response == "":
+                            # Update the previous message's response
+                            messages[-1].response = item["content"]
+                            continue
+                        else:
+                            # Create a new message pair with empty user message
+                            converted_item = {
+                                "id": item.get("id", str(uuid.uuid4())),
+                                "project_id": project_id,
+                                "session_id": item.get("session_id", ""),
+                                "message": "",
+                                "response": item["content"],
+                                "created_at": item.get("timestamp", datetime.now().isoformat())
+                            }
+                    else:
+                        logger.warning(f"Unknown role in legacy chat message: {item['role']}")
+                        continue
+                else:
+                    # New format - validate and use as is
+                    if self._validate_chat_message_data(item):
+                        converted_item = item
+                    else:
+                        logger.warning(f"Invalid chat message data: {item}")
+                        continue
+                
+                # Create ChatMessage object
+                messages.append(ChatMessage(**converted_item))
+                
+            except Exception as e:
+                logger.warning(f"Error processing chat message: {e}, data: {item}")
+                continue
         
         # Sort by creation time
         messages.sort(key=lambda x: x.created_at)
@@ -612,15 +653,26 @@ class FileService:
             self.save_session(project_id, session)
     
     def load_chat_messages_by_session(self, project_id: str, session_id: str) -> List[ChatMessage]:
-        """Load chat messages for a specific session."""
+        """Load chat messages for a specific session with improved error handling."""
         messages = self.load_chat_history(project_id)
         logger.info(f"Total messages loaded for project {project_id}: {len(messages)}")
         
+        if not session_id:
+            logger.warning(f"Empty session_id provided for project {project_id}")
+            return []
+        
         # Debug: Check session_id field in messages
         for i, msg in enumerate(messages[:5]):  # Check first 5 messages
-            logger.info(f"Message {i}: session_id = {getattr(msg, 'session_id', 'MISSING')}")
+            msg_session_id = getattr(msg, 'session_id', None)
+            logger.info(f"Message {i}: session_id = {msg_session_id}")
         
-        session_messages = [m for m in messages if getattr(m, 'session_id', None) == session_id]
+        # Filter messages by session_id, handling both string and None values
+        session_messages = []
+        for m in messages:
+            msg_session_id = getattr(m, 'session_id', None)
+            if msg_session_id == session_id:
+                session_messages.append(m)
+        
         logger.info(f"Messages matching session {session_id}: {len(session_messages)}")
         
         # Sort by created_at

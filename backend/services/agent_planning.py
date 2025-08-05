@@ -172,36 +172,71 @@ class SpecificationPlanningPhase:
         Create specific action plan for response and task/memory management
         """
         action_planning_prompt = f"""
+        IMPORTANT: Instead of immediately creating tasks, SUGGEST tasks and ask for user confirmation.
+        
         Create an action plan based on this analysis:
         
         STAGE ANALYSIS: {json.dumps(stage_analysis, indent=2)}
         CLARIFICATION STRATEGY: {json.dumps(clarification_strategy, indent=2)}
         
+        When the user has clear specifications, create a plan that:
+        1. Suggests specific tasks they might want
+        2. Asks for confirmation before creating anything
+        3. Gives them control over what gets created
+        
         Create an action plan with:
         1. **Response Type**: What type of response to provide
-        2. **Task Management**: What tasks need to be created and added to the system?
+        2. **Task Suggestions**: What tasks should be suggested (not immediately created)?
         3. **Memory Storage**: What concrete decisions/information should be stored?
-        4. **Cursor Prompt Preparation**: Is specification complete enough for implementation prompts?
-        5. **Next Steps**: What should happen after this interaction?
+        4. **Next Steps**: What should happen after this interaction?
         
-        Return JSON:
+        TASK DESCRIPTION REQUIREMENTS:
+        Each task description should be detailed enough for an AI coding tool (like Cursor) to implement directly.
+        
+        1. **Implementation-Ready**: Include technical details, file names, specific frameworks
+        2. **Context-Aware**: Reference the project's tech stack and existing structure  
+        3. **Actionable**: Clear step-by-step guidance for what to build
+        4. **Complete**: Include error handling, validation, and integration details
+        
+        EXAMPLES OF GOOD DESCRIPTIONS:
+        
+        For "JWT authentication":
+        ❌ Bad: "Add JWT authentication"
+        ✅ Good: "Create JWT middleware for Express.js that validates Bearer tokens from Authorization headers. Extract user ID from token payload, attach user object to req.user, handle expired/invalid tokens with 401 responses. Integrate with existing User model and protect /api/protected routes."
+        
+        For "Hide memory tab":  
+        ❌ Bad: "Update UI"
+        ✅ Good: "Modify the main navigation component to hide the memory tab. Update CSS/styling to make the task tab take full width. Ensure responsive design works on mobile. Update any related navigation logic and maintain accessibility standards."
+        
+        For "User dashboard":
+        ❌ Bad: "Create dashboard"  
+        ✅ Good: "Build a React dashboard component with user stats, recent activity feed, and quick actions. Fetch data from /api/user/dashboard endpoint. Include loading states, error handling, and responsive grid layout. Add charts using Chart.js for data visualization."
+        
+        USER MESSAGE: "{self.user_message}"
+        PROJECT TECH STACK: {self.project_context.get('tech_stack', 'Unknown')}
+        
+        Return JSON with task suggestions (not immediate creation):
         {{
-            "response_type": "vague_discussion_pushback|specification_pushback|task_breakdown_and_prompt|testing_strategy|memory_storage",
+            "response_type": "task_suggestion|vague_discussion_pushback|specification_pushback|testing_strategy|memory_storage",
             "response_content": {{
                 "understanding_statement": "I understand you want to...",
                 "main_guidance": "specific guidance or questions",
                 "context_integration": "how to reference project context",
                 "next_steps": "what happens next"
             }},
-            "task_management": {{
-                "tasks_to_create": [
+            "task_suggestions": {{
+                "suggested_tasks": [
                     {{
-                        "title": "task title",
-                        "description": "task description",
+                        "title": "Specific task title",
+                        "description": "Detailed, implementation-ready description with technical specifics, frameworks, file details, and step-by-step guidance",
                         "priority": "high|medium|low"
                     }}
                 ],
-                "should_create_tasks": true/false
+                "should_suggest_tasks": true/false,
+                "confirmation_message": "Would you like me to create these tasks for you?"
+            }},
+            "task_management": {{
+                "should_create_tasks": false  // Never immediately create
             }},
             "memory_storage": {{
                 "memories_to_create": [
@@ -214,9 +249,9 @@ class SpecificationPlanningPhase:
                 "should_store_memories": true/false
             }},
             "cursor_prompt": {{
-                "should_generate": true/false,
-                "prompt_content": "full cursor prompt if ready",
-                "implementation_context": "technical context for implementation"
+                "should_generate": false,
+                "prompt_content": "",
+                "implementation_context": ""
             }},
             "confidence": 0.8,
             "progression_ready": true/false
@@ -366,9 +401,11 @@ class SpecificationPlanningPhase:
     
     def _create_fallback_action_plan(self, stage_analysis: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Create fallback action plan when LLM fails
+        Create fallback action plan with task suggestions instead of immediate creation
         """
         stage = stage_analysis.get("conversation_stage", "vague_discussion")
+        user_message = getattr(self, 'user_message', '')
+        tech_stack = self.project_context.get('tech_stack', 'Unknown')
         memory_opportunities = stage_analysis.get("memory_opportunities", [])
         
         # Determine response type based on stage
@@ -379,7 +416,7 @@ class SpecificationPlanningPhase:
             response_type = "specification_pushback"
             guidance = "Let me help you specify the implementation details. What are your technical preferences?"
         elif stage == "detailed_specification":
-            response_type = "task_breakdown_and_prompt"
+            response_type = "task_suggestion"
             guidance = "Great! I'll help you break this down into implementable tasks."
         elif stage == "post_implementation":
             response_type = "testing_strategy"
@@ -388,26 +425,62 @@ class SpecificationPlanningPhase:
             response_type = "vague_discussion_pushback"
             guidance = "Let me help you clarify your requirements. Could you provide more specific details?"
         
-        # Generate sample tasks for detailed specifications
-        tasks_to_create = []
+        # Generate task suggestions for detailed specifications
+        suggested_tasks = []
+        should_suggest_tasks = False
+        
         if stage == "detailed_specification":
-            tasks_to_create = [
-                {
-                    "title": "Setup project structure",
-                    "description": "Create the basic project structure and configuration",
-                    "priority": "high"
-                },
-                {
-                    "title": "Implement core functionality",
-                    "description": "Build the main feature components",
-                    "priority": "high"
-                },
-                {
-                    "title": "Add tests",
-                    "description": "Create comprehensive test coverage",
-                    "priority": "medium"
-                }
-            ]
+            should_suggest_tasks = True
+            
+            if 'authentication' in user_message.lower() or 'auth' in user_message.lower():
+                suggested_tasks = [
+                    {
+                        "title": "Setup authentication middleware",
+                        "description": f"Create authentication middleware for {tech_stack}. Implement token validation, user session management, and route protection. Based on user request: '{user_message}'. Include error handling for invalid credentials and integration with existing user model.",
+                        "priority": "high"
+                    },
+                    {
+                        "title": "Build authentication UI components", 
+                        "description": f"Create login/registration forms using {tech_stack} frontend framework. Include form validation, loading states, error messaging, and responsive design. Connect to authentication API endpoints and handle success/error responses.",
+                        "priority": "high"
+                    },
+                    {
+                        "title": "Add protected route system",
+                        "description": f"Implement route protection system that checks authentication status. Redirect unauthenticated users to login page. Create higher-order components or guards for protecting sensitive routes in {tech_stack}.",
+                        "priority": "medium"
+                    }
+                ]
+            elif 'ui' in user_message.lower() or 'interface' in user_message.lower() or 'tab' in user_message.lower():
+                suggested_tasks = [
+                    {
+                        "title": "Modify UI layout and navigation",
+                        "description": f"Update the main navigation component based on request: '{user_message}'. Modify CSS/styling, adjust responsive breakpoints, and ensure accessibility standards. Update any related navigation logic and maintain consistent design system.",
+                        "priority": "medium"
+                    },
+                    {
+                        "title": "Test UI changes across devices",
+                        "description": f"Test UI modifications on desktop, tablet, and mobile devices. Verify responsive design, accessibility compliance, and cross-browser compatibility. Check navigation flow and user experience impacts.",
+                        "priority": "low"
+                    }
+                ]
+            elif 'api' in user_message.lower() or 'endpoint' in user_message.lower():
+                suggested_tasks = [
+                    {
+                        "title": "Create API endpoints",
+                        "description": f"Build REST API endpoints using {tech_stack} backend framework. Based on request: '{user_message}'. Include request validation, error handling, proper HTTP status codes, and API documentation. Connect to database models and implement business logic.",
+                        "priority": "high"
+                    }
+                ]
+            else:
+                # Generic but implementation-ready fallback
+                feature_name = user_message[:50] + "..." if len(user_message) > 50 else user_message
+                suggested_tasks = [
+                    {
+                        "title": f"Implement {feature_name}",
+                        "description": f"Implement the requested feature using {tech_stack}. User request: '{user_message}'. Break down into specific components, include error handling, ensure integration with existing codebase, and follow project coding standards.",
+                        "priority": "medium"
+                    }
+                ]
         
         return {
             "response_type": response_type,
@@ -417,16 +490,20 @@ class SpecificationPlanningPhase:
                 "context_integration": "I'll consider your project context when helping",
                 "next_steps": "We'll work through the details step by step"
             },
+            "task_suggestions": {
+                "suggested_tasks": suggested_tasks,
+                "should_suggest_tasks": should_suggest_tasks,
+                "confirmation_message": "Would you like me to create these tasks for you?"
+            },
             "task_management": {
-                "tasks_to_create": tasks_to_create,
-                "should_create_tasks": stage == "detailed_specification"
+                "should_create_tasks": False  # NEVER immediately create in fallback
             },
             "memory_storage": {
                 "memories_to_create": [],
                 "should_store_memories": len(memory_opportunities) > 0
             },
             "cursor_prompt": {
-                "should_generate": stage == "detailed_specification",
+                "should_generate": False,  # No separate prompt needed - description IS the prompt
                 "prompt_content": "",
                 "implementation_context": ""
             },
@@ -493,32 +570,32 @@ class DevelopmentAgent:
                                    project_memories: List[Memory], tasks: List[Task], 
                                    project_context: Dict[str, Any]) -> str:
         """
-        Process message with development-focused planning phase and tool execution
+        Process message with confirmation-based task creation
         """
-        # Phase 1: Planning
+        # FIRST: Check if this is a response to previous task suggestions
+        if self._is_task_confirmation(user_message, conversation_history):
+            return await self._handle_task_confirmation(
+                user_message, conversation_history, project_memories, tasks, project_context
+            )
+        
+        # REGULAR: Normal planning for new requests
         self.planning_phase = SpecificationPlanningPhase(
             user_message, conversation_history, project_memories, tasks, project_context
         )
         
         plan = await self.planning_phase.analyze_and_plan()
         
-        # Phase 2: Execute plan actions (ACTUALLY CREATE TASKS/MEMORIES)
-        project_id = project_context.get("id", "default")
-        execution_results = await self._execute_plan_actions(plan, project_id)
-        
-        # Phase 3: Generate response based on plan AND execution results
-        if plan["response_type"] == "vague_discussion_pushback":
-            response = await self._provide_vague_discussion_pushback(plan)
+        # Generate response based on plan type
+        if plan["response_type"] == "task_suggestion":
+            return await self._provide_task_suggestions(plan)
+        elif plan["response_type"] == "vague_discussion_pushback":
+            return await self._provide_vague_discussion_pushback(plan)
         elif plan["response_type"] == "specification_pushback":
-            response = await self._provide_specification_pushback(plan)
-        elif plan["response_type"] == "task_breakdown_and_prompt":
-            response = await self._provide_task_breakdown_and_prompt(plan, execution_results)
+            return await self._provide_specification_pushback(plan)
         elif plan["response_type"] == "testing_strategy":
-            response = await self._provide_testing_strategy(plan, execution_results)
+            return await self._provide_testing_strategy(plan)
         else:
-            response = await self._provide_memory_storage(plan, execution_results)
-        
-        return response
+            return await self._provide_memory_storage(plan)
     
     async def _execute_plan_actions(self, plan: Dict[str, Any], project_id: str) -> Dict[str, Any]:
         """
@@ -536,14 +613,25 @@ class DevelopmentAgent:
             if task_management.get("should_create_tasks", False):
                 tasks_to_create = task_management.get("tasks_to_create", [])
                 
+                # 🔍 DEBUG: Log what tasks the planning phase created
+                logger.info(f"Planning phase wants to create {len(tasks_to_create)} tasks:")
+                for i, task_data in enumerate(tasks_to_create):
+                    logger.info(f"Task {i+1}: {json.dumps(task_data, indent=2)}")
+                
                 for task_data in tasks_to_create:
                     try:
+                        # 🔍 DEBUG: Log parameters being passed to tool
+                        params = {
+                            "title": task_data.get("title", "Untitled Task"),
+                            "description": task_data.get("description", ""),  # This should be implementation-ready
+                            "priority": task_data.get("priority", "medium"),
+                            "project_id": project_id
+                        }
+                        logger.info(f"Calling create_task with params: {params}")
+                        
                         result = self.tool_registry.execute_tool(
                             "create_task",
-                            title=task_data.get("title", "Untitled Task"),
-                            description=task_data.get("description", ""),
-                            priority=task_data.get("priority", "medium"),
-                            project_id=project_id
+                            **params
                         )
                         
                         if result.get("success"):
@@ -584,6 +672,178 @@ class DevelopmentAgent:
             execution_results["errors"].append(f"Plan execution error: {str(e)}")
             return execution_results
     
+    def _is_task_confirmation(self, user_message: str, conversation_history: List[Dict]) -> bool:
+        """
+        Detect if user is responding to a task creation suggestion
+        """
+        message_lower = user_message.lower().strip()
+        
+        # Look for confirmation words
+        confirmation_indicators = [
+            "yes", "y", "yeah", "yep", "sure", "ok", "okay", 
+            "create them", "go ahead", "do it", "make them", "add them"
+        ]
+        
+        decline_indicators = [
+            "no", "nope", "not yet", "modify", "change", "different"
+        ]
+        
+        # Check if recent conversation included task suggestions
+        recent_messages = conversation_history[-2:] if conversation_history else []
+        has_task_suggestions = any(
+            "Would you like me to create these tasks" in msg.get("content", "") or
+            "Reply with 'yes' to create them" in msg.get("content", "")
+            for msg in recent_messages
+        )
+        
+        is_confirmation = any(phrase in message_lower for phrase in confirmation_indicators)
+        is_decline = any(phrase in message_lower for phrase in decline_indicators)
+        
+        return has_task_suggestions and (is_confirmation or is_decline)
+
+    async def _handle_task_confirmation(self, user_message: str, conversation_history: List[Dict], 
+                                      project_memories: List[Memory], tasks: List[Task], 
+                                      project_context: Dict[str, Any]) -> str:
+        """
+        Handle user's response to task suggestions
+        """
+        message_lower = user_message.lower().strip()
+        
+        # Check if user declined
+        decline_indicators = ["no", "nope", "not yet", "modify", "change", "different"]
+        if any(word in message_lower for word in decline_indicators):
+            return """I understand you'd like to modify the suggestions. 
+
+What would you like to change? For example:
+• Different task breakdown or organization
+• More specific or detailed descriptions  
+• Different priorities or scope
+• Additional technical requirements
+
+Just let me know what adjustments you'd like!"""
+        
+        # User confirmed - extract suggested tasks from conversation history
+        suggested_tasks = self._extract_suggested_tasks_from_history(conversation_history)
+        
+        if not suggested_tasks:
+            return "I don't see any previously suggested tasks to create. Could you clarify what you'd like me to create?"
+        
+        # Now actually create the tasks using the existing planning system
+        # Create a plan that will execute task creation
+        execution_plan = {
+            "task_management": {
+                "tasks_to_create": suggested_tasks,
+                "should_create_tasks": True
+            },
+            "memory_storage": {
+                "should_store_memories": False
+            }
+        }
+        
+        # Execute the plan to create tasks
+        project_id = project_context.get("id", "default")
+        execution_results = await self._execute_plan_actions(execution_plan, project_id)
+        
+        # Generate success response
+        return await self._generate_task_creation_confirmation(execution_results)
+
+    def _extract_suggested_tasks_from_history(self, conversation_history: List[Dict]) -> List[Dict]:
+        """
+        Extract the tasks that were previously suggested from conversation history
+        """
+        # Look through recent conversation for suggested tasks
+        # In a real implementation, you'd want to store suggested tasks in session state
+        # For now, return a simple structure that can be expanded
+        
+        for msg in reversed(conversation_history[-3:]):
+            content = msg.get("content", "")
+            if "I can break this down into" in content and "implementation tasks" in content:
+                # Parse the suggested tasks from the message
+                # This is a simplified parser - you'd want more robust parsing
+                tasks = []
+                lines = content.split('\n')
+                current_task = None
+                
+                for line in lines:
+                    line = line.strip()
+                    if line.startswith('**') and '. ' in line and line.endswith('**'):
+                        # Extract task title
+                        title_part = line.replace('**', '')
+                        if '. ' in title_part:
+                            title = title_part.split('. ', 1)[1]
+                            current_task = {
+                                "title": title,
+                                "description": "",
+                                "priority": "medium"
+                            }
+                    elif current_task and line and not line.startswith('*'):
+                        # This might be task description
+                        current_task["description"] = line
+                        tasks.append(current_task)
+                        current_task = None
+                
+                return tasks
+        
+        return []
+
+    async def _generate_task_creation_confirmation(self, execution_results: Dict[str, Any]) -> str:
+        """
+        Generate confirmation message after tasks are created following Samurai Agent protocol
+        """
+        tasks_created = execution_results.get("tasks_created", [])
+        errors = execution_results.get("errors", [])
+        
+        if not tasks_created:
+            if errors:
+                return f"❌ I encountered issues creating the tasks: {'; '.join(errors[:2])}"
+            else:
+                return "❌ No tasks were created. Please try again."
+        
+        response_parts = []
+        
+        # Check if this is a single task with exact user wording
+        if len(tasks_created) == 1:
+            task = tasks_created[0]
+            task_message = task.get('message', 'Task created')
+            
+            response_parts.append("Perfect! I've created a new task:")
+            
+            # Extract task title from the message
+            if "Created task:" in task_message:
+                title = task_message.split("Created task:")[1].strip().strip("'")
+                response_parts.append(f"Title: \"{title}\"")
+            elif "Created task" in task_message:
+                title_match = task_message.split("Created task")[1].strip()
+                if title_match.startswith("'") and title_match.endswith("'"):
+                    title = title_match[1:-1]
+                    response_parts.append(f"Title: \"{title}\"")
+                else:
+                    response_parts.append(f"Title: \"{title_match}\"")
+            else:
+                response_parts.append(f"Title: \"{task_message}\"")
+            
+            # Add description if available
+            if 'description' in task:
+                response_parts.append(f"Description: \"{task['description']}\"")
+            
+            response_parts.append("Status: ✅ Created!")
+        else:
+            # Multiple tasks
+            response_parts.append(f"✅ Perfect! I've created {len(tasks_created)} tasks for you:\n")
+            
+            for task in tasks_created:
+                response_parts.append(task.get('message', 'Task created'))
+            
+            response_parts.append(f"\n🎉 All {len(tasks_created)} tasks are now in your project and ready for implementation!")
+            
+            if len(tasks_created) > 1:
+                response_parts.append("\n💡 *You can now work on these tasks individually or ask me to help enhance any specific task descriptions.*")
+        
+        if errors:
+            response_parts.append(f"\n⚠️ Note: {len(errors)} tasks could not be created due to errors.")
+        
+        return "\n".join(response_parts)
+
     async def _provide_vague_discussion_pushback(self, plan: Dict[str, Any]) -> str:
         """
         Provide push-back questions for vague discussions
@@ -655,33 +915,105 @@ class DevelopmentAgent:
             logger.error(f"Error providing specification pushback: {e}")
             return f"{plan['response_content']['understanding_statement']}. {plan['response_content']['main_guidance']}"
     
+    async def _provide_task_suggestions(self, plan: Dict[str, Any]) -> str:
+        """
+        Show suggested tasks and ask user for confirmation before creating
+        Following Samurai Agent protocol for exact user wording
+        """
+        task_suggestions = plan.get("task_suggestions", {})
+        suggested_tasks = task_suggestions.get("suggested_tasks", [])
+        
+        if not suggested_tasks:
+            return f"{plan['response_content']['understanding_statement']}. {plan['response_content']['main_guidance']}"
+        
+        # Build suggestion response
+        response_parts = []
+        response_parts.append(f"{plan['response_content']['understanding_statement']}.")
+        
+        # Check if this is a single task with exact user wording
+        if len(suggested_tasks) == 1:
+            task = suggested_tasks[0]
+            title = task.get("title", "Untitled Task")
+            
+            # If the title looks like exact user wording (not a generic task)
+            if not any(generic_word in title.lower() for generic_word in ["setup", "implement", "create", "build", "add"]):
+                response_parts.append(f"\nI can create a task with your exact wording:")
+                response_parts.append(f"**Task Title:** \"{title}\"")
+                
+                description = task.get("description", "")
+                if description and description != f"Task created from user request":
+                    response_parts.append(f"**Description:** {description}")
+                
+                # Ask for confirmation with exact wording
+                confirmation_msg = task_suggestions.get("confirmation_message", f"Just to confirm, you want me to create a task titled '{title}' - is that right?")
+                response_parts.append(f"\n**{confirmation_msg}**")
+                response_parts.append("💡 *Reply with 'yes' to create it, or ask me to modify it first.*")
+            else:
+                # Multiple tasks or generic task - use original format
+                response_parts.append(f"\nI can break this down into {len(suggested_tasks)} implementation tasks:\n")
+                
+                # Show each suggested task
+                for i, task in enumerate(suggested_tasks, 1):
+                    response_parts.append(f"**{i}. {task.get('title', 'Untitled Task')}**")
+                    description = task.get("description", "")
+                    # Show preview of description (first 100 chars)
+                    preview = description[:100] + "..." if len(description) > 100 else description
+                    response_parts.append(f"   {preview}")
+                    response_parts.append("")  # Empty line
+                
+                # Ask for confirmation
+                confirmation_msg = task_suggestions.get("confirmation_message", "Would you like me to create these tasks for you?")
+                response_parts.append(f"**{confirmation_msg}**")
+                response_parts.append("💡 *Reply with 'yes' to create them, or ask me to modify them first.*")
+        else:
+            # Multiple tasks - use original format
+            response_parts.append(f"\nI can break this down into {len(suggested_tasks)} implementation tasks:\n")
+            
+            # Show each suggested task
+            for i, task in enumerate(suggested_tasks, 1):
+                response_parts.append(f"**{i}. {task.get('title', 'Untitled Task')}**")
+                description = task.get("description", "")
+                # Show preview of description (first 100 chars)
+                preview = description[:100] + "..." if len(description) > 100 else description
+                response_parts.append(f"   {preview}")
+                response_parts.append("")  # Empty line
+            
+            # Ask for confirmation
+            confirmation_msg = task_suggestions.get("confirmation_message", "Would you like me to create these tasks for you?")
+            response_parts.append(f"**{confirmation_msg}**")
+            response_parts.append("💡 *Reply with 'yes' to create them, or ask me to modify them first.*")
+        
+        return "\n".join(response_parts)
+
     async def _provide_task_breakdown_and_prompt(self, plan: Dict[str, Any], execution_results: Dict[str, Any] = None) -> str:
         """
-        Break down complete specifications into tasks and generate Cursor prompt with actual results
+        Break down complete specifications into tasks with implementation-ready descriptions
         """
         if execution_results is None:
             execution_results = {"tasks_created": [], "memories_created": [], "errors": []}
         
         tasks_created = execution_results.get("tasks_created", [])
-        memories_created = execution_results.get("memories_created", [])
-        errors = execution_results.get("errors", [])
         
-        # If tasks were actually created, confirm it in the response
         if tasks_created:
             task_confirmations = [f"✅ {task.get('message', 'Task created')}" for task in tasks_created]
             confirmation_text = "\n".join(task_confirmations)
             
-            response = f"""Perfect! I've analyzed your complete specification and created the implementation tasks:
+            response = f"""Perfect! I've analyzed your complete specification and created implementation-ready tasks:
 
 {confirmation_text}
 
-You now have {len(tasks_created)} concrete tasks ready for implementation. Each task is designed to be completed in 30-60 minutes and is suitable for AI coding tools like Cursor.
+You now have {len(tasks_created)} concrete tasks with detailed implementation guidance. Each task description includes:
+• Technical specifications and frameworks to use
+• Step-by-step implementation details  
+• Error handling and integration requirements
+• Context from your project's tech stack
+
+These descriptions are ready to copy directly into Cursor or other AI coding tools for implementation.
 
 {plan['response_content']['main_guidance']}"""
             
             return response
         else:
-            # Fallback if no tasks were created
             return f"{plan['response_content']['understanding_statement']}. {plan['response_content']['main_guidance']}"
     
     async def _provide_testing_strategy(self, plan: Dict[str, Any], execution_results: Dict[str, Any] = None) -> str:

@@ -4,8 +4,8 @@ import './ProgressDisplay.css'
 interface ProgressStep {
   step: string
   message: string
-  details?: Record<string, any>
-  timestamp: string
+  details?: string
+  timestamp?: string
 }
 
 interface ProgressDisplayProps {
@@ -27,13 +27,12 @@ const ProgressDisplay: React.FC<ProgressDisplayProps> = ({ progress, isVisible }
   
   const getStepIcon = (step: string) => {
     const icons: Record<string, string> = {
-      analyzing_request: '🧠',
-      detecting_intent: '🎯',
-      gathering_context: '📚',
-      planning_actions: '📋',
-      searching_data: '🔍',
-      executing_tools: '⚙️',
-      generating_response: '💬',
+      analyzing: '🧠',
+      context: '📚',
+      planning: '📋',
+      validation: '✅',
+      execution: '⚙️',
+      memory: '💾',
       complete: '✅',
       error: '❌'
     }
@@ -42,13 +41,12 @@ const ProgressDisplay: React.FC<ProgressDisplayProps> = ({ progress, isVisible }
   
   const getStepColor = (step: string) => {
     const colors: Record<string, string> = {
-      analyzing_request: 'purple',
-      detecting_intent: 'green',
-      gathering_context: 'red',
-      planning_actions: 'orange',
-      searching_data: 'blue',
-      executing_tools: 'cyan',
-      generating_response: 'purple',
+      analyzing: 'purple',
+      context: 'blue',
+      planning: 'orange',
+      validation: 'green',
+      execution: 'cyan',
+      memory: 'yellow',
       complete: 'green',
       error: 'red'
     }
@@ -75,38 +73,15 @@ const ProgressDisplay: React.FC<ProgressDisplayProps> = ({ progress, isVisible }
             <div className="step-content">
               <div className="step-message">{step.message}</div>
               
-              {step.details && Object.keys(step.details).length > 0 && (
+              {step.details && (
                 <div className="step-details">
-                  {step.details.tool && (
-                    <span className="detail-badge tool">{step.details.tool}</span>
-                  )}
-                  {step.details.search_query && (
-                    <span className="detail-badge search">"{step.details.search_query}"</span>
-                  )}
-                  {step.details.task_title && (
-                    <span className="detail-badge task">{step.details.task_title}</span>
-                  )}
-                  {step.details.memory_title && (
-                    <span className="detail-badge memory">{step.details.memory_title}</span>
-                  )}
-                  {step.details.new_status && (
-                    <span className="detail-badge status">{step.details.new_status}</span>
-                  )}
-                  {step.details.tool_count && (
-                    <span className="detail-badge count">{step.details.tool_count} tools</span>
-                  )}
-                  {step.details.intent && (
-                    <span className="detail-badge intent">{step.details.intent}</span>
-                  )}
-                  {step.details.confidence && (
-                    <span className="detail-badge confidence">{Math.round(step.details.confidence * 100)}%</span>
-                  )}
+                  <span className="detail-text">{step.details}</span>
                 </div>
               )}
             </div>
             
             <div className="step-timestamp">
-              {formatTime(step.timestamp)}
+              {step.timestamp ? formatTime(step.timestamp) : 'Now'}
             </div>
           </div>
         ))}

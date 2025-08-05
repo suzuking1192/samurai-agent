@@ -68,5 +68,26 @@
     "description": "A demonstration project for vector-enhanced context engineering",
     "tech_stack": "Python, FastAPI, PostgreSQL, JWT, bcrypt",
     "created_at": "2025-08-04 17:40:31.873817"
+  },
+  {
+    "id": "1ecc2dc3-07e9-4dc1-80c4-43c323084be7",
+    "name": "Test Project",
+    "description": "Test project for backend server verification",
+    "tech_stack": "React, Node.js, PostgreSQL",
+    "created_at": "2025-08-05 09:39:41.146216"
+  },
+  {
+    "id": "eb281a8b-8f15-40ba-b140-b814870c566a",
+    "name": "Test API Task Creation",
+    "description": "Test project for API task creation",
+    "tech_stack": "React, Node.js, PostgreSQL",
+    "created_at": "2025-08-05 09:57:02.446709"
+  },
+  {
+    "id": "0627397a-b5f0-478a-bc3b-0333d7221966",
+    "name": "test-project",
+    "description": "Test project for UX fixes",
+    "tech_stack": "Python, FastAPI, React",
+    "created_at": "2025-08-05 14:30:49.067491"
   }
 ]

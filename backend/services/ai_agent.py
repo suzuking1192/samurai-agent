@@ -15,6 +15,7 @@ try:
     from .tool_calling_agent import EnhancedSamuraiAgent
     from .consolidated_memory import ConsolidatedMemoryService
     from .vector_context_service import vector_context_service
+    from .planning_first_agent import planning_first_agent
     from models import Task, Memory, Project, MemoryCategory, ChatMessage
 except ImportError:
     # Fallback for when running the file directly
@@ -29,6 +30,7 @@ except ImportError:
     from tool_calling_agent import EnhancedSamuraiAgent
     from consolidated_memory import ConsolidatedMemoryService
     from vector_context_service import vector_context_service
+    from planning_first_agent import planning_first_agent
     from models import Task, Memory, Project, MemoryCategory, ChatMessage
 
 logger = logging.getLogger(__name__)
@@ -44,12 +46,62 @@ class SamuraiAgent:
         self.enhanced_agent = EnhancedSamuraiAgent()
         self.consolidated_memory_service = ConsolidatedMemoryService()
     
-    async def process_message(self, message: str, project_id: str, project_context: dict, session_id: str = None) -> dict:
-        """Enhanced message processing with vector-enhanced context understanding and tool calling capabilities"""
+    async def process_message(self, message: str, project_id: str, project_context: dict, session_id: str = None, conversation_history: List[ChatMessage] = None) -> dict:
+        """
+        Enhanced message processing with planning-first architecture.
+        
+        This method now uses the new planning-first approach that:
+        1. Analyzes user intent with full conversation context
+        2. Creates comprehensive execution plans
+        3. Validates and optimizes plans before execution
+        4. Executes plans with conversation-aware tool calling
+        5. Maintains conversation continuity across interactions
+        """
+        
+        try:
+            logger.info(f"Processing message with planning-first architecture: {message[:100]}...")
+            
+            # Use the planning-first agent for all message processing
+            result = await planning_first_agent.process_user_message(
+                message, project_id, project_context, session_id, conversation_history
+            )
+            
+            # Convert planning-first response to the expected format
+            return {
+                "type": result.get("type", "planning_first_response"),
+                "response": result.get("response", "I've processed your request."),
+                "tool_calls_made": result.get("steps_completed", 0),
+                "tool_results": result.get("tool_results", []),
+                "context_used": result.get("context_used", ""),
+                "vector_context_summary": {
+                    "plan_type": result.get("plan_type", "unknown"),
+                    "confidence_score": result.get("confidence_score", 0.0),
+                    "execution_time": result.get("execution_time", 0.0)
+                },
+                "plan_executed": result.get("plan_executed"),
+                "total_steps": result.get("total_steps", 0)
+            }
+                
+        except Exception as e:
+            logger.error(f"Error processing message with planning-first architecture: {e}")
+            
+            # Fallback to legacy processing if planning-first fails
+            logger.info("Falling back to legacy processing due to planning-first error")
+            return await self._legacy_process_message(message, project_id, project_context, session_id, conversation_history)
+    
+    async def _legacy_process_message(self, message: str, project_id: str, project_context: dict, session_id: str = None, conversation_history: List[ChatMessage] = None) -> dict:
+        """Legacy message processing as fallback when planning-first fails."""
         
         try:
             # Get all messages from current session for full conversation context
-            session_messages = self._get_session_messages(project_id, session_id)
+            if conversation_history is not None:
+                # Use provided conversation history (ChatMessage objects)
+                session_messages = conversation_history
+                logger.info(f"Using provided conversation history with {len(session_messages)} messages")
+            else:
+                # Get session messages from file service (production)
+                session_messages = self._get_session_messages(project_id, session_id)
+                logger.info(f"Loaded {len(session_messages)} messages from file service")
             
             # Generate vector-enhanced context using full conversation
             vector_context = await self._build_vector_enhanced_context(
@@ -77,17 +129,86 @@ class SamuraiAgent:
                 )
                 response_type = "tool_response"
             else:
-                # Use enhanced development agent for regular processing with vector context
-                # Get conversation history, memories, and tasks for the development agent
-                conversation_history = self._get_conversation_history_for_planning(project_id, session_id)
-                project_memories = self._retrieve_relevant_memories(message, project_id)
-                tasks = self._retrieve_relevant_tasks(message, project_id)
+                # Check if this is a task creation request or confirmation
+                task_creation_indicators = [
+                    "add this as a task", "add as a task", "create a task for", "make this a task",
+                    "add task", "create task", "make task", "new task"
+                ]
                 
-                # Use the enhanced development agent with tool execution
-                response = await self.development_agent.process_user_message(
-                    message, conversation_history, project_memories, tasks, project_context
-                )
-                response_type = "development_response"
+                # Check for task confirmation
+                task_confirmation_indicators = [
+                    "yes", "y", "yeah", "yep", "sure", "ok", "okay", 
+                    "create them", "go ahead", "do it", "make them", "add them"
+                ]
+                
+                is_task_creation_request = any(indicator in message.lower() for indicator in task_creation_indicators)
+                is_task_confirmation = any(indicator in message.lower() for indicator in task_confirmation_indicators)
+                
+                if is_task_creation_request or is_task_confirmation:
+                    # Use EnhancedSamuraiAgent for task creation requests and confirmations
+                    if is_task_creation_request:
+                        logger.info("Detected task creation request, using EnhancedSamuraiAgent")
+                    else:
+                        logger.info("Detected task confirmation, using EnhancedSamuraiAgent")
+                    
+                    # Use the provided conversation history or get from file service
+                    if conversation_history is not None:
+                        session_messages = conversation_history
+                        logger.info(f"Using provided conversation history for task creation: {len(session_messages)} messages")
+                    else:
+                        session_messages = self._get_session_messages(project_id, session_id)
+                        logger.info(f"Loaded session messages for task creation: {len(session_messages)} messages")
+                    
+                    # Convert session messages to the format expected by ToolCallingSamuraiAgent
+                    formatted_history = []
+                    for msg in session_messages:
+                        formatted_history.append({
+                            "role": "user" if hasattr(msg, 'message') else "assistant",
+                            "content": msg.message if hasattr(msg, 'message') else msg.response,
+                            "timestamp": msg.created_at.isoformat() if hasattr(msg, 'created_at') else None
+                        })
+                    
+                    # Use the tool calling agent directly with proper conversation history
+                    project_memories = self._retrieve_relevant_memories(message, project_id)
+                    tasks = self._retrieve_relevant_tasks(message, project_id)
+                    
+                    result = await self.enhanced_agent.tool_calling_agent.process_user_message(
+                        message, project_id, formatted_history, project_memories, tasks, project_context
+                    )
+                    
+                    response = result.get("response", "I encountered an issue processing your task creation request.")
+                    response_type = "task_creation"
+                else:
+                    # Use enhanced development agent for regular processing with vector context
+                    # Use provided conversation history or get from file service
+                    if conversation_history is not None:
+                        # Convert ChatMessage objects to the format expected by development agent
+                        formatted_history = []
+                        for msg in conversation_history:
+                            formatted_history.append({
+                                "role": "user",
+                                "content": msg.message,
+                                "timestamp": msg.created_at.isoformat() if hasattr(msg, 'created_at') else None
+                            })
+                            if msg.response:
+                                formatted_history.append({
+                                    "role": "assistant", 
+                                    "content": msg.response,
+                                    "timestamp": msg.created_at.isoformat() if hasattr(msg, 'created_at') else None
+                                })
+                        logger.info(f"Using provided conversation history for development agent: {len(formatted_history)} messages")
+                    else:
+                        formatted_history = self._get_conversation_history_for_planning(project_id, session_id)
+                        logger.info(f"Loaded conversation history for development agent: {len(formatted_history)} messages")
+                    
+                    project_memories = self._retrieve_relevant_memories(message, project_id)
+                    tasks = self._retrieve_relevant_tasks(message, project_id)
+                    
+                    # Use the enhanced development agent with tool execution
+                    response = await self.development_agent.process_user_message(
+                        message, formatted_history, project_memories, tasks, project_context
+                    )
+                    response_type = "development_response"
             
             return {
                 "type": response_type,
@@ -99,7 +220,7 @@ class SamuraiAgent:
             }
                 
         except Exception as e:
-            logger.error(f"Error processing message: {e}")
+            logger.error(f"Error in legacy message processing: {e}")
             return {
                 "type": "error",
                 "response": "I encountered an error processing your message. Please try again.",
