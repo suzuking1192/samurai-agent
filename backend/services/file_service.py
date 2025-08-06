@@ -12,6 +12,7 @@ from contextlib import contextmanager
 # Import models
 try:
     from models import Project, Memory, Task, ChatMessage
+    from .embedding_service import embedding_service
 except ImportError:
     # Fallback for when running the file directly
     import sys
@@ -19,6 +20,7 @@ except ImportError:
     # Add parent directory to path
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from models import Project, Memory, Task, ChatMessage
+    from services.embedding_service import embedding_service
 
 # Constants
 DATA_DIR = "data"
@@ -54,55 +56,61 @@ class FileService:
     @contextmanager
     def _atomic_write(self, file_path: Path):
         """Context manager for atomic file writes."""
-        temp_file = None
+        # Create backup before writing
+        if file_path.exists():
+            self._create_backup(file_path)
+        
+        # Create temporary file
+        temp_file = file_path.with_suffix('.tmp')
         try:
-            # Ensure the directory exists
-            file_path.parent.mkdir(parents=True, exist_ok=True)
-            
-            # Create temporary file in the same directory
-            temp_file = file_path.with_suffix('.tmp')
-            yield temp_file
-            
-            # Atomic rename
+            with open(temp_file, 'w', encoding='utf-8') as f:
+                yield f
+            # Atomic move
             temp_file.replace(file_path)
-            logger.debug(f"Successfully wrote {file_path}")
-            
         except Exception as e:
-            logger.error(f"Error during atomic write to {file_path}: {e}")
-            if temp_file and temp_file.exists():
+            # Clean up temp file on error
+            if temp_file.exists():
                 temp_file.unlink()
-            raise
+            raise e
     
     def _create_backup(self, file_path: Path) -> None:
         """Create a backup of the file before modification."""
-        if not file_path.exists():
-            return
-        
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_name = f"{file_path.stem}_{timestamp}{file_path.suffix}"
-        backup_path = self.backup_dir / backup_name
-        
         try:
+            if not file_path.exists():
+                return
+            
+            # Create backup filename with timestamp
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            backup_name = f"{file_path.stem}_{timestamp}{file_path.suffix}"
+            backup_path = self.backup_dir / backup_name
+            
+            # Copy file to backup
             shutil.copy2(file_path, backup_path)
-            logger.debug(f"Created backup: {backup_path}")
             
             # Rotate old backups
             self._rotate_backups(file_path.stem)
             
+            logger.debug(f"Created backup: {backup_path}")
         except Exception as e:
             logger.warning(f"Failed to create backup for {file_path}: {e}")
     
     def _rotate_backups(self, file_stem: str) -> None:
-        """Rotate backup files, keeping only the most recent ones."""
+        """Rotate backups to keep only the most recent ones."""
         try:
-            backup_files = list(self.backup_dir.glob(f"{file_stem}_*"))
-            backup_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
+            # Find all backups for this file
+            backup_pattern = f"{file_stem}_*"
+            backups = list(self.backup_dir.glob(backup_pattern))
             
-            # Remove old backups beyond the limit
-            for old_backup in backup_files[MAX_BACKUPS:]:
-                old_backup.unlink()
-                logger.debug(f"Removed old backup: {old_backup}")
-                
+            # Sort by modification time (newest first)
+            backups.sort(key=lambda x: x.stat().st_mtime, reverse=True)
+            
+            # Remove old backups
+            for backup in backups[MAX_BACKUPS:]:
+                try:
+                    backup.unlink()
+                    logger.debug(f"Removed old backup: {backup}")
+                except Exception as e:
+                    logger.warning(f"Failed to remove old backup {backup}: {e}")
         except Exception as e:
             logger.warning(f"Failed to rotate backups: {e}")
     
@@ -110,36 +118,30 @@ class FileService:
         """Load JSON data from file with error handling."""
         try:
             if not file_path.exists():
-                logger.info(f"File not found: {file_path}, returning empty list")
                 return []
             
             with open(file_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-                if not isinstance(data, list):
-                    logger.warning(f"Invalid JSON format in {file_path}, expected list")
-                    return []
-                return data
-                
+            
+            if not isinstance(data, list):
+                logger.warning(f"Invalid JSON structure in {file_path}, expected list")
+                return []
+            
+            return data
         except json.JSONDecodeError as e:
             logger.error(f"JSON decode error in {file_path}: {e}")
             return []
         except Exception as e:
-            logger.error(f"Error reading {file_path}: {e}")
+            logger.error(f"Error loading {file_path}: {e}")
             return []
     
     def _save_json(self, file_path: Path, data: List[Dict[str, Any]]) -> None:
-        """Save JSON data to file with atomic write and backup."""
+        """Save JSON data to file with atomic write."""
         try:
-            # Create backup before modification
-            self._create_backup(file_path)
-            
-            # Atomic write
             with self._atomic_write(file_path) as temp_file:
-                with open(temp_file, 'w', encoding='utf-8') as f:
-                    json.dump(data, f, indent=2, ensure_ascii=False, default=str)
-                    
+                json.dump(data, temp_file, indent=2, ensure_ascii=False, default=str)
         except Exception as e:
-            logger.error(f"Error saving to {file_path}: {e}")
+            logger.error(f"Error saving {file_path}: {e}")
             raise
     
     def _validate_project_data(self, data: Dict[str, Any]) -> bool:
@@ -149,23 +151,98 @@ class FileService:
     
     def _validate_memory_data(self, data: Dict[str, Any]) -> bool:
         """Validate memory data structure."""
-        required_fields = ['id', 'project_id', 'content', 'type', 'created_at']
+        required_fields = ['id', 'project_id', 'title', 'content', 'type']
         return all(field in data for field in required_fields)
     
     def _validate_task_data(self, data: Dict[str, Any]) -> bool:
         """Validate task data structure."""
-        required_fields = ['id', 'project_id', 'title', 'description', 'created_at']
+        required_fields = ['id', 'project_id', 'title', 'description']
         return all(field in data for field in required_fields)
     
     def _validate_chat_message_data(self, data: Dict[str, Any]) -> bool:
         """Validate chat message data structure."""
-        required_fields = ['id', 'project_id', 'message', 'created_at']
+        required_fields = ['id', 'project_id', 'session_id', 'message']
         return all(field in data for field in required_fields)
     
+    def _generate_task_embedding(self, task: Task) -> Task:
+        """Generate embedding for a task."""
+        try:
+            if not task.embedding:
+                # Prepare text for embedding
+                embedding_text = f"{task.title} {task.description}"
+                embedding_text = embedding_service.prepare_text_for_embedding(embedding_text)
+                
+                # Generate embedding
+                embedding = embedding_service.generate_embedding(embedding_text)
+                
+                if embedding:
+                    task.embedding = embedding
+                    task.embedding_text = embedding_text
+                    logger.debug(f"Generated embedding for task: {task.title}")
+                else:
+                    logger.warning(f"Failed to generate embedding for task: {task.title}")
+            
+        except Exception as e:
+            logger.error(f"Error generating task embedding: {e}")
+        
+        return task
+    
+    def _generate_memory_embedding(self, memory: Memory) -> Memory:
+        """Generate embedding for a memory."""
+        try:
+            if not memory.embedding:
+                # Prepare text for embedding
+                embedding_text = f"{memory.title} {memory.content}"
+                embedding_text = embedding_service.prepare_text_for_embedding(embedding_text)
+                
+                # Generate embedding
+                embedding = embedding_service.generate_embedding(embedding_text)
+                
+                if embedding:
+                    memory.embedding = embedding
+                    memory.embedding_text = embedding_text
+                    logger.debug(f"Generated embedding for memory: {memory.title}")
+                else:
+                    logger.warning(f"Failed to generate embedding for memory: {memory.title}")
+            
+        except Exception as e:
+            logger.error(f"Error generating memory embedding: {e}")
+        
+        return memory
+    
+    def _generate_chat_message_embedding(self, message: ChatMessage) -> ChatMessage:
+        """Generate embedding for a chat message."""
+        try:
+            if not message.embedding:
+                # Prepare text for embedding (combine user message and AI response)
+                content_parts = []
+                if message.message:
+                    content_parts.append(f"User: {message.message}")
+                if message.response:
+                    content_parts.append(f"Agent: {message.response}")
+                
+                embedding_text = " ".join(content_parts)
+                embedding_text = embedding_service.prepare_text_for_embedding(embedding_text)
+                
+                # Generate embedding
+                embedding = embedding_service.generate_embedding(embedding_text)
+                
+                if embedding:
+                    message.embedding = embedding
+                    message.embedding_text = embedding_text
+                    logger.debug(f"Generated embedding for chat message: {message.id}")
+                else:
+                    logger.warning(f"Failed to generate embedding for chat message: {message.id}")
+            
+        except Exception as e:
+            logger.error(f"Error generating chat message embedding: {e}")
+        
+        return message
+
     # Directory management
     def ensure_data_dir(self) -> None:
         """Ensure data directory exists."""
-        self._ensure_directories()
+        self.data_dir.mkdir(parents=True, exist_ok=True)
     
     def get_file_path(self, filename: str) -> str:
         """Get file path for a given filename."""
@@ -271,7 +348,10 @@ class FileService:
         return memories
     
     def save_memory(self, project_id: str, memory: Memory) -> None:
-        """Save a single memory for a project."""
+        """Save a single memory for a project with embedding generation."""
+        # Generate embedding if not present
+        memory = self._generate_memory_embedding(memory)
+        
         memories = self.load_memories(project_id)
         
         # Remove existing memory with same ID
@@ -283,7 +363,11 @@ class FileService:
         logger.info(f"Saved memory: {memory.id}")
     
     def save_memories(self, project_id: str, memories: List[Memory]) -> None:
-        """Save multiple memories for a project."""
+        """Save multiple memories for a project with embedding generation."""
+        # Generate embeddings for memories that don't have them
+        for memory in memories:
+            memory = self._generate_memory_embedding(memory)
+        
         file_path = self._get_project_file_path(project_id, "memories")
         self._save_json(file_path, [m.dict() for m in memories])
         logger.info(f"Saved {len(memories)} memories for project {project_id}")
@@ -326,13 +410,20 @@ class FileService:
         return tasks
     
     def save_tasks(self, project_id: str, tasks: List[Task]) -> None:
-        """Save multiple tasks for a project."""
+        """Save multiple tasks for a project with embedding generation."""
+        # Generate embeddings for tasks that don't have them
+        for task in tasks:
+            task = self._generate_task_embedding(task)
+        
         file_path = self._get_project_file_path(project_id, "tasks")
         self._save_json(file_path, [t.dict() for t in tasks])
         logger.info(f"Saved {len(tasks)} tasks for project {project_id}")
     
     def save_task(self, project_id: str, task: Task) -> None:
-        """Save a single task for a project."""
+        """Save a single task for a project with embedding generation."""
+        # Generate embedding if not present
+        task = self._generate_task_embedding(task)
+        
         tasks = self.load_tasks(project_id)
         
         # Remove existing task with same ID
@@ -370,9 +461,14 @@ class FileService:
         for task in tasks:
             if task.id == task_id:
                 task.completed = completed
-                file_path = self._get_project_file_path(project_id, "tasks")
-                self._save_json(file_path, [t.dict() for t in tasks])
-                logger.info(f"Updated task status: {task_id} -> {completed}")
+                task.status = "completed" if completed else "pending"
+                task.updated_at = datetime.utcnow()
+                
+                # Regenerate embedding if task content changed significantly
+                task = self._generate_task_embedding(task)
+                
+                self.save_tasks(project_id, tasks)
+                logger.info(f"Updated task status: {task_id} -> {'completed' if completed else 'pending'}")
                 return True
         
         logger.warning(f"Task not found for status update: {task_id}")
@@ -396,43 +492,193 @@ class FileService:
     
     # Chat operations
     def load_chat_history(self, project_id: str) -> List[ChatMessage]:
-        """Load chat history for a project."""
+        """Load all chat messages for a project with backward compatibility for legacy format."""
         self.ensure_data_dir()
         file_path = self._get_project_file_path(project_id, "chat")
         data = self._load_json(file_path)
         
         messages = []
         for item in data:
-            if self._validate_chat_message_data(item):
-                try:
-                    messages.append(ChatMessage(**item))
-                except Exception as e:
-                    logger.warning(f"Invalid chat message data: {e}")
-                    continue
+            try:
+                # Handle legacy format (role/content) vs new format (message/response)
+                if "role" in item and "content" in item:
+                    # Legacy format - convert to new format
+                    if item["role"] == "user":
+                        # User message
+                        converted_item = {
+                            "id": item.get("id", str(uuid.uuid4())),
+                            "project_id": project_id,
+                            "session_id": item.get("session_id", ""),
+                            "message": item["content"],
+                            "response": "",
+                            "created_at": item.get("timestamp", datetime.now().isoformat())
+                        }
+                    elif item["role"] == "assistant":
+                        # Assistant response - find the previous user message to pair with
+                        if messages and messages[-1].response == "":
+                            # Update the previous message's response
+                            messages[-1].response = item["content"]
+                            continue
+                        else:
+                            # Create a new message pair with empty user message
+                            converted_item = {
+                                "id": item.get("id", str(uuid.uuid4())),
+                                "project_id": project_id,
+                                "session_id": item.get("session_id", ""),
+                                "message": "",
+                                "response": item["content"],
+                                "created_at": item.get("timestamp", datetime.now().isoformat())
+                            }
+                    else:
+                        logger.warning(f"Unknown role in legacy chat message: {item['role']}")
+                        continue
+                else:
+                    # New format - validate and use as is
+                    if self._validate_chat_message_data(item):
+                        converted_item = item
+                    else:
+                        logger.warning(f"Invalid chat message data: {item}")
+                        continue
+                
+                # Create ChatMessage object
+                messages.append(ChatMessage(**converted_item))
+                
+            except Exception as e:
+                logger.warning(f"Error processing chat message: {e}, data: {item}")
+                continue
         
-        # Sort by created_at
+        # Sort by creation time
         messages.sort(key=lambda x: x.created_at)
         logger.debug(f"Loaded {len(messages)} chat messages for project {project_id}")
         return messages
     
     def load_chat_messages(self, project_id: str) -> List[ChatMessage]:
-        """Load chat messages for a project (alias for load_chat_history)."""
+        """Alias for load_chat_history for backward compatibility."""
         return self.load_chat_history(project_id)
     
     def save_chat_message(self, project_id: str, message: ChatMessage) -> None:
-        """Save a single chat message."""
+        """Save a single chat message with embedding generation."""
+        # Generate embedding if not present
+        message = self._generate_chat_message_embedding(message)
+        
         messages = self.load_chat_history(project_id)
         messages.append(message)
         
         file_path = self._get_project_file_path(project_id, "chat")
         self._save_json(file_path, [m.dict() for m in messages])
-        logger.debug(f"Saved chat message: {message.id}")
+        logger.info(f"Saved chat message: {message.id}")
     
     def save_chat_history(self, project_id: str, messages: List[ChatMessage]) -> None:
-        """Save multiple chat messages."""
+        """Save multiple chat messages with embedding generation."""
+        # Generate embeddings for messages that don't have them
+        for message in messages:
+            message = self._generate_chat_message_embedding(message)
+        
         file_path = self._get_project_file_path(project_id, "chat")
         self._save_json(file_path, [m.dict() for m in messages])
         logger.info(f"Saved {len(messages)} chat messages for project {project_id}")
+    
+    # Session management methods
+    def load_sessions(self, project_id: str) -> List['Session']:
+        """Load sessions for a project."""
+        self.ensure_data_dir()
+        file_path = self._get_project_file_path(project_id, "sessions")
+        data = self._load_json(file_path)
+        
+        sessions = []
+        for item in data:
+            try:
+                # Import Session here to avoid circular imports
+                from models import Session
+                sessions.append(Session(**item))
+            except Exception as e:
+                logger.warning(f"Invalid session data: {e}")
+                continue
+        
+        # Sort by last_activity (most recent first)
+        sessions.sort(key=lambda x: x.last_activity, reverse=True)
+        logger.debug(f"Loaded {len(sessions)} sessions for project {project_id}")
+        return sessions
+    
+    def save_session(self, project_id: str, session: 'Session') -> None:
+        """Save a single session."""
+        sessions = self.load_sessions(project_id)
+        
+        # Update existing session or add new one
+        existing_index = next((i for i, s in enumerate(sessions) if s.id == session.id), None)
+        if existing_index is not None:
+            sessions[existing_index] = session
+        else:
+            sessions.append(session)
+        
+        file_path = self._get_project_file_path(project_id, "sessions")
+        self._save_json(file_path, [s.dict() for s in sessions])
+        logger.debug(f"Saved session: {session.id}")
+    
+    def get_session_by_id(self, project_id: str, session_id: str) -> Optional['Session']:
+        """Get a session by ID."""
+        sessions = self.load_sessions(project_id)
+        return next((s for s in sessions if s.id == session_id), None)
+    
+    def get_latest_session(self, project_id: str) -> Optional['Session']:
+        """Get the most recent session for a project."""
+        sessions = self.load_sessions(project_id)
+        return sessions[0] if sessions else None
+    
+    def create_session(self, project_id: str, name: Optional[str] = None) -> 'Session':
+        """Create a new session for a project."""
+        from models import Session
+        
+        # Generate session name if not provided
+        if not name:
+            sessions = self.load_sessions(project_id)
+            session_number = len(sessions) + 1
+            name = f"Session {session_number}"
+        
+        session = Session(
+            project_id=project_id,
+            name=name
+        )
+        
+        self.save_session(project_id, session)
+        logger.info(f"Created new session: {session.id} for project {project_id}")
+        return session
+    
+    def update_session_activity(self, project_id: str, session_id: str) -> None:
+        """Update the last activity timestamp for a session."""
+        session = self.get_session_by_id(project_id, session_id)
+        if session:
+            from datetime import datetime
+            session.last_activity = datetime.now()
+            self.save_session(project_id, session)
+    
+    def load_chat_messages_by_session(self, project_id: str, session_id: str) -> List[ChatMessage]:
+        """Load chat messages for a specific session with improved error handling."""
+        messages = self.load_chat_history(project_id)
+        logger.info(f"Total messages loaded for project {project_id}: {len(messages)}")
+        
+        if not session_id:
+            logger.warning(f"Empty session_id provided for project {project_id}")
+            return []
+        
+        # Debug: Check session_id field in messages
+        for i, msg in enumerate(messages[:5]):  # Check first 5 messages
+            msg_session_id = getattr(msg, 'session_id', None)
+            logger.info(f"Message {i}: session_id = {msg_session_id}")
+        
+        # Filter messages by session_id, handling both string and None values
+        session_messages = []
+        for m in messages:
+            msg_session_id = getattr(m, 'session_id', None)
+            if msg_session_id == session_id:
+                session_messages.append(m)
+        
+        logger.info(f"Messages matching session {session_id}: {len(session_messages)}")
+        
+        # Sort by created_at
+        session_messages.sort(key=lambda x: x.created_at)
+        logger.debug(f"Loaded {len(session_messages)} messages for session {session_id}")
+        return session_messages
     
     # Utility methods
     def get_project_stats(self, project_id: str) -> Dict[str, int]:

@@ -114,3 +114,6 @@ pip-delete-this-directory.txt
 # Misc
 *.tgz
 *.tar.gz
+
+# Database and data files
+data/
