@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
-import { ChatMessage, ChatRequest, ChatResponse } from '../types'
-import { sendChatMessage, sendChatMessageWithProgress, getChatMessages } from '../services/api'
+import { ChatMessage, ChatRequest, ChatResponse, Session } from '../types'
+import { sendChatMessage, sendChatMessageWithProgress, getChatMessages, createSession, getCurrentSession, getSessionMessages, getConversationHistory } from '../services/api'
 import ProgressDisplay from './ProgressDisplay'
 
 interface ChatProps {
@@ -23,6 +23,8 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated }) => {
   const [agentActivity, setAgentActivity] = useState<string>('')
   const [notification, setNotification] = useState<{type: 'info' | 'warning' | 'error', message: string} | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false)
+  const [currentSession, setCurrentSession] = useState<Session | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const chatMessagesRef = useRef<HTMLDivElement>(null)
 
@@ -42,24 +44,71 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated }) => {
 
   useEffect(() => {
     if (projectId) {
-      loadChatMessages()
+      loadCurrentSession()
     } else {
       setMessages([])
+      setCurrentSession(null)
     }
   }, [projectId])
 
+  // Reload conversation history when session changes
   useEffect(() => {
-    if (isAtBottom) {
-      scrollToBottom()
+    if (currentSession && projectId) {
+      loadConversationHistory(currentSession.id)
     }
-  }, [messages, isAtBottom])
+  }, [currentSession?.id, projectId])
 
-  const loadChatMessages = async () => {
+  const loadCurrentSession = async () => {
     if (!projectId) return
     
     try {
-      const chatMessages = await getChatMessages(projectId)
-      // Deduplicate messages based on content and timestamp
+      const session = await getCurrentSession(projectId)
+      setCurrentSession(session)
+      
+      // Immediately load conversation history when session is available
+      if (session) {
+        await loadConversationHistory(session.id)
+      }
+    } catch (error) {
+      console.error('Error loading current session:', error)
+      setCurrentSession(null)
+      setMessages([])
+    }
+  }
+
+  const loadConversationHistory = async (sessionId?: string) => {
+    const targetSessionId = sessionId || currentSession?.id
+    if (!projectId || !targetSessionId) return
+    
+    setIsLoadingHistory(true)
+    try {
+      console.log('Loading conversation history for session:', targetSessionId)
+      const sessionMessages = await getSessionMessages(projectId, targetSessionId)
+      console.log('Loaded session messages:', sessionMessages.length, 'messages')
+      
+      // Sort messages by creation time to ensure proper order
+      const sortedMessages = sessionMessages.sort((a, b) => 
+        new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      )
+      
+      setMessages(sortedMessages)
+    } catch (error) {
+      console.error('Error loading conversation history:', error)
+      setMessages([])
+    } finally {
+      setIsLoadingHistory(false)
+    }
+  }
+
+  const loadChatMessages = async (sessionId: string) => {
+    if (!projectId) return
+    
+    try {
+      console.log('Loading chat messages for session:', sessionId)
+      const chatMessages = await getSessionMessages(projectId, sessionId)
+      console.log('Loaded chat messages:', chatMessages.length)
+      
+      // Deduplicate messages
       const uniqueMessages = chatMessages.filter((message, index, self) => 
         index === self.findIndex(m => 
           m.message === message.message && 
@@ -70,8 +119,53 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated }) => {
       setMessages(uniqueMessages)
     } catch (error) {
       console.error('Error loading chat messages:', error)
+      setMessages([])
     }
   }
+
+  const handleStartNewConversation = async () => {
+    console.log('Starting new conversation, projectId:', projectId)
+    if (!projectId) {
+      console.error('Cannot start new conversation: projectId is undefined')
+      setNotification({
+        type: 'error',
+        message: 'Please select a project first before starting a new conversation.'
+      })
+      return
+    }
+    
+    try {
+      // Create a new session
+      const newSession = await createSession(projectId)
+      console.log('Created new session:', newSession)
+      setCurrentSession(newSession)
+      
+      // Clear messages for new conversation
+      setMessages([])
+      
+      setNotification({
+        type: 'info',
+        message: 'New conversation started! Send your first message.'
+      })
+      
+      // Clear notification after 3 seconds
+      setTimeout(() => {
+        setNotification(null)
+      }, 3000)
+    } catch (error) {
+      console.error('Error starting new conversation:', error)
+      setNotification({
+        type: 'error',
+        message: 'Failed to start new conversation'
+      })
+    }
+  }
+
+  useEffect(() => {
+    if (isAtBottom) {
+      scrollToBottom()
+    }
+  }, [messages, isAtBottom])
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -89,7 +183,16 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated }) => {
   }
 
   const handleSendMessage = useCallback(async () => {
-    if (!inputMessage.trim() || !projectId || isLoading) return
+    console.log('handleSendMessage called, projectId:', projectId)
+    if (!inputMessage.trim() || isLoading) return
+    
+    if (!projectId) {
+      setNotification({
+        type: 'error',
+        message: 'Please select a project first before sending messages.'
+      })
+      return
+    }
 
     const userMessage = inputMessage.trim()
     console.log('Sending message:', userMessage)
@@ -98,147 +201,108 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated }) => {
     setInputMessage('')
     setIsLoading(true)
     setIsProcessing(true)
-
-    // Create optimistic user message
-    const optimisticUserMessage: OptimisticMessage = {
+    
+    // Create optimistic message
+    const optimisticMessage: OptimisticMessage = {
       id: `optimistic-${Date.now()}`,
       project_id: projectId,
+      session_id: currentSession?.id || '',
       message: userMessage,
       response: '',
       created_at: new Date().toISOString(),
       isOptimistic: true,
       progress: []
     }
-
-    // Add optimistic message immediately
-    setMessages(prev => [...prev, optimisticUserMessage])
-
+    
+    setMessages(prev => [...prev, optimisticMessage])
+    
     try {
-      const request: ChatRequest = {
-        project_id: projectId,
-        message: userMessage
-      }
-
-      // Use streaming progress chat
+      let response: ChatResponse
+      
+      // Send message with progress tracking
       await sendChatMessageWithProgress(
-        request,
-        // onProgress callback - deduplicate progress updates
+        { message: userMessage, project_id: projectId },
         (progress) => {
-          console.log('Progress update:', progress)
+          // Add timestamp to progress
+          const progressWithTimestamp = {
+            ...progress,
+            timestamp: new Date().toISOString()
+          }
           
-          // Update the message with deduplicated progress
+          console.log(`🎯 Chat component received progress #${progress.progressNumber || '?'}:`, {
+            step: progress.step,
+            message: progress.message,
+            timeSinceStart: progress.timeSinceStart,
+            timeSinceLastProgress: progress.timeSinceLastProgress,
+            frontendReceivedAt: progress.frontendReceivedAt
+          })
+          
           setMessages(prev => prev.map(msg => 
-            msg.isOptimistic 
-              ? { 
-                  ...msg, 
-                  progress: deduplicateProgress([...(msg.progress || []), progress])
+            msg.id === optimisticMessage.id 
+              ? { ...msg, progress: [...(msg.progress || []), progressWithTimestamp] }
+              : msg
+          ))
+          updateAgentActivity(progress.message || 'Processing...')
+        },
+        (finalResponse) => {
+          // Replace optimistic message with real response
+          setMessages(prev => prev.map(msg => 
+            msg.id === optimisticMessage.id 
+              ? {
+                  ...msg,
+                  response: finalResponse,
+                  isOptimistic: false,
+                  progress: undefined
                 }
               : msg
           ))
-        },
-        // onComplete callback
-        (response) => {
-          console.log('Chat completed:', response)
           setIsProcessing(false)
+          setIsLoading(false)
+          updateAgentActivity('')
           
-          // Check if response was truncated
-          const isTruncated = response.includes('[Response truncated') || 
-                             response.includes('exceeded our limits')
-          
-          if (isTruncated) {
-            setNotification({
-              type: 'info',
-              message: 'Response was comprehensive - showing key points. You can ask for more details if needed.'
-            })
-            // Clear notification after 5 seconds
-            setTimeout(() => setNotification(null), 5000)
+          if (onTaskGenerated) {
+            onTaskGenerated()
           }
-          
-          // Replace optimistic message with real message
-          const realMessage: OptimisticMessage = {
-            id: `real-${Date.now()}`,
-            project_id: projectId,
-            message: userMessage,
-            response: response,
-            created_at: new Date().toISOString()
-          }
-
-          setMessages(prev => {
-            const filtered = prev.filter(msg => !msg.isOptimistic)
-            return [...filtered, realMessage]
-          })
-          
-          // Notify parent component about potential task generation
-          onTaskGenerated?.()
         },
-        // onError callback
         (error) => {
-          console.error('Streaming chat error:', error)
+          // Handle error
+          setMessages(prev => prev.map(msg => 
+            msg.id === optimisticMessage.id 
+              ? {
+                  ...msg,
+                  response: `Error: ${error}`,
+                  isError: true,
+                  isOptimistic: false,
+                  progress: undefined
+                }
+              : msg
+          ))
           setIsProcessing(false)
-          
-          // Determine appropriate error message
-          let errorResponse = 'Sorry, there was an error processing your message. Please try again.'
-          
-          if (error.includes('string_too_long') || error.includes('validation')) {
-            errorResponse = 'The response was very detailed and exceeded our limits. The agent is processing a shorter version for you.'
-          } else if (error.includes('truncated')) {
-            errorResponse = 'Response was comprehensive - showing key points. You can ask for more details if needed.'
-          }
-          
-          // Replace optimistic message with error message
-          const errorMessage: OptimisticMessage = {
-            id: `error-${Date.now()}`,
-            project_id: projectId,
-            message: userMessage,
-            response: errorResponse,
-            created_at: new Date().toISOString(),
-            isError: true
-          }
-
-          setMessages(prev => {
-            const filtered = prev.filter(msg => !msg.isOptimistic)
-            return [...filtered, errorMessage]
-          })
+          setIsLoading(false)
+          updateAgentActivity('')
         }
       )
-
-    } catch (error: any) {
+      
+    } catch (error) {
       console.error('Error sending message:', error)
+      
+      // Handle error
+      setMessages(prev => prev.map(msg => 
+        msg.id === optimisticMessage.id 
+          ? {
+              ...msg,
+              response: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+              isError: true,
+              isOptimistic: false,
+              progress: undefined
+            }
+          : msg
+      ))
       setIsProcessing(false)
-      
-      // Determine appropriate error message based on error type
-      let errorResponse = 'Sorry, there was an error processing your message. Please try again.'
-      
-      if (error.status === 500) {
-        if (error.message?.includes('string_too_long') || error.message?.includes('validation')) {
-          errorResponse = 'The response was very detailed and exceeded our limits. The agent is processing a shorter version for you.'
-        } else if (error.message?.includes('truncated')) {
-          errorResponse = 'Response was comprehensive - showing key points. You can ask for more details if needed.'
-        }
-      } else if (error.status === 413) {
-        errorResponse = 'Your message was too long. Please try a shorter message.'
-      } else if (error.status === 404) {
-        errorResponse = 'Project not found. Please refresh and try again.'
-      }
-      
-      // Replace optimistic message with error message
-      const errorMessage: OptimisticMessage = {
-        id: `error-${Date.now()}`,
-        project_id: projectId,
-        message: userMessage,
-        response: errorResponse,
-        created_at: new Date().toISOString(),
-        isError: true
-      }
-
-      setMessages(prev => {
-        const filtered = prev.filter(msg => !msg.isOptimistic)
-        return [...filtered, errorMessage]
-      })
-    } finally {
       setIsLoading(false)
+      updateAgentActivity('')
     }
-  }, [inputMessage, projectId, isLoading])
+  }, [inputMessage, projectId, isLoading, currentSession, onTaskGenerated])
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -266,23 +330,63 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated }) => {
 
   return (
     <div className="chat-container">
-      {/* Notification display */}
-      {notification && (
-        <div className={`notification notification-${notification.type}`}>
-          <span>{notification.message}</span>
-          <button 
-            onClick={() => setNotification(null)}
-            className="notification-close"
+      {/* Header with Start New Conversation button */}
+      <div className="chat-header">
+        <h3>Chat with Samurai Agent</h3>
+        {!projectId ? (
+          <div className="no-project-message">
+            Please select a project to start chatting
+          </div>
+        ) : (
+          <button
+            onClick={handleStartNewConversation}
+            className="start-new-conversation-btn"
+            disabled={isLoading || !projectId}
+            title={!projectId ? "Please select a project first" : "Start a new conversation"}
           >
-            ×
+            🆕 Start New Conversation
           </button>
+        )}
+      </div>
+
+      {/* Notification */}
+      {notification && (
+        <div className={`notification ${notification.type}`}>
+          {notification.message}
         </div>
       )}
-      
-      <div className="chat-messages" ref={chatMessagesRef} onScroll={handleScroll}>
-        {messages.length === 0 ? (
+
+      {/* Agent activity indicator */}
+      {agentActivity && (
+        <div className="agent-activity">
+          <span className="activity-indicator">●</span>
+          {agentActivity}
+        </div>
+      )}
+
+      <div 
+        className="chat-messages" 
+        ref={chatMessagesRef}
+        onScroll={handleScroll}
+      >
+        {isLoadingHistory ? (
           <div className="empty-state">
-            <p>No messages yet. Start a conversation with Samurai Agent!</p>
+            <div className="loading-indicator">
+              <div className="loading-dots">
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
+              <p>Loading conversation history...</p>
+            </div>
+          </div>
+        ) : messages.length === 0 ? (
+          <div className="empty-state">
+            {!projectId ? (
+              <p>Please select a project from the dropdown above to start chatting with Samurai Agent!</p>
+            ) : (
+              <p>No messages yet. Start a conversation with Samurai Agent!</p>
+            )}
           </div>
         ) : (
           messages.map((message) => (
@@ -362,18 +466,30 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated }) => {
                 </div>
               )}
               
-              {/* Show progress for optimistic messages only - removed duplicate display */}
-              {message.isOptimistic && message.progress && message.progress.length > 0 && (
+              {/* Show progress for optimistic messages */}
+              {message.isOptimistic && (
                 <div className="message ai-message">
                   <div className="message-content">
                     <div className="message-header">
                       <strong>Samurai Agent</strong>
                       <span className="message-time">Processing...</span>
                     </div>
-                    <ProgressDisplay 
-                      progress={message.progress} 
-                      isVisible={true}
-                    />
+                    
+                                         {message.progress && message.progress.length > 0 ? (
+                       <ProgressDisplay 
+                         progress={message.progress} 
+                         isVisible={true}
+                       />
+                     ) : (
+                       <div className="typing-indicator">
+                         <div className="typing-dots">
+                           <span></span>
+                           <span></span>
+                           <span></span>
+                         </div>
+                         <span className="typing-text">Samurai Agent is thinking...</span>
+                       </div>
+                     )}
                   </div>
                 </div>
               )}
@@ -400,14 +516,14 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated }) => {
           value={inputMessage}
           onChange={(e) => setInputMessage(e.target.value)}
           onKeyPress={handleKeyPress}
-          placeholder="Type your message here..."
-          disabled={isLoading}
+          placeholder={!projectId ? "Please select a project first..." : "Type your message here..."}
+          disabled={isLoading || !projectId}
           className="input"
           rows={3}
         />
         <button
           type="submit"
-          disabled={!inputMessage.trim() || isLoading}
+          disabled={!inputMessage.trim() || isLoading || !projectId}
           className="button"
         >
           {isLoading ? 'Sending...' : 'Send'}

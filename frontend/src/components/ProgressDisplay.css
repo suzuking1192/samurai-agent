@@ -112,6 +112,13 @@
   white-space: nowrap;
 }
 
+.detail-text {
+  font-size: 12px;
+  color: #6b7280;
+  font-style: italic;
+  line-height: 1.4;
+}
+
 .detail-badge.tool {
   background: #dbeafe;
   color: #1e40af;
@@ -160,32 +167,28 @@
 }
 
 /* Different step type styling */
-.progress-step.analyzing_request .step-message { 
+.progress-step.analyzing .step-message { 
   color: #8b5cf6; 
 }
 
-.progress-step.detecting_intent .step-message { 
-  color: #059669; 
-}
-
-.progress-step.gathering_context .step-message { 
-  color: #dc2626; 
-}
-
-.progress-step.planning_actions .step-message { 
-  color: #ea580c; 
-}
-
-.progress-step.searching_data .step-message { 
+.progress-step.context .step-message { 
   color: #0891b2; 
 }
 
-.progress-step.executing_tools .step-message { 
+.progress-step.planning .step-message { 
+  color: #ea580c; 
+}
+
+.progress-step.validation .step-message { 
+  color: #059669; 
+}
+
+.progress-step.execution .step-message { 
   color: #7c3aed; 
 }
 
-.progress-step.generating_response .step-message { 
-  color: #7c3aed; 
+.progress-step.memory .step-message { 
+  color: #f59e0b; 
 }
 
 .progress-step.complete .step-message { 

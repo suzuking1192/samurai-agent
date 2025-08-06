@@ -1,32 +1,23 @@
 {
   "name": "samurai-agent-integration-tests",
   "version": "1.0.0",
-  "description": "Integration tests for Samurai Agent frontend-backend communication",
-  "main": "run-tests.js",
+  "description": "Integration tests for Unified Samurai Agent",
+  "main": "test-unified-agent-api.js",
   "scripts": {
-    "test": "node run-tests.js",
-    "test:backend": "node test-integration.js",
-    "test:frontend": "node test-frontend-integration.js",
-    "debug": "node debug-utils.js",
-    "test:watch": "nodemon run-tests.js",
-    "test:verbose": "node run-tests.js --verbose"
+    "test": "node test-unified-agent-api.js",
+    "test-full": "node test-unified-agent-integration.js",
+    "test-api": "node test-unified-agent-api.js",
+    "test-frontend": "node test-frontend-connection.js"
   },
+  "dependencies": {
+    "axios": "^1.6.0"
+  },
+  "devDependencies": {},
   "keywords": [
-    "integration-tests",
-    "frontend",
-    "backend",
-    "api",
-    "testing"
+    "integration-test",
+    "samurai-agent",
+    "unified-agent"
   ],
   "author": "Samurai Agent Team",
-  "license": "MIT",
-  "dependencies": {
-    "node-fetch": "^2.6.7"
-  },
-  "devDependencies": {
-    "nodemon": "^2.0.22"
-  },
-  "engines": {
-    "node": ">=14.0.0"
-  }
+  "license": "MIT"
 } 

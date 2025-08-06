@@ -4,6 +4,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 from typing import List, Optional
 import os
+import asyncio
 from dotenv import load_dotenv
 import uuid
 from datetime import datetime
@@ -15,18 +16,18 @@ import json
 from models import (
     Project, ProjectCreateRequest, 
     ChatRequest, ChatResponse,
-    TaskUpdateRequest, Task, Memory, ChatMessage
+    TaskUpdateRequest, Task, Memory, ChatMessage,
+    Session, SessionCreateRequest, SessionListResponse
 )
 
 # Import your services  
 from services.gemini_service import GeminiService
 from services.file_service import FileService
-from services.ai_agent import SamuraiAgent
+from services.unified_samurai_agent import unified_samurai_agent
 from services.context_service import context_service
 from services.response_service import handle_agent_response, handle_validation_error
 from services.semantic_service import SemanticService
-from services.progress_tracker import ProgressTracker
-from services.transparent_planning_agent import TransparentPlanningAgent
+
 
 # Load environment variables
 load_dotenv()
@@ -56,7 +57,6 @@ app.add_middleware(
 # Initialize services
 file_service = FileService()
 gemini_service = GeminiService()
-samurai_agent = SamuraiAgent()
 semantic_service = SemanticService()
 
 # Global exception handler
@@ -198,7 +198,18 @@ async def chat_with_project(project_id: str, request: ChatRequest):
             logger.warning(f"Project not found for chat: {project_id}")
             raise HTTPException(status_code=404, detail="Project not found")
         
-        # 2. Convert project to context dict for SamuraiAgent
+        # 2. Get or create current session
+        current_session = file_service.get_latest_session(project_id)
+        if not current_session:
+            # Create a new session if none exists
+            current_session = file_service.create_session(project_id)
+            logger.info(f"Created new session: {current_session.id}")
+        
+        # 3. Load conversation history for context extraction
+        conversation_history = file_service.load_chat_messages_by_session(project_id, current_session.id)
+        logger.info(f"Loaded {len(conversation_history)} conversation messages for context extraction")
+        
+        # 4. Convert project to context dict for SamuraiAgent
         project_context = {
             "name": project.name,
             "description": project.description,
@@ -207,47 +218,55 @@ async def chat_with_project(project_id: str, request: ChatRequest):
         
         logger.info(f"Project context: {project.name} - {project.tech_stack}")
         
-        # 3. Use SamuraiAgent to process the message (this handles task/memory generation)
-        logger.info("Processing message with SamuraiAgent...")
-        result = await samurai_agent.process_message(
+        # 5. Use Unified Samurai Agent to process the message with conversation history
+        logger.info("Processing message with Unified Samurai Agent...")
+        result = await unified_samurai_agent.process_message(
             message=request.message,
             project_id=project_id,
-            project_context=project_context
+            project_context=project_context,
+            session_id=current_session.id,
+            conversation_history=conversation_history
         )
         
-        logger.info(f"SamuraiAgent response type: {result.get('type', 'unknown')}")
+        logger.info(f"Unified Samurai Agent response type: {result.get('type', 'unknown')}")
         
-        # 4. Handle long responses seamlessly without user-facing error messages
+        # 5. Handle long responses seamlessly without user-facing error messages
         final_response = result.get("response", "I'm sorry, I couldn't process that request.")
         
         # Apply seamless response handling
         final_response = handle_agent_response(final_response)
         
-        # Create ChatMessage with processed response
+        # 6. Create ChatMessage with processed response and session_id
         chat_message = ChatMessage(
             id=str(uuid.uuid4()),
             project_id=project_id,
+            session_id=current_session.id,
             message=request.message,
             response=final_response,
             created_at=datetime.now()
         )
         
-        # 5. Save chat message
+        # 7. Save chat message
         file_service.save_chat_message(project_id, chat_message)
         logger.info(f"Chat message saved: {chat_message.id}")
         
-        # 6. Load current tasks and memories for response
+        # 8. Update session activity
+        file_service.update_session_activity(project_id, current_session.id)
+        
+        # 9. Load current tasks and memories for response
         current_tasks = file_service.load_tasks(project_id)
         current_memories = file_service.load_memories(project_id)
         
         logger.info(f"Current state: {len(current_tasks)} tasks, {len(current_memories)} memories")
         
-        # 7. Return response with generated tasks and memories
+        # 10. Return response with generated tasks and memories
         return ChatResponse(
             response=final_response,
             tasks=result.get("tasks", []),  # Include any newly generated tasks
             memories=current_memories,  # Include all memories for context
-            type=result.get("type", "chat")
+            type=result.get("type", "chat"),
+            intent_analysis=result.get("intent_analysis"),  # Include intent analysis from unified agent
+            memory_updated=result.get("memory_updated", False)  # Include memory update status
         )
     except HTTPException:
         raise
@@ -260,7 +279,7 @@ async def chat_with_project(project_id: str, request: ChatRequest):
 @app.post("/projects/{project_id}/chat-with-progress")
 async def chat_with_progress(project_id: str, request: ChatRequest):
     """
-    Chat endpoint with real-time progress streaming
+    Chat endpoint with real-time progress streaming using actual agent processing
     """
     async def stream_response():
         try:
@@ -278,90 +297,89 @@ async def chat_with_progress(project_id: str, request: ChatRequest):
                 "tech_stack": project.tech_stack
             }
             
-            # 3. Set up progress tracking with deduplication
-            progress_queue = []
-            sent_progress_keys = set()
+            # 3. Get or create current session
+            current_session = file_service.get_latest_session(project_id)
+            if not current_session:
+                # Create a new session if none exists
+                current_session = file_service.create_session(project_id)
+                logger.info(f"Created new session: {current_session.id}")
             
-            async def progress_callback(progress_data):
-                """Queue progress update for streaming with deduplication"""
-                # Create unique key for deduplication (step + message only)
-                progress_key = f"{progress_data.get('step', '')}-{progress_data.get('message', '')}"
-                
-                # Skip if already sent
-                if progress_key in sent_progress_keys:
-                    return
-                
-                sent_progress_keys.add(progress_key)
-                progress_queue.append(progress_data)
+            # 4. Get conversation history for planning-first agent (current session only)
+            conversation_history = file_service.load_chat_messages_by_session(project_id, current_session.id)
             
-            # 4. Get context
-            conversation_history = file_service.load_chat_history(project_id)
-            project_memories = file_service.load_memories(project_id)
-            tasks = file_service.load_tasks(project_id)
+            # 5. Create a progress queue for real-time updates
+            progress_queue = asyncio.Queue()
             
-            # Convert to dict format for transparent agent
-            memories_dict = []
-            for memory in project_memories:
-                memories_dict.append({
-                    "id": memory.id,
-                    "title": memory.title,
-                    "content": memory.content,
-                    "type": memory.type,
-                    "category": memory.category
-                })
+            async def progress_callback(step: str, message: str, details: str = "", metadata: dict = None):
+                """Queue progress updates for immediate streaming"""
+                progress_data = {
+                    'type': 'progress',
+                    'progress': {
+                        'step': step,
+                        'message': message,
+                        'details': details,
+                        'timestamp': datetime.now().isoformat(),
+                        'metadata': metadata or {}
+                    }
+                }
+                await progress_queue.put(progress_data)
             
-            tasks_dict = []
-            for task in tasks:
-                tasks_dict.append({
-                    "id": task.id,
-                    "title": task.title,
-                    "description": task.description,
-                    "status": getattr(task, 'status', 'pending'),
-                    "completed": task.completed
-                })
-            
-            # 5. Process with transparent agent
-            progress_tracker = ProgressTracker(progress_callback)
-            agent = TransparentPlanningAgent(progress_tracker)
-            
-            # Start processing in background
-            import asyncio
+            # 6. Start unified agent processing in background
             processing_task = asyncio.create_task(
-                agent.process_user_message_with_progress(
-                    request.message,
-                    project_id,
-                    conversation_history,
-                    memories_dict,
-                    tasks_dict,
-                    project_context
+                unified_samurai_agent.process_message(
+                    message=request.message,
+                    project_id=project_id,
+                    project_context=project_context,
+                    session_id=current_session.id,
+                    conversation_history=conversation_history,
+                    progress_callback=progress_callback
                 )
             )
             
-            # Stream progress updates
-            while not processing_task.done():
-                if progress_queue:
-                    progress_data = progress_queue.pop(0)
-                    yield f"data: {json.dumps({'type': 'progress', 'progress': progress_data})}\n\n"
-                await asyncio.sleep(0.1)
+            # 7. Stream progress updates immediately as they arrive
+            progress_events = []
+            last_event_count = 0
             
-            # Get final result
+            while not processing_task.done():
+                try:
+                    # Check for new progress events from queue
+                    try:
+                        while not progress_queue.empty():
+                            progress_data = await asyncio.wait_for(progress_queue.get(), timeout=0.1)
+                            progress_events.append(progress_data)
+                            yield f"data: {json.dumps(progress_data)}\n\n"
+                    except asyncio.TimeoutError:
+                        pass
+                    
+                    # Small delay to prevent busy waiting
+                    await asyncio.sleep(0.05)
+                    
+                except Exception as e:
+                    logger.error(f"Error in progress streaming: {e}")
+                    break
+            
+            # 8. Get final result
             result = await processing_task
             
-            # 6. Handle long responses seamlessly
+            # 9. Handle long responses seamlessly
             final_response = result.get("response", "I'm sorry, I couldn't process that request.")
             final_response = handle_agent_response(final_response)
             
-            # 7. Save chat message
+            # 10. Save chat message
             chat_message = ChatMessage(
                 id=str(uuid.uuid4()),
                 project_id=project_id,
+                session_id=current_session.id,
                 message=request.message,
                 response=final_response,
                 created_at=datetime.now()
             )
             file_service.save_chat_message(project_id, chat_message)
             
-            # 8. Send final response
+            # 11. Update session activity
+            file_service.update_session_activity(project_id, current_session.id)
+            
+            # 12. Send final response
             yield f"data: {json.dumps({'type': 'complete', 'response': final_response})}\n\n"
             
         except Exception as e:
@@ -370,11 +388,120 @@ async def chat_with_progress(project_id: str, request: ChatRequest):
     
     return StreamingResponse(
         stream_response(),
-        media_type="text/plain",
+        media_type="text/event-stream",  # ✅ Fixed: Proper SSE media type
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-            "Content-Type": "text/event-stream"
+            "Access-Control-Allow-Origin": "*",  # ✅ Added: CORS support
+            "Access-Control-Allow-Headers": "Cache-Control"
+        }
+    )
+
+@app.post("/projects/{project_id}/chat-stream")
+async def chat_stream(project_id: str, request: ChatRequest):
+    """
+    Simplified streaming endpoint using proper async generators
+    """
+    async def stream_response():
+        try:
+            # 1. Verify project exists
+            project = file_service.get_project_by_id(project_id)
+            if not project:
+                yield f"data: {json.dumps({'type': 'error', 'error': 'Project not found'})}\n\n"
+                return
+            
+            # 2. Setup context
+            project_context = {
+                "name": project.name,
+                "description": project.description,
+                "tech_stack": project.tech_stack
+            }
+            
+            current_session = file_service.get_latest_session(project_id)
+            if not current_session:
+                current_session = file_service.create_session(project_id)
+            
+            conversation_history = file_service.load_chat_messages_by_session(project_id, current_session.id)
+            
+            # 3. Create a simple progress callback that yields directly
+            progress_events = []
+            
+            async def progress_callback(step: str, message: str, details: str = "", metadata: dict = None):
+                """Capture progress updates"""
+                progress_events.append({
+                    'type': 'progress',
+                    'progress': {
+                        'step': step,
+                        'message': message,
+                        'details': details,
+                        'timestamp': datetime.now().isoformat(),
+                        'metadata': metadata or {}
+                    }
+                })
+            
+            # 4. Process with unified agent
+            # Start processing
+            processing_task = asyncio.create_task(
+                unified_samurai_agent.process_message(
+                    message=request.message,
+                    project_id=project_id,
+                    project_context=project_context,
+                    session_id=current_session.id,
+                    conversation_history=conversation_history,
+                    progress_callback=progress_callback
+                )
+            )
+            
+            # 5. Stream progress events as they occur
+            last_event_count = 0
+            while not processing_task.done():
+                # Check for new progress events
+                if len(progress_events) > last_event_count:
+                    # Send new events
+                    for event in progress_events[last_event_count:]:
+                        yield f"data: {json.dumps(event)}\n\n"
+                    last_event_count = len(progress_events)
+                
+                # Small delay to prevent busy waiting
+                await asyncio.sleep(0.05)
+            
+            # Check for any remaining progress events after processing completes
+            if len(progress_events) > last_event_count:
+                for event in progress_events[last_event_count:]:
+                    yield f"data: {json.dumps(event)}\n\n"
+            
+            # 6. Get final result
+            result = await processing_task
+            final_response = result.get("response", "I'm sorry, I couldn't process that request.")
+            final_response = handle_agent_response(final_response)
+            
+            # 7. Save chat message
+            chat_message = ChatMessage(
+                id=str(uuid.uuid4()),
+                project_id=project_id,
+                session_id=current_session.id,
+                message=request.message,
+                response=final_response,
+                created_at=datetime.now()
+            )
+            file_service.save_chat_message(project_id, chat_message)
+            file_service.update_session_activity(project_id, current_session.id)
+            
+            # 8. Send final response
+            yield f"data: {json.dumps({'type': 'complete', 'response': final_response})}\n\n"
+            
+        except Exception as e:
+            logger.error(f"Chat stream error: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
+    
+    return StreamingResponse(
+        stream_response(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "Cache-Control"
         }
     )
 
@@ -472,15 +599,136 @@ async def create_task(project_id: str, task_data: dict):
 # Chat messages endpoint
 @app.get("/projects/{project_id}/chat-messages", response_model=List[ChatMessage])
 async def get_project_chat_messages(project_id: str):
-    """Get all chat messages for a project"""
+    """Get chat messages for a project."""
     try:
-        logger.info(f"Loading chat messages for project: {project_id}")
-        messages = file_service.load_chat_messages(project_id)
-        logger.info(f"Loaded {len(messages)} chat messages for project {project_id}")
+        messages = file_service.load_chat_history(project_id)
         return messages
     except Exception as e:
         logger.error(f"Error loading chat messages for project {project_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to load chat messages: {str(e)}")
+
+# Session management endpoints
+@app.get("/projects/{project_id}/session-messages/{session_id}", response_model=List[ChatMessage])
+async def get_session_messages(project_id: str, session_id: str):
+    """Get chat messages for a specific session."""
+    logger.info(f"DEBUG: Route matched! project_id={project_id}, session_id={session_id}")
+    try:
+        # Verify project exists
+        project = file_service.get_project_by_id(project_id)
+        logger.info(f"Project found: {project is not None}")
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Load all sessions to debug
+        all_sessions = file_service.load_sessions(project_id)
+        logger.info(f"All sessions for project: {[s.id for s in all_sessions]}")
+        
+        # Verify session exists
+        session = file_service.get_session_by_id(project_id, session_id)
+        logger.info(f"Looking for session {session_id}, found: {session is not None}")
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        messages = file_service.load_chat_messages_by_session(project_id, session_id)
+        logger.info(f"Loaded {len(messages)} messages for session {session_id}")
+        return messages
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error loading messages for session {session_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to load session messages: {str(e)}")
+
+@app.get("/projects/{project_id}/sessions", response_model=SessionListResponse)
+async def get_project_sessions(project_id: str):
+    """Get all sessions for a project."""
+    try:
+        logger.info(f"Loading sessions for project: {project_id}")
+        
+        # Verify project exists
+        project = file_service.get_project_by_id(project_id)
+        if not project:
+            logger.warning(f"Project not found: {project_id}")
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        logger.info(f"Project found: {project.name}")
+        
+        sessions = file_service.load_sessions(project_id)
+        logger.info(f"Loaded {len(sessions)} sessions")
+        
+        response = SessionListResponse(sessions=sessions, total=len(sessions))
+        logger.info(f"Created response with {len(response.sessions)} sessions")
+        
+        return response
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error loading sessions for project {project_id}: {e}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Failed to load sessions: {str(e)}")
+
+@app.post("/projects/{project_id}/sessions", response_model=Session)
+async def create_project_session(project_id: str, request: SessionCreateRequest):
+    """Create a new session for a project."""
+    try:
+        # Verify project exists
+        project = file_service.get_project_by_id(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        session = file_service.create_session(project_id, request.name)
+        return session
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating session for project {project_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create session: {str(e)}")
+
+@app.get("/projects/{project_id}/current-session", response_model=Session)
+async def get_current_session(project_id: str):
+    """Get the current (most recent) session for a project."""
+    try:
+        # Verify project exists
+        project = file_service.get_project_by_id(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        session = file_service.get_latest_session(project_id)
+        if not session:
+            # Create a new session if none exists
+            session = file_service.create_session(project_id)
+        
+        return session
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting current session for project {project_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get current session: {str(e)}")
+
+@app.get("/projects/{project_id}/conversation-history", response_model=List[ChatMessage])
+async def get_conversation_history(project_id: str):
+    """Get conversation history for the current session of a project."""
+    try:
+        # Verify project exists
+        project = file_service.get_project_by_id(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Get current session
+        session = file_service.get_latest_session(project_id)
+        if not session:
+            # Return empty list if no session exists
+            return []
+        
+        # Load conversation history for the current session
+        messages = file_service.load_chat_messages_by_session(project_id, session.id)
+        logger.info(f"Loaded {len(messages)} conversation messages for project {project_id}, session {session.id}")
+        
+        return messages
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error loading conversation history for project {project_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to load conversation history: {str(e)}")
 
 # Memory endpoints
 @app.get("/projects/{project_id}/memories", response_model=List[Memory])
@@ -530,6 +778,55 @@ async def delete_memory(project_id: str, memory_id: str):
     except Exception as e:
         logger.error(f"Error deleting memory {memory_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to delete memory: {str(e)}")
+
+@app.post("/projects/{project_id}/sessions/{session_id}/complete")
+async def complete_session(project_id: str, session_id: str):
+    """
+    Complete a session and perform session-wide memory analysis.
+    This is called when user clicks "start new conversation".
+    """
+    try:
+        logger.info(f"Completing session {session_id} for project {project_id}")
+        
+        # 1. Verify project exists
+        project = file_service.get_project_by_id(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # 2. Verify session exists
+        session = file_service.get_session_by_id(project_id, session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        # 3. Convert project to context dict
+        project_context = {
+            "name": project.name,
+            "description": project.description,
+            "tech_stack": project.tech_stack
+        }
+        
+        # 4. Perform session completion with unified agent
+        result = await unified_samurai_agent.complete_session(
+            session_id=session_id,
+            project_id=project_id,
+            project_context=project_context
+        )
+        
+        logger.info(f"Session completion result: {result}")
+        
+        return {
+            "status": "success",
+            "session_id": session_id,
+            "project_id": project_id,
+            "completion_result": result
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error completing session {session_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Session completion failed: {str(e)}")
+
 
 # Legacy chat endpoint (keeping for backward compatibility)
 @app.post("/chat", response_model=ChatResponse)
@@ -602,7 +899,7 @@ async def generate_task_prompt(task_id: str):
             raise HTTPException(status_code=404, detail="Project not found")
         
         # Get semantically related memories
-        related_memories = await samurai_agent.get_related_memories_for_task(task_id, limit=5)
+        related_memories = await unified_samurai_agent.get_related_memories_for_task(task_id, limit=5)
         
         # Generate comprehensive prompt
         logger.info(f"Generating prompt with {len(related_memories)} related memories")
@@ -615,7 +912,7 @@ async def generate_task_prompt(task_id: str):
             "description": project.description,
             "tech_stack": project.tech_stack
         }
-        prompt = samurai_agent.generate_intelligent_prompt(task, project_dict, related_memories)
+        prompt = unified_samurai_agent.generate_intelligent_prompt(task, project_dict, related_memories)
         
         # Log prompt generation for analytics
         logger.info(f"Generated prompt for task {task_id}, length: {len(prompt)}")

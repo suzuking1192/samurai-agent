@@ -257,14 +257,23 @@ export interface Memory {
 export interface ChatMessage {
   id: string
   project_id: string
+  session_id: string
   message: string
   response: string
   created_at: string
 }
 
+export interface Session {
+  id: string
+  project_id: string
+  name: string | null
+  created_at: string
+  last_activity: string
+}
+
 // Request/Response interfaces
 export interface ChatRequest {
-  project_id: string
+  project_id?: string
   message: string
 }
 
