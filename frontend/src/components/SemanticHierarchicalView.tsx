@@ -16,6 +16,7 @@ interface SemanticHierarchicalViewProps {
   memories: Memory[]
   onTaskUpdate: (taskId: string, updates: any) => void
   onTaskDelete: (taskId: string) => void
+  onTaskClick: (task: Task) => void
   onMemoryDelete: (memoryId: string) => void
   className?: string
   clusteringType?: string
@@ -27,6 +28,7 @@ const SemanticHierarchicalView: React.FC<SemanticHierarchicalViewProps> = ({
   memories,
   onTaskUpdate,
   onTaskDelete,
+  onTaskClick,
   onMemoryDelete,
   className = '',
   clusteringType = 'content',
@@ -209,6 +211,7 @@ const SemanticHierarchicalView: React.FC<SemanticHierarchicalViewProps> = ({
           task={item as Task}
           onUpdate={onTaskUpdate}
           onDelete={onTaskDelete}
+          onTaskClick={onTaskClick}
         />
       )
     } else if ('content' in item) {
