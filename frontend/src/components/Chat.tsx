@@ -229,6 +229,14 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated }) => {
             timestamp: new Date().toISOString()
           }
           
+          console.log(`🎯 Chat component received progress #${progress.progressNumber || '?'}:`, {
+            step: progress.step,
+            message: progress.message,
+            timeSinceStart: progress.timeSinceStart,
+            timeSinceLastProgress: progress.timeSinceLastProgress,
+            frontendReceivedAt: progress.frontendReceivedAt
+          })
+          
           setMessages(prev => prev.map(msg => 
             msg.id === optimisticMessage.id 
               ? { ...msg, progress: [...(msg.progress || []), progressWithTimestamp] }

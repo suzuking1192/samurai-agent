@@ -147,9 +147,13 @@ export async function sendChatMessageWithProgress(
   onComplete?: (response: string) => void,
   onError?: (error: string) => void
 ): Promise<void> {
-  const url = `${API_BASE_URL}/projects/${request.project_id}/chat-with-progress`
+  // Use the new simplified streaming endpoint
+  const url = `${API_BASE_URL}/projects/${request.project_id}/chat-stream`
   
   try {
+    console.log('🚀 Starting streaming chat request:', url)
+    const startTime = Date.now()
+    
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -169,38 +173,87 @@ export async function sendChatMessageWithProgress(
 
     const reader = response.body?.getReader()
     if (!reader) {
-      throw new Error('No response body')
+      throw new Error('No response body available for streaming')
     }
 
     const decoder = new TextDecoder()
+    let buffer = ''
+    let progressCount = 0
+    let lastProgressTime = startTime
+    
+    console.log('✅ Streaming connection established, waiting for progress updates...')
     
     while (true) {
       const { done, value } = await reader.read()
-      if (done) break
+      if (done) {
+        console.log('📤 Streaming completed')
+        break
+      }
       
-      const chunk = decoder.decode(value)
-      const lines = chunk.split('\n')
+      // Decode the chunk and add to buffer
+      const chunk = decoder.decode(value, { stream: true })
+      buffer += chunk
+      
+      // Process complete lines
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || '' // Keep incomplete line in buffer
       
       for (const line of lines) {
+        if (line.trim() === '') continue
+        
         if (line.startsWith('data: ')) {
           try {
             const data = JSON.parse(line.slice(6))
+            const currentTime = Date.now()
+            const timeSinceStart = currentTime - startTime
+            const timeSinceLastProgress = currentTime - lastProgressTime
+            
+            console.log(`📤 [${timeSinceStart}ms] Received streaming data:`, data.type, data)
             
             if (data.type === 'progress' && onProgress) {
-              onProgress(data.progress)
+              progressCount++
+              console.log(`🎯 [${timeSinceStart}ms] Progress #${progressCount}: ${data.progress.step} - ${data.progress.message}`)
+              console.log(`⏱️ Time since last progress: ${timeSinceLastProgress}ms`)
+              
+              // Add timing info to the progress data
+              const progressWithTiming = {
+                ...data.progress,
+                frontendReceivedAt: new Date().toISOString(),
+                timeSinceStart: timeSinceStart,
+                timeSinceLastProgress: timeSinceLastProgress,
+                progressNumber: progressCount
+              }
+              
+              onProgress(progressWithTiming)
+              lastProgressTime = currentTime
+              
             } else if (data.type === 'complete' && onComplete) {
+              const totalTime = currentTime - startTime
+              console.log(`✅ [${timeSinceStart}ms] Streaming completed successfully after ${totalTime}ms`)
+              console.log(`📊 Total progress updates received: ${progressCount}`)
               onComplete(data.response)
+              return
             } else if (data.type === 'error' && onError) {
+              console.error(`❌ [${timeSinceStart}ms] Streaming error received:`, data.error)
               onError(data.error)
+              return
+            } else if (data.type === 'heartbeat') {
+              console.log(`💓 [${timeSinceStart}ms] Heartbeat received`)
             }
           } catch (e) {
-            console.error('Error parsing progress data:', e)
+            console.error('❌ Error parsing streaming data:', e, 'Raw line:', line)
           }
         }
       }
     }
+    
+    // If we reach here without a complete response, it's an error
+    if (onError) {
+      onError('Streaming connection closed unexpectedly')
+    }
+    
   } catch (error) {
-    console.error('Error in streaming chat:', error)
+    console.error('❌ Error in streaming chat:', error)
     if (onError) {
       onError(error instanceof Error ? error.message : 'Unknown error')
     }

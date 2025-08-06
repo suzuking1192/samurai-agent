@@ -89,5 +89,12 @@
     "description": "Test project for UX fixes",
     "tech_stack": "Python, FastAPI, React",
     "created_at": "2025-08-05 14:30:49.067491"
+  },
+  {
+    "id": "1ef2ba4b-eeda-43e8-ae42-d3d158fe8195",
+    "name": "Test Project",
+    "description": "Test",
+    "tech_stack": "React + FastAPI",
+    "created_at": "2025-08-05 19:28:09.637778"
   }
 ]
