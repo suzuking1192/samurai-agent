@@ -967,17 +967,19 @@ Use this framework to analyze the current message and provide the most accurate 
         if not session_messages:
             return f"Current request: {current_message}"
         
-        # Get last 5 messages for context
-        recent_messages = session_messages[-5:]
+        # Get last 10 messages for context
+        recent_messages = session_messages[-10:]
         
-        summary_parts = []
-        for msg in recent_messages:
-            if msg.message and not msg.response:
+        summary_parts = ["RECENT CONVERSATION CONTEXT:"]
+    
+        for i, msg in enumerate(recent_messages):
+            if msg.message:  # User message
                 summary_parts.append(f"User: {msg.message}")
-            elif msg.response and not msg.message:
-                summary_parts.append(f"Assistant: {msg.response}")
+            if msg.response:  # Assistant response
+                summary_parts.append(f"You (Samurai): {msg.response}")
         
-        summary_parts.append(f"Current: {current_message}")
+        summary_parts.append(f"\nNOW USER SAYS: '{current_message}'")
+        summary_parts.append(f"\nYou should build on this conversation and reference what was discussed.")
         
         return "\n".join(summary_parts)
     
