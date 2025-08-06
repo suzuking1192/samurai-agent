@@ -49,6 +49,7 @@ body {
 /* App container */
 .app {
   height: 100vh;
+  width: 100vw; /* Ensure full viewport width */
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -98,14 +99,49 @@ body {
   gap: 12px;
 }
 
-/* Main container with optimized grid layout - No white space */
+/* Memory Toggle Button */
+.memory-toggle-btn {
+  background: rgba(255, 255, 255, 0.15);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  backdrop-filter: blur(10px);
+}
+
+.memory-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.25);
+  border-color: rgba(255, 255, 255, 0.3);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* Main container with dynamic grid layout */
 .main-container {
   flex: 1;
   display: grid;
-  grid-template-columns: 320px 1fr 320px; /* Fixed widths for panels, flexible chat */
+  width: 100%; /* Ensure full width */
   height: calc(100vh - var(--header-height));
   overflow: hidden;
   gap: 0;
+  transition: grid-template-columns 0.3s ease;
+}
+
+/* Default layout: Memory hidden - Chat 60%, Tasks 40% */
+.main-container.memory-hidden {
+  grid-template-columns: 60% 40%;
+}
+
+/* Memory expanded layout: Memory 20%, Chat 60%, Tasks 20% */
+.main-container.memory-expanded {
+  grid-template-columns: 20% 60% 20%;
 }
 
 /* Panel styles */
@@ -149,6 +185,41 @@ body {
   border-radius: 8px;
   box-shadow: var(--shadow);
   overflow: hidden;
+  min-width: 0; /* Prevent flex item from overflowing */
+}
+
+/* Ensure chat messages don't become too wide */
+.chat-messages {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+/* Optimize task panel for smaller widths */
+.tasks-panel {
+  min-width: 0; /* Prevent flex item from overflowing */
+  width: 100%; /* Use full allocated space */
+  overflow-x: hidden; /* Prevent horizontal scroll */
+}
+
+.tasks-panel .task-item {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+/* Ensure tasks panel content uses full width */
+.tasks-panel .panel-content {
+  width: 100%;
+  padding: 16px;
+}
+
+/* Memory panel optimization */
+.memory-panel {
+  min-width: 0; /* Prevent flex item from overflowing */
+}
+
+.memory-panel .memory-item {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 /* Chat header */
@@ -1401,121 +1472,7 @@ body {
   background: #e5e7eb;
 }
 
-/* CRITICAL: Force Panel Visibility - Prevent panels from EVER collapsing */
-.main-layout {
-  display: grid;
-  grid-template-columns: 300px 1fr 300px !important;
-  grid-template-rows: auto 1fr auto;
-  height: 100vh;
-  overflow: hidden;
-}
-
-.tasks-panel,
-.memory-panel {
-  display: flex !important;
-  flex-direction: column;
-  width: 300px !important;
-  min-width: 300px !important;
-  max-width: 300px !important;
-  flex-shrink: 0 !important;
-  overflow: hidden;
-  background: #fafafa;
-  border-right: 1px solid #e5e7eb;
-}
-
-/* Override ALL responsive CSS that might hide panels */
-@media (max-width: 1600px) {
-  .tasks-panel, .memory-panel {
-    display: flex !important;
-    width: 280px !important;
-    min-width: 280px !important;
-  }
-  .main-layout {
-    grid-template-columns: 280px 1fr 280px !important;
-  }
-}
-
-@media (max-width: 1400px) {
-  .tasks-panel, .memory-panel {
-    display: flex !important;
-    width: 260px !important;
-    min-width: 260px !important;
-  }
-  .main-layout {
-    grid-template-columns: 260px 1fr 260px !important;
-  }
-}
-
-@media (max-width: 1200px) {
-  .tasks-panel, .memory-panel {
-    display: flex !important;
-    width: 240px !important;
-    min-width: 240px !important;
-  }
-  .main-layout {
-    grid-template-columns: 240px 1fr 240px !important;
-  }
-}
-
-/* Only on very small screens, use overlay instead of hiding */
-@media (max-width: 800px) {
-  .main-layout {
-    grid-template-columns: 1fr !important;
-    position: relative;
-  }
-  
-  .tasks-panel, .memory-panel {
-    position: fixed !important;
-    top: 0;
-    bottom: 0;
-    width: 320px !important;
-    z-index: 100;
-    background: white;
-    box-shadow: 2px 0 10px rgba(0,0,0,0.1);
-    transform: translateX(-100%);
-    transition: transform 0.3s ease;
-    display: flex !important; /* Still force display */
-  }
-  
-  .tasks-panel {
-    left: 0;
-  }
-  
-  .memory-panel {
-    right: 0;
-    transform: translateX(100%);
-  }
-  
-  /* Show panels when toggled */
-  .show-tasks-panel .tasks-panel {
-    transform: translateX(0) !important;
-  }
-  
-  .show-memory-panel .memory-panel {
-    transform: translateX(0) !important;
-  }
-  
-  /* Mobile toggle buttons */
-  .mobile-panel-toggles {
-    position: fixed;
-    top: 10px;
-    left: 10px;
-    right: 10px;
-    display: flex;
-    justify-content: space-between;
-    z-index: 101;
-  }
-  
-  .mobile-toggle-btn {
-    background: #3b82f6;
-    color: white;
-    border: none;
-    padding: 8px 12px;
-    border-radius: 6px;
-    font-size: 14px;
-    cursor: pointer;
-  }
-}
+/* Legacy layout styles removed - using new dynamic layout system */
 
 /* Ensure chat area adapts but never pushes panels out */
 .chat-area {
@@ -1923,29 +1880,51 @@ body {
   background-color: rgba(59, 130, 246, 0.1);
 }
 
-/* Responsive design - Optimized for new layout */
+/* Responsive design - Optimized for new dynamic layout */
 @media (max-width: 1200px) {
-  .main-container {
-    grid-template-columns: 280px 1fr 280px;
+  /* Adjust proportions for medium screens */
+  .main-container.memory-hidden {
+    grid-template-columns: 65% 35%;
+  }
+  
+  .main-container.memory-expanded {
+    grid-template-columns: 25% 50% 25%;
   }
 }
 
 @media (max-width: 900px) {
+  /* Stack layout for smaller screens */
   .main-container {
     grid-template-columns: 1fr;
     grid-template-rows: auto auto 1fr;
+    gap: 1px;
+  }
+  
+  .main-container.memory-hidden,
+  .main-container.memory-expanded {
+    grid-template-columns: 1fr;
   }
   
   .memory-panel, .tasks-panel {
-    max-height: 200px;
+    max-height: 250px;
     border-right: none;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--border);
+  }
+  
+  .chat-container {
+    grid-row: 3;
   }
 }
 
 @media (max-width: 768px) {
   .main-container {
-    grid-template-columns: 1fr; /* Single column on mobile */
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr;
+  }
+  
+  .main-container.memory-hidden,
+  .main-container.memory-expanded {
+    grid-template-columns: 1fr;
   }
   
   .memory-panel,
@@ -1955,6 +1934,7 @@ body {
   
   .chat-container {
     grid-column: 1;
+    grid-row: 1;
   }
   
   .header {
@@ -1979,6 +1959,13 @@ body {
   .header-actions {
     width: 100%;
     justify-content: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  
+  .memory-toggle-btn {
+    font-size: 0.8rem;
+    padding: 6px 12px;
   }
   
   .project-selector-header {
