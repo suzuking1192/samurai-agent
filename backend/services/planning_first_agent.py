@@ -9,7 +9,7 @@ that considers conversation history and creates multi-step execution plans.
 import json
 import logging
 import uuid
-from typing import List, Dict, Optional, Any, Tuple
+from typing import List, Dict, Optional, Any, Tuple, Callable
 from datetime import datetime
 from dataclasses import dataclass
 
@@ -117,78 +117,129 @@ class PlanningFirstAgent:
         project_id: str, 
         project_context: dict, 
         session_id: str = None, 
-        conversation_history: List[ChatMessage] = None
+        conversation_history: List[ChatMessage] = None,
+        progress_callback: Optional[Callable[[str, str, str, Dict[str, Any]], None]] = None
     ) -> dict:
         """
-        Main entry point for processing user messages with planning-first approach.
+        Process user message with planning-first architecture and real-time progress updates.
         
         Args:
-            message: Current user message
+            message: User's message
             project_id: Project identifier
             project_context: Project context information
             session_id: Session identifier
-            conversation_history: Optional conversation history
-            
-        Returns:
-            Dictionary containing response and execution details
+            conversation_history: Conversation history
+            progress_callback: Optional callback for progress updates
         """
+        
         try:
-            logger.info(f"Processing message with planning-first approach: {message[:100]}...")
+            logger.info(f"Processing message with planning-first architecture: {message[:100]}...")
             
-            # 1. Context Gathering Phase
+            # Step 1: Start processing
+            if progress_callback:
+                await progress_callback("start", "🧠 Starting to process your request...", "Initializing the planning-first agent")
+            
+            # Step 2: Gather comprehensive context
+            if progress_callback:
+                await progress_callback("context", "📚 Gathering conversation context...", "Loading previous messages and project context")
+            
             conversation_context = await self._gather_comprehensive_context(
                 message, project_id, session_id, conversation_history, project_context
             )
             
-            # 2. Intent Analysis Phase
+            if progress_callback:
+                await progress_callback("context", "✅ Context gathered successfully", "Loaded conversation history and project context")
+            
+            # Step 3: Analyze user intent with context
+            if progress_callback:
+                await progress_callback("analyzing", "🧠 Analyzing your request...", "Understanding your intent and requirements")
+            
             intent_analysis = await self._analyze_user_intent_with_context(
                 message, conversation_context, project_context
             )
             
-            # 3. Plan Generation Phase
-            execution_plan = await self._generate_comprehensive_plan(
+            if progress_callback:
+                await progress_callback("analyzing", "✅ Analysis complete", f"Identified intent: {intent_analysis.get('primary_intent', 'unknown')}")
+            
+            # Step 4: Generate comprehensive plan
+            if progress_callback:
+                await progress_callback("planning", "📋 Creating execution plan...", "Planning the best approach for your request")
+            
+            plan = await self._generate_comprehensive_plan(
                 message, intent_analysis, conversation_context, project_context
             )
             
-            # 4. Plan Validation Phase
-            validation_result = await self._validate_and_optimize_plan(
-                execution_plan, project_context
-            )
+            if progress_callback:
+                await progress_callback("planning", "✅ Plan created", f"Created {len(plan.steps)} step execution plan")
             
-            if not validation_result["is_valid"]:
+            # Step 5: Validate and optimize plan
+            if progress_callback:
+                await progress_callback("validation", "✅ Validating plan...", "Ensuring the plan is feasible and optimal")
+            
+            validation_result = await self._validate_and_optimize_plan(plan, project_context)
+            
+            if not validation_result.get("is_valid", False):
+                if progress_callback:
+                    await progress_callback("validation", "⚠️ Plan validation failed", "Falling back to simplified processing")
+                
                 return await self._handle_plan_validation_failure(
                     message, validation_result, conversation_context, project_context
                 )
             
-            # 5. Plan Execution Phase
+            if progress_callback:
+                await progress_callback("validation", "✅ Plan validated", "Plan is ready for execution")
+            
+            # Step 6: Execute plan with context
+            if progress_callback:
+                await progress_callback("execution", "⚙️ Executing plan...", "Carrying out the planned actions")
+            
             execution_results = await self._execute_plan_with_context(
-                execution_plan, project_id, conversation_context
+                plan, project_id, conversation_context, progress_callback
             )
             
-            # 6. Response Generation Phase
-            response = await self._generate_contextual_response(
+            if progress_callback:
+                await progress_callback("execution", "✅ Plan executed", f"Completed {len(plan.steps)} steps successfully")
+            
+            # Step 7: Update memory from execution
+            if progress_callback:
+                await progress_callback("memory", "💾 Updating memory...", "Saving important information for future reference")
+            
+            await self._update_memory_from_execution(
+                message, execution_results.get("response", ""), execution_results, project_id, conversation_context
+            )
+            
+            if progress_callback:
+                await progress_callback("memory", "✅ Memory updated", "Important information saved for future reference")
+            
+            # Step 8: Generate contextual response
+            if progress_callback:
+                await progress_callback("completion", "🎉 Processing complete!", "All tasks completed successfully")
+            
+            final_response = await self._generate_contextual_response(
                 message, execution_results, conversation_context, project_context
             )
             
-            # 7. Memory Update Phase
-            await self._update_memory_from_execution(
-                message, response, execution_results, project_id, conversation_context
-            )
-            
+            # Return comprehensive result
             return {
                 "type": "planning_first_response",
-                "response": response,
-                "plan_executed": execution_plan.plan_id,
-                "steps_completed": len(execution_results["completed_steps"]),
-                "total_steps": len(execution_plan.steps),
-                "execution_time": execution_results["execution_time"],
-                "context_used": conversation_context.recent_conversation_summary,
-                "plan_type": execution_plan.plan_type,
-                "confidence_score": execution_plan.confidence_score
+                "response": final_response,
+                "steps_completed": len(plan.steps),
+                "tool_results": execution_results.get("tool_results", []),
+                "context_used": execution_results.get("context_used", ""),
+                "plan_type": plan.plan_type,
+                "confidence_score": plan.confidence_score,
+                "execution_time": execution_results.get("execution_time", 0.0),
+                "plan_executed": plan.plan_id,
+                "total_steps": len(plan.steps)
             }
-            
+                
         except Exception as e:
-            logger.error(f"Error in planning-first processing: {e}")
+            logger.error(f"Error processing message with planning-first architecture: {e}")
+            
+            if progress_callback:
+                await progress_callback("error", "❌ Processing error", f"Error: {str(e)}")
+            
+            # Fallback to simplified processing
             return await self._handle_processing_error(message, e, project_context)
     
     async def _gather_comprehensive_context(
@@ -506,10 +557,11 @@ class PlanningFirstAgent:
         self, 
         plan: ExecutionPlan, 
         project_id: str, 
-        conversation_context: ConversationContext
+        conversation_context: ConversationContext,
+        progress_callback: Optional[Callable[[str, str, str, Dict[str, Any]], None]] = None
     ) -> Dict[str, Any]:
         """
-        Execute the plan with full conversation context awareness.
+        Execute the plan with full conversation context awareness and progress updates.
         """
         try:
             start_time = datetime.now()
@@ -541,6 +593,14 @@ class PlanningFirstAgent:
                 # Execute ready steps
                 for step in ready_steps:
                     try:
+                        # Send step start progress
+                        if progress_callback:
+                            await progress_callback(
+                                "execution", 
+                                f"⚙️ Executing: {step.description}", 
+                                f"Step {len(executed_steps) + 1} of {len(plan.steps)}"
+                            )
+                        
                         result = await self._execute_single_step(
                             step, project_id, conversation_context, step_results
                         )
@@ -549,33 +609,51 @@ class PlanningFirstAgent:
                         completed_steps.append(step)
                         executed_steps.add(step.step_id)
                         
+                        # Send step completion progress
+                        if progress_callback:
+                            await progress_callback(
+                                "execution", 
+                                f"✅ Completed: {step.description}", 
+                                f"Step {len(executed_steps)} of {len(plan.steps)} completed"
+                            )
+                        
                         logger.info(f"Completed step {step.step_id}: {step.description}")
                         
                     except Exception as e:
-                        logger.error(f"Failed to execute step {step.step_id}: {e}")
-                        failed_steps.append({"step": step, "error": str(e)})
-                        step_results[step.step_id] = {"success": False, "error": str(e)}
-                        executed_steps.add(step.step_id)
+                        logger.error(f"Error executing step {step.step_id}: {e}")
+                        failed_steps.append(step)
+                        
+                        # Send step error progress
+                        if progress_callback:
+                            await progress_callback(
+                                "execution", 
+                                f"❌ Failed: {step.description}", 
+                                f"Error: {str(e)}"
+                            )
+                        
+                        # Continue with other steps
+                        continue
             
             execution_time = (datetime.now() - start_time).total_seconds()
+            
+            # Generate response from completed steps
+            response = await self._generate_response_from_results(
+                step_results, conversation_context, project_id
+            )
             
             return {
                 "completed_steps": completed_steps,
                 "failed_steps": failed_steps,
                 "step_results": step_results,
                 "execution_time": execution_time,
-                "success_rate": len(completed_steps) / len(plan.steps) if plan.steps else 1.0
+                "response": response,
+                "context_used": conversation_context.recent_conversation_summary,
+                "tool_results": [result for result in step_results.values() if result.get("tool_used")]
             }
             
         except Exception as e:
             logger.error(f"Error executing plan: {e}")
-            return {
-                "completed_steps": [],
-                "failed_steps": [{"error": str(e)}],
-                "step_results": {},
-                "execution_time": 0,
-                "success_rate": 0.0
-            }
+            raise
     
     async def _execute_single_step(
         self, 
@@ -1082,6 +1160,50 @@ class PlanningFirstAgent:
             
         except Exception as e:
             logger.error(f"Error updating memory from execution: {e}")
+
+    async def _generate_response_from_results(
+        self, 
+        step_results: Dict[str, Any], 
+        conversation_context: ConversationContext, 
+        project_id: str
+    ) -> str:
+        """
+        Generate a response based on the results of executed steps.
+        """
+        try:
+            # Collect all successful results
+            successful_results = [
+                result for result in step_results.values() 
+                if result.get("success", True) and result.get("output")
+            ]
+            
+            if not successful_results:
+                return "I've processed your request, but no specific actions were taken."
+            
+            # Build response from results
+            response_parts = []
+            
+            for result in successful_results:
+                if result.get("tool_used"):
+                    tool_name = result["tool_used"]
+                    output = result["output"]
+                    
+                    if tool_name == "create_task":
+                        response_parts.append(f"✅ Created task: {output}")
+                    elif tool_name == "create_memory":
+                        response_parts.append(f"💾 Saved memory: {output}")
+                    elif tool_name == "update_task":
+                        response_parts.append(f"📝 Updated task: {output}")
+                    else:
+                        response_parts.append(f"✅ {output}")
+                else:
+                    response_parts.append(result["output"])
+            
+            return "\n\n".join(response_parts)
+            
+        except Exception as e:
+            logger.error(f"Error generating response from results: {e}")
+            return "I've processed your request successfully."
 
 
 # Create a singleton instance

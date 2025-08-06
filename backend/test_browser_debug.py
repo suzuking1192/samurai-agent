@@ -1,0 +1,183 @@
+#!/usr/bin/env python3
+"""
+Create a simple HTML test page to debug the frontend streaming issue
+"""
+
+import os
+
+html_content = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Streaming Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .log { background: #f5f5f5; padding: 10px; border-radius: 5px; margin: 10px 0; max-height: 400px; overflow-y: auto; }
+        .progress { color: #0066cc; }
+        .error { color: #cc0000; }
+        .success { color: #00cc00; }
+        button { padding: 10px 20px; margin: 10px 5px; cursor: pointer; }
+        input { padding: 8px; margin: 5px; width: 300px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Streaming Test</h1>
+        
+        <div>
+            <label for="projectId">Project ID:</label>
+            <input type="text" id="projectId" value="0627397a-b5f0-478a-bc3b-0333d7221966">
+        </div>
+        
+        <div>
+            <label for="message">Message:</label>
+            <input type="text" id="message" value="Hello, this is a test message">
+        </div>
+        
+        <div>
+            <button onclick="testStreaming()">🚀 Test Streaming</button>
+            <button onclick="clearLog()">🗑️ Clear Log</button>
+        </div>
+        
+        <div class="log" id="log"></div>
+    </div>
+
+    <script>
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            const className = type === 'error' ? 'error' : type === 'success' ? 'success' : type === 'progress' ? 'progress' : '';
+            logDiv.innerHTML += `<div class="${className}">[${timestamp}] ${message}</div>`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+        }
+
+        async function testStreaming() {
+            const projectId = document.getElementById('projectId').value;
+            const message = document.getElementById('message').value;
+            
+            log('🚀 Starting streaming test...', 'info');
+            log(`📝 Project ID: ${projectId}`, 'info');
+            log(`📝 Message: ${message}`, 'info');
+            
+            const url = `http://localhost:8000/projects/${projectId}/chat-stream`;
+            log(`🌐 URL: ${url}`, 'info');
+            
+            try {
+                log('📡 Making POST request...', 'info');
+                
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ message: message }),
+                });
+                
+                log(`📡 Response status: ${response.status}`, 'info');
+                log(`📡 Content-Type: ${response.headers.get('Content-Type')}`, 'info');
+                log(`📡 Cache-Control: ${response.headers.get('Cache-Control')}`, 'info');
+                log(`📡 Connection: ${response.headers.get('Connection')}`, 'info');
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    log(`❌ Error: ${response.status} - ${errorText}`, 'error');
+                    return;
+                }
+                
+                log('✅ Request successful, reading stream...', 'success');
+                
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                let lineCount = 0;
+                let progressCount = 0;
+                const startTime = Date.now();
+                
+                while (true) {
+                    const { done, value } = await reader.read();
+                    
+                    if (done) {
+                        log('📤 Stream completed', 'info');
+                        break;
+                    }
+                    
+                    const chunk = decoder.decode(value, { stream: true });
+                    buffer += chunk;
+                    
+                    const lines = buffer.split('\\n');
+                    buffer = lines.pop() || '';
+                    
+                    for (const line of lines) {
+                        lineCount++;
+                        
+                        if (line.trim() === '') continue;
+                        
+                        log(`[Line ${lineCount}] Raw: ${line}`, 'info');
+                        
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const data = JSON.parse(line.slice(6));
+                                const timestamp = Date.now() - startTime;
+                                
+                                log(`[${timestamp}ms] 📤 Parsed: ${JSON.stringify(data)}`, 'info');
+                                
+                                if (data.type === 'progress') {
+                                    progressCount++;
+                                    const step = data.progress.step;
+                                    const message = data.progress.message;
+                                    log(`🎯 Progress ${progressCount}: ${step} - ${message}`, 'progress');
+                                } else if (data.type === 'complete') {
+                                    log(`🎯 Complete: ${data.response}`, 'success');
+                                    break;
+                                } else if (data.type === 'error') {
+                                    log(`❌ Error: ${data.error}`, 'error');
+                                    return;
+                                } else if (data.type === 'heartbeat') {
+                                    log(`💓 Heartbeat`, 'info');
+                                }
+                            } catch (e) {
+                                log(`❌ JSON parse error: ${e}`, 'error');
+                                log(`❌ Raw line: ${line}`, 'error');
+                            }
+                        } else {
+                            log(`⚠️ Non-data line: ${line}`, 'info');
+                        }
+                    }
+                }
+                
+                const totalTime = Date.now() - startTime;
+                log(`✅ Test completed!`, 'success');
+                log(`⏱️ Total time: ${totalTime}ms`, 'info');
+                log(`📊 Progress updates: ${progressCount}`, 'info');
+                log(`📊 Total lines: ${lineCount}`, 'info');
+                
+            } catch (error) {
+                log(`❌ Error: ${error.message}`, 'error');
+                console.error('Full error:', error);
+            }
+        }
+    </script>
+</body>
+</html>
+"""
+
+# Write the HTML file
+with open('streaming_test.html', 'w') as f:
+    f.write(html_content)
+
+print("✅ Created streaming_test.html")
+print("📝 Open this file in your browser to test the streaming")
+print("🌐 File location: backend/streaming_test.html")
+print()
+print("🔧 Instructions:")
+print("1. Open streaming_test.html in your browser")
+print("2. Click 'Test Streaming' button")
+print("3. Check the console and log output")
+print("4. Compare with what you see in the frontend") 

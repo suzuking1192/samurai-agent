@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from datetime import datetime
 from enum import Enum
 import uuid
@@ -460,18 +460,28 @@ class ChatResponse(BaseModel):
         tasks: Optional list of generated tasks
         memories: Optional list of relevant memories
         type: Response type (chat, feature_breakdown, error)
+        intent_analysis: Optional intent analysis from unified agent
+        memory_updated: Whether memory was updated during this interaction
     """
     response: str = Field(..., max_length=15000, description="Assistant response")
     tasks: Optional[List[Task]] = Field(default=None, description="Generated tasks")
     memories: Optional[List[Memory]] = Field(default=None, description="Relevant memories")
     type: str = Field(..., description="Response type")
+    intent_analysis: Optional[Dict[str, Any]] = Field(default=None, description="Intent analysis from unified agent")
+    memory_updated: Optional[bool] = Field(default=False, description="Whether memory was updated")
 
     class Config:
         json_schema_extra = {
             "example": {
                 "response": "I'll help you implement user authentication. Here are the tasks:",
                 "tasks": [],
-                "type": "feature_breakdown"
+                "type": "feature_breakdown",
+                "intent_analysis": {
+                    "intent_type": "ready_for_action",
+                    "confidence": 0.9,
+                    "needs_clarification": False
+                },
+                "memory_updated": False
             }
         }
 
