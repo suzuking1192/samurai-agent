@@ -972,53 +972,7 @@ async def get_semantic_hierarchy(request: Request):
             content={"error": "Failed to generate semantic hierarchy"}
         )
 
-@app.post("/api/tasks/{task_id}/generate-prompt")
-async def generate_task_prompt(task_id: str):
-    """Generate intelligent prompt for AI coding tools using task + related memories"""
-    try:
-        # Get the task
-        task = file_service.get_task_by_id_global(task_id)
-        if not task:
-            raise HTTPException(status_code=404, detail="Task not found")
-        
-        # Get project context
-        project = file_service.get_project_by_id(task.project_id)
-        if not project:
-            raise HTTPException(status_code=404, detail="Project not found")
-        
-        # Get semantically related memories
-        related_memories = await unified_samurai_agent.get_related_memories_for_task(task_id, limit=5)
-        
-        # Generate comprehensive prompt
-        logger.info(f"Generating prompt with {len(related_memories)} related memories")
-        logger.info(f"Project type: {type(project)}")
-        logger.info(f"Project data: {project.dict() if hasattr(project, 'dict') else project}")
-        
-        # Convert project to dict for the prompt generation
-        project_dict = {
-            "name": project.name,
-            "description": project.description,
-            "tech_stack": project.tech_stack
-        }
-        prompt = unified_samurai_agent.generate_intelligent_prompt(task, project_dict, related_memories)
-        
-        # Log prompt generation for analytics
-        logger.info(f"Generated prompt for task {task_id}, length: {len(prompt)}")
-        logger.info(f"Prompt preview: {prompt[:200]}...")
-        
-        return {
-            "prompt": prompt,
-            "task_id": task_id,
-            "generated_at": datetime.now().isoformat(),
-            "prompt_length": len(prompt),
-            "related_memories_count": len(related_memories)
-        }
-        
-    except Exception as e:
-        logger.error(f"Error generating prompt for task {task_id}: {e}")
-        import traceback
-        logger.error(f"Traceback: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail="Failed to generate prompt")
+
 
 if __name__ == "__main__":
     import uvicorn
