@@ -297,6 +297,40 @@ export async function getConversationHistory(projectId: string): Promise<ChatMes
   return apiRequest<ChatMessage[]>(`/projects/${projectId}/conversation-history`)
 }
 
+// Session end with memory consolidation
+export interface MemoryConsolidationResult {
+  status: string
+  total_insights_processed: number
+  total_insights_skipped: number
+  categories_affected: Array<{
+    category: string
+    memories_updated: number
+    memories_created: number
+    insights_processed: number
+    is_new_category?: boolean
+  }>
+  new_categories_created: string[]
+  total_memories_affected: number
+}
+
+export interface SessionEndResponse {
+  status: string
+  memory_consolidation: MemoryConsolidationResult
+  new_session_id: string
+  insights_found: number
+  session_relevance: number
+}
+
+export async function endSessionWithConsolidation(
+  projectId: string, 
+  sessionId: string
+): Promise<SessionEndResponse> {
+  return apiRequest<SessionEndResponse>(`/api/projects/${projectId}/sessions/end`, {
+    method: 'POST',
+    body: JSON.stringify({ session_id: sessionId }),
+  })
+}
+
 export const getSemanticHierarchy = async (
   projectId: string, 
   clusteringType: string = 'content', 
