@@ -338,7 +338,7 @@ class Task(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Unique task identifier")
     project_id: str = Field(..., description="Project identifier")
     title: str = Field(..., min_length=1, max_length=200, description="Task title")
-    description: str = Field(..., max_length=1000, description="Task description")
+    description: str = Field(..., max_length=5000, description="Task description")
     status: str = Field(default="pending", pattern="^(pending|in_progress|completed)$", description="Task status")
     priority: str = Field(default="medium", pattern="^(low|medium|high)$", description="Task priority")
     prompt: Optional[str] = Field(default="", max_length=2000, description="Generated Cursor prompt")
