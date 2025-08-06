@@ -27,6 +27,7 @@ from services.unified_samurai_agent import unified_samurai_agent
 from services.context_service import context_service
 from services.response_service import handle_agent_response, handle_validation_error
 from services.semantic_service import SemanticService
+from services.intelligent_memory_consolidation import IntelligentMemoryConsolidationService
 
 
 # Load environment variables
@@ -58,6 +59,7 @@ app.add_middleware(
 file_service = FileService()
 gemini_service = GeminiService()
 semantic_service = SemanticService()
+memory_consolidation_service = IntelligentMemoryConsolidationService()
 
 # Global exception handler
 @app.exception_handler(Exception)
@@ -826,6 +828,92 @@ async def complete_session(project_id: str, session_id: str):
     except Exception as e:
         logger.error(f"Error completing session {session_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Session completion failed: {str(e)}")
+
+
+@app.post("/api/projects/{project_id}/sessions/end")
+async def end_session_with_consolidation(project_id: str, request: Request):
+    """
+    End session and perform intelligent memory consolidation.
+    Enhanced endpoint for "start new conversation" functionality.
+    """
+    try:
+        # Get request data
+        data = await request.json()
+        session_id = data.get("session_id")
+        
+        if not session_id:
+            raise HTTPException(status_code=400, detail="session_id is required")
+        
+        logger.info(f"Starting session end with consolidation for session {session_id}")
+        
+        # 1. Verify project exists
+        project = file_service.get_project_by_id(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # 2. Verify session exists
+        session = file_service.get_session_by_id(project_id, session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        # 3. Build project context
+        project_context = {
+            "name": project.name,
+            "description": project.description,
+            "tech_stack": project.tech_stack
+        }
+        
+        # 4. Perform intelligent memory consolidation
+        consolidation_result = await memory_consolidation_service.consolidate_session_memories(
+            project_id=project_id,
+            session_id=session_id,
+            project_context=project_context
+        )
+        
+        # 5. Generate new session ID for clean restart
+        new_session_id = str(uuid.uuid4())
+        
+        # 6. Create new session
+        new_session = Session(
+            id=new_session_id,
+            project_id=project_id,
+            name=f"Session {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+        )
+        file_service.save_session(project_id, new_session)
+        
+        # 7. Build comprehensive response
+        response_data = {
+            "status": "session_ended",
+            "memory_consolidation": {
+                "status": consolidation_result.status,
+                "total_insights_processed": consolidation_result.total_insights_processed,
+                "total_insights_skipped": consolidation_result.total_insights_skipped,
+                "categories_affected": [
+                    {
+                        "category": cat_result.category,
+                        "memories_updated": cat_result.memories_updated,
+                        "memories_created": cat_result.memories_created,
+                        "insights_processed": cat_result.insights_processed,
+                        "is_new_category": cat_result.is_new_category
+                    }
+                    for cat_result in consolidation_result.categories_affected
+                ],
+                "new_categories_created": consolidation_result.new_categories_created,
+                "total_memories_affected": consolidation_result.total_memories_affected
+            },
+            "new_session_id": new_session_id,
+            "insights_found": consolidation_result.total_insights_processed + consolidation_result.total_insights_skipped,
+            "session_relevance": consolidation_result.session_relevance
+        }
+        
+        logger.info(f"Session end completed successfully: {consolidation_result.status}")
+        return response_data
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error ending session with consolidation: {e}")
+        raise HTTPException(status_code=500, detail=f"Session end failed: {str(e)}")
 
 
 # Legacy chat endpoint (keeping for backward compatibility)

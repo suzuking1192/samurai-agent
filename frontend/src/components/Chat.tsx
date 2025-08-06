@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { ChatMessage, ChatRequest, ChatResponse, Session } from '../types'
-import { sendChatMessage, sendChatMessageWithProgress, getChatMessages, createSession, getCurrentSession, getSessionMessages, getConversationHistory } from '../services/api'
+import { sendChatMessage, sendChatMessageWithProgress, getChatMessages, createSession, getCurrentSession, getSessionMessages, getConversationHistory, endSessionWithConsolidation, SessionEndResponse } from '../services/api'
 import ProgressDisplay from './ProgressDisplay'
 
 interface ChatProps {
@@ -124,7 +124,7 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated }) => {
   }
 
   const handleStartNewConversation = async () => {
-    console.log('Starting new conversation, projectId:', projectId)
+    console.log('Starting new conversation with memory consolidation, projectId:', projectId)
     if (!projectId) {
       console.error('Cannot start new conversation: projectId is undefined')
       setNotification({
@@ -134,30 +134,101 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated }) => {
       return
     }
     
+    if (!currentSession) {
+      console.log('No current session, creating new session directly')
+      try {
+        const newSession = await createSession(projectId)
+        console.log('Created new session:', newSession)
+        setCurrentSession(newSession)
+        setMessages([])
+        
+        setNotification({
+          type: 'info',
+          message: 'New conversation started! Send your first message.'
+        })
+        
+        setTimeout(() => setNotification(null), 3000)
+      } catch (error) {
+        console.error('Error creating new session:', error)
+        setNotification({
+          type: 'error',
+          message: 'Failed to start new conversation'
+        })
+      }
+      return
+    }
+    
     try {
-      // Create a new session
-      const newSession = await createSession(projectId)
-      console.log('Created new session:', newSession)
-      setCurrentSession(newSession)
+      // Show loading state
+      setNotification({
+        type: 'info',
+        message: 'Saving insights and starting new conversation...'
+      })
       
-      // Clear messages for new conversation
+      // End current session with memory consolidation
+      console.log('Ending session with consolidation:', currentSession.id)
+      const consolidationResult: SessionEndResponse = await endSessionWithConsolidation(
+        projectId, 
+        currentSession.id
+      )
+      
+      console.log('Memory consolidation completed:', consolidationResult)
+      
+      // Create new session using the returned session ID
+      const newSession: Session = {
+        id: consolidationResult.new_session_id,
+        project_id: projectId,
+        name: `Session ${new Date().toLocaleString()}`,
+        created_at: new Date().toISOString(),
+        last_activity: new Date().toISOString()
+      }
+      
+      setCurrentSession(newSession)
       setMessages([])
+      
+      // Show consolidation summary
+      const { memory_consolidation } = consolidationResult
+      let summaryMessage = 'New conversation started!'
+      
+      if (memory_consolidation.status === 'completed') {
+        const categoriesText = memory_consolidation.categories_affected.length > 0 
+          ? memory_consolidation.categories_affected.map(cat => 
+              `${cat.category}: ${cat.memories_updated + cat.memories_created} memories`
+            ).join(', ')
+          : 'No categories'
+        
+        summaryMessage = `✨ Insights saved! ${memory_consolidation.total_insights_processed} insights processed across ${memory_consolidation.categories_affected.length} categories. ${categoriesText}.`
+      } else if (memory_consolidation.status === 'skipped_too_short') {
+        summaryMessage = 'New conversation started! (Previous session was too short to extract insights)'
+      } else if (memory_consolidation.status === 'no_relevant_insights') {
+        summaryMessage = 'New conversation started! (No significant insights found in previous session)'
+      }
       
       setNotification({
         type: 'info',
-        message: 'New conversation started! Send your first message.'
+        message: summaryMessage
       })
       
-      // Clear notification after 3 seconds
+      // Clear notification after 5 seconds (longer for consolidation info)
       setTimeout(() => {
         setNotification(null)
-      }, 3000)
+      }, 5000)
+      
     } catch (error) {
-      console.error('Error starting new conversation:', error)
+      console.error('Error starting new conversation with consolidation:', error)
       setNotification({
         type: 'error',
-        message: 'Failed to start new conversation'
+        message: 'Failed to start new conversation. Please try again.'
       })
+      
+      // Fallback to simple session creation
+      try {
+        const newSession = await createSession(projectId)
+        setCurrentSession(newSession)
+        setMessages([])
+      } catch (fallbackError) {
+        console.error('Fallback session creation also failed:', fallbackError)
+      }
     }
   }
 
