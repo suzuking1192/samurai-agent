@@ -1557,31 +1557,177 @@ Remember: The goal is creating the optimal number of AI-friendly tasks that enab
             return "\n".join(response_parts)
     
     async def _execute_direct_action(self, message: str, context: ConversationContext, project_id: str) -> dict:
-        """Execute direct actions like task completion, deletion, etc."""
+        """Execute direct actions using LLM detection and comprehensive tool access."""
+        
+        # Step 1: Use LLM to detect actions
+        action_analysis_prompt = f"""
+You are Samurai Engine's action detection expert. Analyze the user's message to identify specific actions they want to perform.
+
+PROJECT CONTEXT:
+- Project: {context.project_context.get('name', 'Unknown')}
+- Tech Stack: {context.project_context.get('tech_stack', 'Unknown')}
+
+CONVERSATION CONTEXT:
+{context.conversation_summary}
+
+CURRENT TASKS:
+{self._format_tasks_for_context(context.relevant_tasks)}
+
+RELEVANT MEMORIES:
+{self._format_memories_for_context(context.relevant_memories)}
+
+USER MESSAGE: "{message}"
+
+AVAILABLE TOOLS:
+- create_task: Create a new task in the project
+- update_task: Update an existing task's details
+- change_task_status: Change the status of a task (pending, in_progress, completed, blocked)
+- search_tasks: Search for tasks by title, description, or status
+- delete_task: Delete a task from the project
+- create_memory: Create a new memory entry
+- update_memory: Update an existing memory
+- search_memories: Search for memories by title or content
+- delete_memory: Delete a memory from the project
+
+CHAIN OF THOUGHT ANALYSIS:
+
+### Step 1: Intent Recognition
+Analyze what the user wants to accomplish:
+- Are they updating task status? (words: done, completed, finished, mark as)
+- Are they modifying existing items? (words: update, change, edit, modify)
+- Are they deleting items? (words: delete, remove, cancel)
+- Are they creating new items? (words: add, create, make)
+- Are they searching for items? (words: find, show, search, list)
+- Are they performing multiple actions in sequence?
+
+### Step 2: Entity Identification
+Identify what items they're referring to:
+- Specific task titles or descriptions mentioned
+- Memory titles or topics referenced
+- Generic references requiring search (e.g., "the login task", "authentication memory")
+
+### Step 3: Action Sequencing
+Determine if actions need to be performed in sequence:
+- Do they need to search before updating/deleting?
+- Are there multiple independent actions?
+- What's the logical order of operations?
+
+### Step 4: Parameter Extraction
+Extract specific parameters for each action:
+- Task/memory identifiers (titles, partial titles, descriptions)
+- New values for updates (status, priority, content)
+- Search criteria and filters
+
+## OUTPUT FORMAT
+
+Return JSON with detected actions in execution order:
+
+{{
+    "actions_detected": true/false,
+    "action_count": number,
+    "confidence": 0.0-1.0,
+    "reasoning": "Brief explanation of what was detected",
+    "actions": [
+        {{
+            "tool_name": "tool_to_execute",
+            "parameters": {{
+                "param1": "value1",
+                "param2": "value2"
+            }},
+            "requires_search_first": true/false,
+            "search_tool": "search_tasks|search_memories",
+            "search_query": "search terms if needed",
+            "description": "Human readable description of this action"
+        }}
+    ]
+}}
+
+## EXAMPLES FOR CALIBRATION
+
+**User**: "Mark the login task as completed"
+**Analysis**: Single action, status update, specific task reference
+**Output**: 
+{{
+    "actions_detected": true,
+    "action_count": 1,
+    "confidence": 0.9,
+    "reasoning": "User wants to mark a specific task as completed",
+    "actions": [{{
+        "tool_name": "change_task_status",
+        "parameters": {{"task_identifier": "login", "new_status": "completed", "project_id": "{project_id}"}},
+        "requires_search_first": false,
+        "description": "Mark login task as completed"
+    }}]
+}}
+
+**User**: "Delete the old authentication tasks and create a new one for JWT implementation"
+**Analysis**: Multiple actions - delete (requires search) + create
+**Output**:
+{{
+    "actions_detected": true,
+    "action_count": 2,
+    "confidence": 0.8,
+    "reasoning": "User wants to delete old tasks and create a new one",
+    "actions": [
+        {{
+            "tool_name": "search_tasks",
+            "parameters": {{"query": "authentication", "project_id": "{project_id}"}},
+            "requires_search_first": false,
+            "description": "Search for authentication tasks to delete"
+        }},
+        {{
+            "tool_name": "create_task",
+            "parameters": {{"title": "JWT Implementation", "description": "Implement JWT authentication system", "project_id": "{project_id}"}},
+            "requires_search_first": false,
+            "description": "Create new JWT implementation task"
+        }}
+    ]
+}}
+
+**User**: "Update the database memory with the new PostgreSQL configuration details"
+**Analysis**: Update action requiring search first to find the memory
+**Output**:
+{{
+    "actions_detected": true,
+    "action_count": 1,
+    "confidence": 0.8,
+    "reasoning": "User wants to update a specific memory with new content",
+    "actions": [{{
+        "tool_name": "update_memory",
+        "parameters": {{"memory_identifier": "database", "content": "new PostgreSQL configuration details", "project_id": "{project_id}"}},
+        "requires_search_first": true,
+        "search_tool": "search_memories",
+        "search_query": "database PostgreSQL",
+        "description": "Update database memory with new PostgreSQL configuration"
+    }}]
+}}
+
+Analyze the user's message and return the appropriate JSON structure for detected actions.
+"""
+        
+        # Get LLM analysis
         try:
-            # Detect action type
-            action_type = self._detect_action_type(message)
+            analysis_response = await self.gemini_service.chat_with_system_prompt(
+                "Analyze the user's message for direct actions",
+                action_analysis_prompt
+            )
             
-            if action_type == "task_completion":
-                return await self._execute_task_completion(message, context, project_id)
-            elif action_type == "task_deletion":
-                return await self._execute_task_deletion(message, context, project_id)
-            else:
+            action_analysis = self._parse_action_analysis(analysis_response)
+            
+            if not action_analysis.get("actions_detected", False):
                 return {
-                    "response": "I'm not sure what action you want me to take. Could you be more specific?",
+                    "response": "I'm not sure what specific action you want me to take. Could you be more explicit about what you'd like me to do?",
                     "tool_calls_made": 0,
                     "tool_results": [],
-                    "action_type": "unknown"
+                    "action_type": "no_actions_detected"
                 }
-                
+            
+            # Step 2: Execute detected actions
+            return await self._execute_detected_actions(action_analysis, project_id, context)
+            
         except Exception as e:
-            logger.error(f"Error executing direct action: {e}")
-            return {
-                "response": "I encountered an issue processing your request. Please try again.",
-                "tool_calls_made": 0,
-                "tool_results": [],
-                "action_type": "error"
-            }
+            logger.error(f"Error in LLM action detection: {e}")
+            return await self._fallback_action_detection(message, context, project_id)
     
     def _detect_action_type(self, message: str) -> str:
         """Detect the type of direct action requested."""
@@ -1695,6 +1841,153 @@ Remember: The goal is creating the optimal number of AI-friendly tasks that enab
                 "tool_calls_made": 0,
                 "tool_results": [],
                 "action_type": "task_deletion"
+            }
+
+    async def _execute_detected_actions(self, action_analysis: dict, project_id: str, context: ConversationContext) -> dict:
+        """Execute the actions detected by LLM analysis."""
+        
+        actions = action_analysis.get("actions", [])
+        tool_results = []
+        total_tool_calls = 0
+        response_parts = []
+        
+        try:
+            for action in actions:
+                # Handle search-first requirement
+                if action.get("requires_search_first", False):
+                    search_results = await self._execute_search_before_action(action, project_id)
+                    if search_results:
+                        # Update action parameters with search results
+                        action = await self._refine_action_with_search_results(action, search_results)
+                        total_tool_calls += 1
+                    else:
+                        response_parts.append(f"❌ Could not find items for: {action.get('description', 'unknown action')}")
+                        continue
+                
+                # Execute the main action
+                tool_name = action.get("tool_name")
+                parameters = action.get("parameters", {})
+                
+                if tool_name in self.tool_registry.get_available_tools():
+                    result = self.tool_registry.execute_tool(tool_name, **parameters)
+                    tool_results.append(result)
+                    total_tool_calls += 1
+                    
+                    if result.get("success", False):
+                        response_parts.append(result.get("message", f"✅ Completed: {action.get('description')}"))
+                    else:
+                        response_parts.append(result.get("message", f"❌ Failed: {action.get('description')}"))
+                else:
+                    response_parts.append(f"❌ Unknown action: {tool_name}")
+            
+            # Generate comprehensive response
+            if response_parts:
+                response = "\n".join(response_parts)
+            else:
+                response = "I completed the requested actions."
+            
+            return {
+                "response": response,
+                "tool_calls_made": total_tool_calls,
+                "tool_results": tool_results,
+                "action_type": "multiple_actions" if len(actions) > 1 else "single_action",
+                "actions_executed": len([r for r in tool_results if r.get("success", False)]),
+                "actions_failed": len([r for r in tool_results if not r.get("success", True)])
+            }
+            
+        except Exception as e:
+            logger.error(f"Error executing detected actions: {e}")
+            return {
+                "response": "I encountered an error while executing your requests. Some actions may have been completed.",
+                "tool_calls_made": total_tool_calls,
+                "tool_results": tool_results,
+                "action_type": "error"
+            }
+
+    async def _execute_search_before_action(self, action: dict, project_id: str) -> list:
+        """Execute search before the main action to find target items."""
+        
+        search_tool = action.get("search_tool", "search_tasks")
+        search_query = action.get("search_query", "")
+        
+        if not search_query:
+            return []
+        
+        try:
+            search_result = self.tool_registry.execute_tool(
+                search_tool,
+                query=search_query,
+                project_id=project_id
+            )
+            
+            if search_result.get("success", False):
+                return search_result.get("tasks", []) or search_result.get("memories", [])
+            
+            return []
+            
+        except Exception as e:
+            logger.error(f"Error in search before action: {e}")
+            return []
+
+    async def _refine_action_with_search_results(self, action: dict, search_results: list) -> dict:
+        """Refine action parameters based on search results."""
+        
+        if not search_results:
+            return action
+        
+        # For single result, use the exact ID
+        if len(search_results) == 1:
+            if action["tool_name"] in ["update_task", "delete_task", "change_task_status"]:
+                action["parameters"]["task_identifier"] = search_results[0]["id"]
+            elif action["tool_name"] in ["update_memory", "delete_memory"]:
+                action["parameters"]["memory_identifier"] = search_results[0]["id"]
+        
+        # For multiple results, use the most relevant one (first result from search ranking)
+        elif len(search_results) > 1:
+            best_match = search_results[0]  # Search tools should return most relevant first
+            
+            if action["tool_name"] in ["update_task", "delete_task", "change_task_status"]:
+                action["parameters"]["task_identifier"] = best_match["id"]
+            elif action["tool_name"] in ["update_memory", "delete_memory"]:
+                action["parameters"]["memory_identifier"] = best_match["id"]
+        
+        return action
+
+    def _parse_action_analysis(self, response: str) -> dict:
+        """Parse LLM response for action analysis."""
+        
+        try:
+            # Find JSON in response
+            start_idx = response.find('{')
+            end_idx = response.rfind('}') + 1
+            
+            if start_idx >= 0 and end_idx > start_idx:
+                json_str = response[start_idx:end_idx]
+                return json.loads(json_str)
+            else:
+                logger.warning("No JSON found in action analysis response")
+                return {"actions_detected": False}
+                
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse action analysis JSON: {e}")
+            return {"actions_detected": False}
+
+    async def _fallback_action_detection(self, message: str, context: ConversationContext, project_id: str) -> dict:
+        """Fallback to simple heuristic-based action detection if LLM fails."""
+        
+        # Simple keyword-based detection as backup
+        message_lower = message.lower()
+        
+        if any(word in message_lower for word in ["done", "complete", "finished"]):
+            return await self._execute_task_completion(message, context, project_id)
+        elif any(word in message_lower for word in ["delete", "remove"]):
+            return await self._execute_task_deletion(message, context, project_id)
+        else:
+            return {
+                "response": "I'm having trouble understanding what you want me to do. Could you be more specific?",
+                "tool_calls_made": 0,
+                "tool_results": [],
+                "action_type": "fallback_unclear"
             }
     
     def _find_matching_task(self, message: str, tasks: List[Task]) -> Optional[Task]:
