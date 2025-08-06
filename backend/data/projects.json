@@ -96,5 +96,12 @@
     "description": "Test",
     "tech_stack": "React + FastAPI",
     "created_at": "2025-08-05 19:28:09.637778"
+  },
+  {
+    "id": "0c0a7acf-a568-4d28-b7b2-8e2a826d2830",
+    "name": "Test Project",
+    "description": "A test project for enhanced prompt testing",
+    "tech_stack": "React, TypeScript, Node.js, PostgreSQL",
+    "created_at": "2025-08-06 09:40:51.419558"
   }
 ]
