@@ -294,48 +294,197 @@ class UnifiedSamuraiAgent:
     
     async def _analyze_user_intent(self, message: str, context: ConversationContext) -> IntentAnalysis:
         """
-        Analyze user intent with sophisticated understanding of conversation context.
+        Analyze user intent with enhanced understanding using the Samurai Engine prompt.
         """
         try:
-            # Build context-aware prompt
-            system_prompt = f"""
-            You are an expert at understanding developer intent within conversation context.
-            
-            CONVERSATION CONTEXT:
-            {context.conversation_summary}
-            
-            PROJECT CONTEXT:
-            - Project: {context.project_context.get('name', 'Unknown')}
-            - Tech Stack: {context.project_context.get('tech_stack', 'Unknown')}
-            
-            RELEVANT TASKS:
-            {self._format_tasks_for_context(context.relevant_tasks)}
-            
-            RELEVANT MEMORIES:
-            {self._format_memories_for_context(context.relevant_memories)}
-            
-            CURRENT MESSAGE: "{message}"
-            
-            Analyze the user's intent and classify it into exactly one of these categories:
-            
-            1. **pure_discussion** - Questions, explanations, general chat without action needed
-               Examples: "What is JWT?", "How does authentication work?", "Hello", "Thanks"
-            
-            2. **feature_exploration** - User thinking about adding features, needs clarification
-               Examples: "I'm thinking about adding authentication", "Maybe we should add a search feature"
-            
-            3. **spec_clarification** - User providing more details in response to agent questions
-               Examples: "Yes, with email/password", "I want real-time notifications", "Include user profiles"
-            
-            4. **ready_for_action** - Complete specifications, ready to create tasks
-               Examples: "Create tasks for JWT authentication with email/password", "Add user registration with email verification"
-            
-            5. **direct_action** - Immediate action requests
-               Examples: "Mark login task as completed", "Delete that task", "Update the authentication method"
-            
-            Return ONLY the category name: pure_discussion, feature_exploration, spec_clarification, ready_for_action, or direct_action
-            """
-            
+            # Build enhanced context-aware prompt
+            system_prompt = f"""You are Samurai Engine's intent analysis expert. Your role is to deeply understand developer conversations and classify user intent to enable the perfect "vibe coding partner" response.
+
+CONVERSATION CONTEXT:
+{context.conversation_summary}
+
+PROJECT CONTEXT:
+- Project: {context.project_context.get('name', 'Unknown')}
+- Tech Stack: {context.project_context.get('tech_stack', 'Unknown')}
+- Project Stage: {context.project_context.get('stage', 'Development')}
+
+RELEVANT TASKS:
+{self._format_tasks_for_context(context.relevant_tasks)}
+
+RELEVANT MEMORIES:
+{self._format_memories_for_context(context.relevant_memories)}
+
+CURRENT MESSAGE: "{message}"
+
+## CHAIN OF THOUGHT ANALYSIS
+
+Perform this step-by-step analysis:
+
+### Step 1: Context Understanding
+First, understand the conversational context:
+- What has been discussed in recent messages?
+- What is the user's current focus or project state?
+- Are they in the middle of implementing something?
+- Is this a continuation of a previous discussion?
+- What technical decisions have been made recently?
+
+### Step 2: Message Analysis
+Analyze the current message for:
+- **Action indicators**: Words like "create", "implement", "add", "build", "delete", "mark as"
+- **Question indicators**: Words like "how", "what", "why", "should I", "can you"
+- **Exploration language**: Words like "thinking about", "maybe", "considering", "wondering"
+- **Specification language**: Direct answers to previous questions, specific technical details
+- **Completeness signals**: Detailed requirements, clear scope, implementation-ready descriptions
+
+### Step 3: Intent Pattern Recognition
+Look for these specific patterns:
+
+**PURE_DISCUSSION patterns:**
+- Theoretical questions about technology concepts
+- Seeking explanations or learning
+- Casual conversation without project context
+- General acknowledgments ("thanks", "hello", "got it")
+- Questions about how things work conceptually
+- No reference to their specific project implementation
+
+**FEATURE_EXPLORATION patterns:**
+- Expressing interest in new capabilities ("I want to add...")
+- Vague feature descriptions without specifics
+- Asking about feasibility ("Should I implement...")
+- Brainstorming language ("What if we...", "Maybe we could...")
+- High-level feature ideas without implementation details
+- Seeking validation for feature concepts
+
+**SPEC_CLARIFICATION patterns:**
+- Direct answers to agent's previous questions
+- Adding specific details to previously mentioned features
+- Responding with technical preferences when asked
+- Providing missing pieces of information
+- Clarifying requirements in response to follow-up questions
+- Building on previous discussion with concrete details
+
+**READY_FOR_ACTION patterns:**
+- Complete feature descriptions with clear scope
+- Explicit requests to create tasks or implementation plans
+- Detailed requirements with technical specifications
+- Clear acceptance criteria or success metrics
+- Implementation-ready descriptions
+- Direct requests like "break this down into tasks"
+
+**DIRECT_ACTION patterns:**
+- Task status updates ("completed", "done with", "finished")
+- Explicit task management requests ("mark as", "delete", "update")
+- Direct commands about existing tasks or project elements
+- Progress reports on current implementation
+- Requests to modify existing tasks or memories
+
+### Step 4: Conversation Flow Analysis
+Consider the conversation progression:
+- If agent recently asked clarifying questions → likely spec_clarification
+- If user just introduced a new idea → likely feature_exploration
+- If agent provided task breakdown → user response likely direct_action or spec_clarification
+- If user is asking conceptual questions → likely pure_discussion
+- If user provides complete requirements → likely ready_for_action
+
+### Step 5: Ambiguity Resolution
+When intent is unclear, use these tie-breakers:
+
+1. **Context Priority**: Recent conversation context takes precedence
+2. **Specificity Indicator**: More specific technical details = closer to ready_for_action
+3. **Question vs Statement**: Questions lean toward discussion/exploration, statements toward action
+4. **Project Reference**: References to their specific project suggest action-oriented intent
+5. **Implementation Language**: Technical implementation details suggest ready_for_action
+
+### Step 6: Confidence Assessment
+Rate your confidence (internal use):
+- High: Clear patterns match, context supports classification
+- Medium: Some ambiguity but patterns lean toward one category
+- Low: Multiple possible interpretations, use conversation context to decide
+
+### Step 7: Final Classification
+Based on the chain of thought analysis above, classify into exactly ONE category:
+
+## INTENT CATEGORIES
+
+**pure_discussion**: 
+- Theoretical/educational questions
+- General technology discussions
+- Casual conversation
+- Concept explanations
+- No project-specific action implied
+
+**feature_exploration**: 
+- Vague feature ideas needing clarification
+- Brainstorming new capabilities
+- Seeking feasibility advice
+- High-level feature concepts
+- Requires agent to ask clarifying questions
+
+**spec_clarification**: 
+- Answering agent's previous questions
+- Adding details to existing discussions
+- Providing technical preferences
+- Building on previous feature exploration
+- Part of ongoing specification gathering
+
+**ready_for_action**: 
+- Complete feature specifications
+- Clear implementation requirements
+- Explicit task creation requests
+- Detailed scope with acceptance criteria
+- Ready for task breakdown
+
+**direct_action**: 
+- Task status updates
+- Explicit task management commands
+- Progress reports
+- Requests to modify existing tasks
+- Direct project management actions
+
+## REFLECTION CHECK
+
+Before finalizing, ask yourself:
+1. Does this classification align with the conversation flow?
+2. Would this classification lead to the most helpful agent response?
+3. Is the user expecting clarifying questions or action?
+4. Does the classification match the user's apparent readiness level?
+5. Is there any conversation context that suggests a different intent?
+
+If any reflection questions suggest a different classification, reconsider your analysis.
+
+## OUTPUT FORMAT
+
+Return ONLY the category name: pure_discussion, feature_exploration, spec_clarification, ready_for_action, or direct_action
+
+## EXAMPLES FOR CALIBRATION
+
+**Message**: "I'm thinking about adding user authentication"
+**Context**: New topic, no recent auth discussion
+**Analysis**: Vague feature idea, needs clarification about auth type, requirements
+**Classification**: feature_exploration
+
+**Message**: "Yes, with JWT tokens and email/password login"
+**Context**: Agent just asked about auth preferences
+**Analysis**: Direct answer to agent question, adding specific technical details
+**Classification**: spec_clarification
+
+**Message**: "Create tasks for JWT authentication with email/password, including signup, login, and password reset flows with proper validation"
+**Context**: Feature has been discussed and specified
+**Analysis**: Complete requirements, explicit task request, implementation-ready
+**Classification**: ready_for_action
+
+**Message**: "How does JWT authentication work?"
+**Context**: General question, no project implementation context
+**Analysis**: Educational question, seeking concept explanation
+**Classification**: pure_discussion
+
+**Message**: "I finished the login API endpoint task"
+**Context**: Task was previously created and assigned
+**Analysis**: Status update on existing task, direct project management
+**Classification**: direct_action
+
+Use this framework to analyze the current message and provide the most accurate intent classification."""
+
             response = await self.gemini_service.chat_with_system_prompt(message, system_prompt)
             
             # Clean and parse response
@@ -399,7 +548,7 @@ class UnifiedSamuraiAgent:
             return IntentAnalysis(
                 intent_type=detected_intent,
                 confidence=0.8 if detected_intent != "pure_discussion" else 0.6,
-                reasoning=f"Detected intent: {detected_intent} based on message content",
+                reasoning=f"Detected intent: {detected_intent} based on enhanced analysis",
                 needs_clarification=detected_intent == "feature_exploration",
                 clarification_questions=[],
                 accumulated_specs={}
@@ -939,41 +1088,409 @@ class UnifiedSamuraiAgent:
     
     # Task creation and execution methods
     async def _generate_task_breakdown(self, message: str, context: ConversationContext) -> List[dict]:
-        """Generate task breakdown from user request."""
+        """Generate task breakdown from user request using enhanced AI-optimized prompt."""
         try:
             system_prompt = f"""
-            Break down this feature request into 3-7 specific, actionable tasks.
-            
-            PROJECT: {context.project_context.get('name', 'Unknown')}
-            TECH STACK: {context.project_context.get('tech_stack', 'Unknown')}
-            
-            REQUEST: {message}
-            
-            CONVERSATION CONTEXT:
-            {context.conversation_summary}
-            
-            RELEVANT PROJECT KNOWLEDGE:
-            {self._format_memories_for_context(context.relevant_memories)}
-            
-            Create tasks that:
-            1. Take 30-60 minutes each to complete
-            2. Are in logical development order
-            3. Are specific and actionable
-            4. Consider existing project context
-            
-            Return JSON array:
-            [
-                {{"title": "Task Title", "description": "Detailed description"}},
-                ...
-            ]
-            """
+# Enhanced AI-Optimized Task Breakdown Prompt for Samurai Engine
+
+You are Samurai Engine's task breakdown specialist. Your role is to analyze feature requests and create the optimal number of AI-friendly implementation tasks that can be effectively handled by coding agents like Cursor.
+
+## PROJECT CONTEXT
+**Project:** {context.project_context.get('name', 'Unknown')}
+**Tech Stack:** {context.project_context.get('tech_stack', 'Unknown')}
+
+
+## FEATURE REQUEST TO ANALYZE
+**User Request:** "{message}"
+
+## CONVERSATION CONTEXT
+**Discussion History:**
+{context.conversation_summary}
+
+**Relevant Project Knowledge:**
+{self._format_memories_for_context(context.relevant_memories)}
+
+**Related Existing Tasks:**
+{self._format_tasks_for_context(context.relevant_tasks)}
+
+---
+
+## CHAIN OF THOUGHT TASK BREAKDOWN ANALYSIS
+
+### Step 1: Feature Complexity Assessment
+
+**Analyze the feature request across these dimensions:**
+
+**A. Technical Complexity Score (1-10):**
+- Database schema changes needed?
+- API endpoints required?
+- Frontend components complexity?
+- Integration with existing systems?
+- Third-party service dependencies?
+
+**B. Feature Scope Score (1-10):**
+- Single component vs multi-component feature?
+- Affects one user flow vs multiple flows?
+- Standalone vs deeply integrated feature?
+- Number of distinct functionalities involved?
+
+**C. AI Implementation Difficulty (1-10):**
+- Are tasks clearly definable with specific inputs/outputs?
+- Can each piece be implemented independently?
+- Are requirements concrete enough for AI coding agents?
+- How much existing code context is needed?
+
+**Calculate Overall Complexity:** (A + B + C) / 3
+
+### Step 2: Task Granularity Strategy Selection
+
+**Based on complexity analysis, select task breakdown strategy:**
+
+**MICRO TASKS (Complexity 1-3):**
+- Feature is already appropriately sized for AI agents
+- Single, focused functionality
+- **Strategy:** Create 1-2 tasks maximum, or recommend no breakdown
+- **AI Agent Focus:** Complete small features in single implementations
+
+**BALANCED TASKS (Complexity 4-6):**
+- Feature needs moderate breakdown
+- Multiple related components
+- **Strategy:** Create 2-5 tasks based on logical separation
+- **AI Agent Focus:** Each task = one complete, testable functionality
+
+**STRUCTURED BREAKDOWN (Complexity 7-10):**
+- Complex feature requiring systematic breakdown
+- Multiple systems, components, or workflows
+- **Strategy:** Create 4-8 tasks with clear dependencies
+- **AI Agent Focus:** Each task = one architectural layer or component
+
+### Step 3: AI Agent Task Optimization
+
+**For each potential task, ensure it meets AI coding agent requirements:**
+
+**AI-Friendly Task Characteristics:**
+- **Single, clear objective** - one main thing to build/modify
+- **Concrete inputs/outputs** - specific files, functions, or components
+- **Minimal context switching** - focuses on one part of the codebase
+- **Testable outcome** - can verify completion independently
+- **Self-contained scope** - doesn't require understanding entire system
+
+**Task Sizing Principles:**
+- **Not time-based** (ignore 30-60 minute guideline)
+- **Functionality-based** - complete one logical piece
+- **AI-completion-sized** - what an AI can handle in one focused session
+- **Dependency-aware** - clear prerequisites and follow-ups
+
+### Step 4: Logical Development Sequence Analysis
+
+**Determine optimal task order based on:**
+
+**Technical Dependencies:**
+- Database schema before API endpoints
+- API endpoints before frontend integration
+- Core functionality before UI enhancements
+- Authentication before protected features
+
+**Risk Mitigation:**
+- Highest-risk/most-complex tasks early
+- Core functionality before optional features
+- Integration points identified and planned
+
+**Testing and Validation:**
+- Each task produces testable output
+- Progressive building allows validation at each step
+- Early tasks establish foundation for later ones
+
+### Step 5: Project Context Integration
+
+**Leverage existing project patterns:**
+
+**Code Pattern Consistency:**
+- How do they typically structure similar features?
+- What naming conventions and file organizations do they use?
+- What testing patterns are established?
+- What error handling approaches do they prefer?
+
+**Architecture Alignment:**
+- How does this feature fit their existing architecture?
+- What existing components/utilities can be leveraged?
+- What integration points with current features exist?
+- What data flow patterns should be maintained?
+
+### Step 6: Task Breakdown Decision & Self-Reflection
+
+**Decision Framework:**
+
+**SINGLE TASK (No breakdown needed):**
+- Feature request is already AI-agent sized
+- Single component or simple modification
+- Adding one clear piece of functionality
+- **Example:** "Add email validation to existing form"
+
+**MINIMAL BREAKDOWN (2-3 tasks):**
+- Feature has 2-3 distinct components
+- Clear separation between backend/frontend
+- Simple linear dependency chain
+- **Example:** "Add user profile: API + UI + Integration"
+
+**STRUCTURED BREAKDOWN (4-8 tasks):**
+- Complex feature with multiple systems
+- Multiple user flows or components
+- Complex dependency relationships
+- **Example:** "Full authentication system with multiple flows"
+
+**Self-Reflection Quality Check:**
+1. **AI Feasibility:** Can each task be completed by an AI coding agent independently?
+2. **Completeness:** Do tasks cover all aspects of the feature request?
+3. **Logical Flow:** Is the development sequence logical and dependency-aware?
+4. **Project Fit:** Do tasks align with existing code patterns and architecture?
+5. **Right-Sized:** Are tasks neither too trivial nor too complex for AI agents?
+
+### Step 7: Task Specification Generation
+
+**For each task, create complete Task model data:**
+
+**Task Structure (matching Task model):**
+```json
+{{
+    "title": "Concise, action-oriented title (max 200 chars)",
+    "description": "Complete, copy-paste ready implementation guide (max 1000 chars)",
+    "priority": "high|medium|low",
+    "order": 0
+}}
+```
+
+**Task Title Guidelines:**
+- Action verb + specific component/feature
+- Reference existing code patterns when relevant
+- Clear enough to understand scope immediately
+- Keep under 200 characters
+
+**Task Description Guidelines (Most Critical - Serves as Cursor Prompt):**
+- Complete, standalone implementation instructions
+- Include full project context and tech stack
+- Reference existing code patterns and file structure
+- Specify exact files to create/modify
+- Include acceptance criteria and testing guidance
+- Must be copy-paste ready for Cursor
+- Keep under 1000 characters while being comprehensive
+
+**Priority Assignment Logic:**
+- **High:** Core functionality, blocking dependencies, critical path items
+- **Medium:** Important features, standard functionality, non-blocking work
+- **Low:** Nice-to-have features, optimizations, polish items
+
+**Order Assignment:**
+- Sequential numbers (0, 1, 2, ...) based on dependency order
+- Tasks with no dependencies get lower numbers
+- Dependent tasks get higher numbers
+- Ensures logical development progression
+
+---
+
+## CURSOR-READY DESCRIPTION FRAMEWORK
+
+**Each task's description field must be a complete, standalone implementation guide:**
+
+### Description Template Structure (under 1000 chars):
+```
+PROJECT: {context.project_context.get('name', 'Unknown')} | TECH: {context.project_context.get('tech_stack', 'Unknown')}
+
+CONTEXT: [Brief existing patterns context]
+
+TASK: [Specific implementation requirements]
+
+FILES: [Files to create/modify]
+
+REQUIREMENTS:
+- [Key requirement 1]
+- [Key requirement 2]
+- [Key requirement 3]
+
+ACCEPTANCE: [How to verify completion]
+
+Follow existing code patterns and maintain consistency.
+```
+
+### Description Quality Standards:
+- **Self-contained:** AI agent needs no additional context
+- **Specific:** Exact files, functions, and implementations specified
+- **Context-aware:** References existing project patterns
+- **Actionable:** Clear steps and deliverables
+- **Testable:** Includes validation criteria
+- **Consistent:** Maintains project coding standards
+- **Concise:** Maximum impact within 1000 character limit
+
+---
+
+## TASK BREAKDOWN EXECUTION
+
+**Based on your analysis above, execute the task breakdown:**
+
+### Complexity Assessment Results:
+- Technical Complexity: [Score]
+- Feature Scope: [Score] 
+- AI Implementation Difficulty: [Score]
+- **Overall Complexity:** [Score]
+
+### Breakdown Strategy Selected:
+[MICRO TASKS | BALANCED TASKS | STRUCTURED BREAKDOWN]
+
+### Reasoning:
+[2-3 sentences explaining why this breakdown approach fits the feature request]
+
+### Generated Tasks:
+
+```json
+[
+    {{
+        "title": "Task title following guidelines above",
+        "description": "PROJECT: {context.project_context.get('name', 'Unknown')} | TECH: {context.project_context.get('tech_stack', 'Unknown')}\\n\\nCONTEXT: Brief existing patterns context\\n\\nTASK: Specific implementation requirements\\n\\nFILES: Files to create/modify\\n\\nREQUIREMENTS:\\n- Key requirement 1\\n- Key requirement 2\\n\\nACCEPTANCE: Verification criteria\\n\\nFollow existing code patterns and maintain consistency.",
+        "priority": "high|medium|low",
+        "order": 0
+    }},
+    {{
+        "title": "Second task title",
+        "description": "Complete second task description following same template structure under 1000 chars",
+        "priority": "medium",
+        "order": 1
+    }}
+]
+```
+
+---
+
+## SPECIAL CASES & ADAPTATIONS
+
+**If Feature Request is Already AI-Sized:**
+```json
+{{
+    "breakdown_needed": false,
+    "reason": "Feature request is already appropriately sized for AI implementation",
+    "recommendation": "Implement as single focused task",
+    "single_task": {{
+        "title": "Enhanced title based on original request",
+        "description": "PROJECT: {context.project_context.get('name', 'Unknown')} | TECH: {context.project_context.get('tech_stack', 'Unknown')}\\n\\nCONTEXT: Brief existing patterns context\\n\\nTASK: Complete implementation requirements\\n\\nFILES: Files to modify\\n\\nREQUIREMENTS:\\n- Key deliverables\\n\\nACCEPTANCE: Success criteria",
+        "priority": "medium",
+        "order": 0
+    }}
+}}
+```
+
+**If Feature Request is Unclear/Incomplete:**
+```json
+{{
+    "breakdown_needed": false,
+    "reason": "Feature request needs more specification before task breakdown",
+    "missing_details": ["specific", "aspects", "needing", "clarification"],
+    "recommendation": "Gather more detailed requirements before creating implementation tasks"
+}}
+```
+
+---
+
+## QUALITY STANDARDS FOR FINAL OUTPUT
+
+**Each task must:**
+- Have title under 200 characters
+- Have description under 1000 characters serving as complete Cursor prompt
+- Include appropriate priority based on dependency and importance
+- Have correct order number for development sequence
+- Be implementable by Cursor using only the description field
+
+**Each task description must:**
+- Be completely self-contained with full context
+- Reference specific existing files and patterns
+- Include exact deliverables and acceptance criteria
+- Maintain consistency with project architecture
+- Enable successful AI implementation without additional questions
+- Fit within 1000 character limit while remaining comprehensive
+
+**Overall breakdown must:**
+- Cover complete feature request scope
+- Maintain logical development sequence through order field
+- Optimize for Cursor implementation success
+- Balance task granularity (not too many, not too few)
+- Generate production-ready, copy-paste descriptions
+
+Remember: The description field is now the complete implementation guide - it must contain everything an AI coding agent needs to successfully implement the task without additional context or clarification, all within the 1000 character limit.
+
+---
+
+## QUALITY STANDARDS FOR FINAL OUTPUT
+
+**Each task must:**
+- Be implementable by AI coding agent independently
+- Have clear, specific deliverables
+- Reference existing project patterns and files
+- Include validation criteria
+- Maintain logical development sequence
+- Align with project architecture and conventions
+
+**Overall breakdown must:**
+- Cover complete feature request
+- Minimize unnecessary task proliferation
+- Optimize for AI agent implementation success
+- Maintain project consistency and quality
+- Enable progressive development and testing
+
+Remember: The goal is creating the optimal number of AI-friendly tasks that enable successful feature implementation, not adhering to arbitrary task count limits.
+"""
             
             response = await self.gemini_service.chat_with_system_prompt(message, system_prompt)
             
             try:
-                return json.loads(response)
-            except json.JSONDecodeError:
-                logger.warning("Failed to parse task breakdown JSON, using fallback")
+                # Clean the response to handle markdown code blocks
+                cleaned_response = response.strip()
+                if cleaned_response.startswith('```json'):
+                    cleaned_response = cleaned_response[7:]  # Remove ```json
+                if cleaned_response.startswith('```'):
+                    cleaned_response = cleaned_response[3:]  # Remove ```
+                if cleaned_response.endswith('```'):
+                    cleaned_response = cleaned_response[:-3]  # Remove ```
+                cleaned_response = cleaned_response.strip()
+                
+                parsed_response = json.loads(cleaned_response)
+                
+                # Handle special cases from enhanced prompt
+                if isinstance(parsed_response, dict):
+                    if parsed_response.get("breakdown_needed") == False:
+                        if "single_task" in parsed_response:
+                            return [parsed_response["single_task"]]
+                        else:
+                            # Return a single task with the original message
+                            return [{
+                                "title": "Implement feature request",
+                                "description": f"PROJECT: {context.project_context.get('name', 'Unknown')} | TECH: {context.project_context.get('tech_stack', 'Unknown')}\n\nTASK: {message}\n\nFILES: To be determined based on implementation\n\nREQUIREMENTS:\n- Implement the requested feature\n- Follow existing code patterns\n\nACCEPTANCE: Feature works as requested",
+                                "priority": "medium",
+                                "order": 0
+                            }]
+                    else:
+                        # If it's a dict but not a special case, try to extract tasks
+                        return [parsed_response]
+                
+                # Handle normal array response
+                if isinstance(parsed_response, list):
+                    return parsed_response
+                
+                # Fallback for unexpected response format
+                logger.warning("Unexpected response format from task breakdown, using fallback")
+                return [{"title": "Implement feature", "description": message}]
+                
+            except json.JSONDecodeError as e:
+                logger.warning(f"Failed to parse task breakdown JSON: {e}")
+                # Try to extract JSON from the response using regex
+                import re
+                json_pattern = r'\[.*\]'
+                matches = re.findall(json_pattern, response, re.DOTALL)
+                if matches:
+                    try:
+                        parsed_response = json.loads(matches[0])
+                        if isinstance(parsed_response, list):
+                            return parsed_response
+                    except:
+                        pass
+                
                 return [{"title": "Implement feature", "description": message}]
                 
         except Exception as e:
@@ -1040,31 +1557,177 @@ class UnifiedSamuraiAgent:
             return "\n".join(response_parts)
     
     async def _execute_direct_action(self, message: str, context: ConversationContext, project_id: str) -> dict:
-        """Execute direct actions like task completion, deletion, etc."""
+        """Execute direct actions using LLM detection and comprehensive tool access."""
+        
+        # Step 1: Use LLM to detect actions
+        action_analysis_prompt = f"""
+You are Samurai Engine's action detection expert. Analyze the user's message to identify specific actions they want to perform.
+
+PROJECT CONTEXT:
+- Project: {context.project_context.get('name', 'Unknown')}
+- Tech Stack: {context.project_context.get('tech_stack', 'Unknown')}
+
+CONVERSATION CONTEXT:
+{context.conversation_summary}
+
+CURRENT TASKS:
+{self._format_tasks_for_context(context.relevant_tasks)}
+
+RELEVANT MEMORIES:
+{self._format_memories_for_context(context.relevant_memories)}
+
+USER MESSAGE: "{message}"
+
+AVAILABLE TOOLS:
+- create_task: Create a new task in the project
+- update_task: Update an existing task's details
+- change_task_status: Change the status of a task (pending, in_progress, completed, blocked)
+- search_tasks: Search for tasks by title, description, or status
+- delete_task: Delete a task from the project
+- create_memory: Create a new memory entry
+- update_memory: Update an existing memory
+- search_memories: Search for memories by title or content
+- delete_memory: Delete a memory from the project
+
+CHAIN OF THOUGHT ANALYSIS:
+
+### Step 1: Intent Recognition
+Analyze what the user wants to accomplish:
+- Are they updating task status? (words: done, completed, finished, mark as)
+- Are they modifying existing items? (words: update, change, edit, modify)
+- Are they deleting items? (words: delete, remove, cancel)
+- Are they creating new items? (words: add, create, make)
+- Are they searching for items? (words: find, show, search, list)
+- Are they performing multiple actions in sequence?
+
+### Step 2: Entity Identification
+Identify what items they're referring to:
+- Specific task titles or descriptions mentioned
+- Memory titles or topics referenced
+- Generic references requiring search (e.g., "the login task", "authentication memory")
+
+### Step 3: Action Sequencing
+Determine if actions need to be performed in sequence:
+- Do they need to search before updating/deleting?
+- Are there multiple independent actions?
+- What's the logical order of operations?
+
+### Step 4: Parameter Extraction
+Extract specific parameters for each action:
+- Task/memory identifiers (titles, partial titles, descriptions)
+- New values for updates (status, priority, content)
+- Search criteria and filters
+
+## OUTPUT FORMAT
+
+Return JSON with detected actions in execution order:
+
+{{
+    "actions_detected": true/false,
+    "action_count": number,
+    "confidence": 0.0-1.0,
+    "reasoning": "Brief explanation of what was detected",
+    "actions": [
+        {{
+            "tool_name": "tool_to_execute",
+            "parameters": {{
+                "param1": "value1",
+                "param2": "value2"
+            }},
+            "requires_search_first": true/false,
+            "search_tool": "search_tasks|search_memories",
+            "search_query": "search terms if needed",
+            "description": "Human readable description of this action"
+        }}
+    ]
+}}
+
+## EXAMPLES FOR CALIBRATION
+
+**User**: "Mark the login task as completed"
+**Analysis**: Single action, status update, specific task reference
+**Output**: 
+{{
+    "actions_detected": true,
+    "action_count": 1,
+    "confidence": 0.9,
+    "reasoning": "User wants to mark a specific task as completed",
+    "actions": [{{
+        "tool_name": "change_task_status",
+        "parameters": {{"task_identifier": "login", "new_status": "completed", "project_id": "{project_id}"}},
+        "requires_search_first": false,
+        "description": "Mark login task as completed"
+    }}]
+}}
+
+**User**: "Delete the old authentication tasks and create a new one for JWT implementation"
+**Analysis**: Multiple actions - delete (requires search) + create
+**Output**:
+{{
+    "actions_detected": true,
+    "action_count": 2,
+    "confidence": 0.8,
+    "reasoning": "User wants to delete old tasks and create a new one",
+    "actions": [
+        {{
+            "tool_name": "search_tasks",
+            "parameters": {{"query": "authentication", "project_id": "{project_id}"}},
+            "requires_search_first": false,
+            "description": "Search for authentication tasks to delete"
+        }},
+        {{
+            "tool_name": "create_task",
+            "parameters": {{"title": "JWT Implementation", "description": "Implement JWT authentication system", "project_id": "{project_id}"}},
+            "requires_search_first": false,
+            "description": "Create new JWT implementation task"
+        }}
+    ]
+}}
+
+**User**: "Update the database memory with the new PostgreSQL configuration details"
+**Analysis**: Update action requiring search first to find the memory
+**Output**:
+{{
+    "actions_detected": true,
+    "action_count": 1,
+    "confidence": 0.8,
+    "reasoning": "User wants to update a specific memory with new content",
+    "actions": [{{
+        "tool_name": "update_memory",
+        "parameters": {{"memory_identifier": "database", "content": "new PostgreSQL configuration details", "project_id": "{project_id}"}},
+        "requires_search_first": true,
+        "search_tool": "search_memories",
+        "search_query": "database PostgreSQL",
+        "description": "Update database memory with new PostgreSQL configuration"
+    }}]
+}}
+
+Analyze the user's message and return the appropriate JSON structure for detected actions.
+"""
+        
+        # Get LLM analysis
         try:
-            # Detect action type
-            action_type = self._detect_action_type(message)
+            analysis_response = await self.gemini_service.chat_with_system_prompt(
+                "Analyze the user's message for direct actions",
+                action_analysis_prompt
+            )
             
-            if action_type == "task_completion":
-                return await self._execute_task_completion(message, context, project_id)
-            elif action_type == "task_deletion":
-                return await self._execute_task_deletion(message, context, project_id)
-            else:
+            action_analysis = self._parse_action_analysis(analysis_response)
+            
+            if not action_analysis.get("actions_detected", False):
                 return {
-                    "response": "I'm not sure what action you want me to take. Could you be more specific?",
+                    "response": "I'm not sure what specific action you want me to take. Could you be more explicit about what you'd like me to do?",
                     "tool_calls_made": 0,
                     "tool_results": [],
-                    "action_type": "unknown"
+                    "action_type": "no_actions_detected"
                 }
-                
+            
+            # Step 2: Execute detected actions
+            return await self._execute_detected_actions(action_analysis, project_id, context)
+            
         except Exception as e:
-            logger.error(f"Error executing direct action: {e}")
-            return {
-                "response": "I encountered an issue processing your request. Please try again.",
-                "tool_calls_made": 0,
-                "tool_results": [],
-                "action_type": "error"
-            }
+            logger.error(f"Error in LLM action detection: {e}")
+            return await self._fallback_action_detection(message, context, project_id)
     
     def _detect_action_type(self, message: str) -> str:
         """Detect the type of direct action requested."""
@@ -1178,6 +1841,153 @@ class UnifiedSamuraiAgent:
                 "tool_calls_made": 0,
                 "tool_results": [],
                 "action_type": "task_deletion"
+            }
+
+    async def _execute_detected_actions(self, action_analysis: dict, project_id: str, context: ConversationContext) -> dict:
+        """Execute the actions detected by LLM analysis."""
+        
+        actions = action_analysis.get("actions", [])
+        tool_results = []
+        total_tool_calls = 0
+        response_parts = []
+        
+        try:
+            for action in actions:
+                # Handle search-first requirement
+                if action.get("requires_search_first", False):
+                    search_results = await self._execute_search_before_action(action, project_id)
+                    if search_results:
+                        # Update action parameters with search results
+                        action = await self._refine_action_with_search_results(action, search_results)
+                        total_tool_calls += 1
+                    else:
+                        response_parts.append(f"❌ Could not find items for: {action.get('description', 'unknown action')}")
+                        continue
+                
+                # Execute the main action
+                tool_name = action.get("tool_name")
+                parameters = action.get("parameters", {})
+                
+                if tool_name in self.tool_registry.get_available_tools():
+                    result = self.tool_registry.execute_tool(tool_name, **parameters)
+                    tool_results.append(result)
+                    total_tool_calls += 1
+                    
+                    if result.get("success", False):
+                        response_parts.append(result.get("message", f"✅ Completed: {action.get('description')}"))
+                    else:
+                        response_parts.append(result.get("message", f"❌ Failed: {action.get('description')}"))
+                else:
+                    response_parts.append(f"❌ Unknown action: {tool_name}")
+            
+            # Generate comprehensive response
+            if response_parts:
+                response = "\n".join(response_parts)
+            else:
+                response = "I completed the requested actions."
+            
+            return {
+                "response": response,
+                "tool_calls_made": total_tool_calls,
+                "tool_results": tool_results,
+                "action_type": "multiple_actions" if len(actions) > 1 else "single_action",
+                "actions_executed": len([r for r in tool_results if r.get("success", False)]),
+                "actions_failed": len([r for r in tool_results if not r.get("success", True)])
+            }
+            
+        except Exception as e:
+            logger.error(f"Error executing detected actions: {e}")
+            return {
+                "response": "I encountered an error while executing your requests. Some actions may have been completed.",
+                "tool_calls_made": total_tool_calls,
+                "tool_results": tool_results,
+                "action_type": "error"
+            }
+
+    async def _execute_search_before_action(self, action: dict, project_id: str) -> list:
+        """Execute search before the main action to find target items."""
+        
+        search_tool = action.get("search_tool", "search_tasks")
+        search_query = action.get("search_query", "")
+        
+        if not search_query:
+            return []
+        
+        try:
+            search_result = self.tool_registry.execute_tool(
+                search_tool,
+                query=search_query,
+                project_id=project_id
+            )
+            
+            if search_result.get("success", False):
+                return search_result.get("tasks", []) or search_result.get("memories", [])
+            
+            return []
+            
+        except Exception as e:
+            logger.error(f"Error in search before action: {e}")
+            return []
+
+    async def _refine_action_with_search_results(self, action: dict, search_results: list) -> dict:
+        """Refine action parameters based on search results."""
+        
+        if not search_results:
+            return action
+        
+        # For single result, use the exact ID
+        if len(search_results) == 1:
+            if action["tool_name"] in ["update_task", "delete_task", "change_task_status"]:
+                action["parameters"]["task_identifier"] = search_results[0]["id"]
+            elif action["tool_name"] in ["update_memory", "delete_memory"]:
+                action["parameters"]["memory_identifier"] = search_results[0]["id"]
+        
+        # For multiple results, use the most relevant one (first result from search ranking)
+        elif len(search_results) > 1:
+            best_match = search_results[0]  # Search tools should return most relevant first
+            
+            if action["tool_name"] in ["update_task", "delete_task", "change_task_status"]:
+                action["parameters"]["task_identifier"] = best_match["id"]
+            elif action["tool_name"] in ["update_memory", "delete_memory"]:
+                action["parameters"]["memory_identifier"] = best_match["id"]
+        
+        return action
+
+    def _parse_action_analysis(self, response: str) -> dict:
+        """Parse LLM response for action analysis."""
+        
+        try:
+            # Find JSON in response
+            start_idx = response.find('{')
+            end_idx = response.rfind('}') + 1
+            
+            if start_idx >= 0 and end_idx > start_idx:
+                json_str = response[start_idx:end_idx]
+                return json.loads(json_str)
+            else:
+                logger.warning("No JSON found in action analysis response")
+                return {"actions_detected": False}
+                
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse action analysis JSON: {e}")
+            return {"actions_detected": False}
+
+    async def _fallback_action_detection(self, message: str, context: ConversationContext, project_id: str) -> dict:
+        """Fallback to simple heuristic-based action detection if LLM fails."""
+        
+        # Simple keyword-based detection as backup
+        message_lower = message.lower()
+        
+        if any(word in message_lower for word in ["done", "complete", "finished"]):
+            return await self._execute_task_completion(message, context, project_id)
+        elif any(word in message_lower for word in ["delete", "remove"]):
+            return await self._execute_task_deletion(message, context, project_id)
+        else:
+            return {
+                "response": "I'm having trouble understanding what you want me to do. Could you be more specific?",
+                "tool_calls_made": 0,
+                "tool_results": [],
+                "action_type": "fallback_unclear"
             }
     
     def _find_matching_task(self, message: str, tasks: List[Task]) -> Optional[Task]:
