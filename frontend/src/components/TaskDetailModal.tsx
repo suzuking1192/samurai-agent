@@ -2,14 +2,6 @@ import React, { useState, useEffect } from 'react'
 import { Task, TaskStatus, TaskPriority, TaskUpdate } from '../types'
 import FullScreenModal from './FullScreenModal'
 
-interface GeneratedPrompt {
-  prompt: string
-  task_id: string
-  generated_at: string
-  prompt_length: number
-  related_memories_count: number
-}
-
 interface TaskDetailModalProps {
   task: Task | null
   isOpen: boolean
@@ -26,9 +18,6 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   onDelete
 }) => {
   const [editMode, setEditMode] = useState(false)
-  const [generatedPrompt, setGeneratedPrompt] = useState<GeneratedPrompt | null>(null)
-  const [isGeneratingPrompt, setIsGeneratingPrompt] = useState(false)
-  const [showPrompt, setShowPrompt] = useState(false)
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -75,40 +64,14 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
     }
   }
 
-  const handleGeneratePrompt = async () => {
-    if (!task) return
-    
-    setIsGeneratingPrompt(true)
-    try {
-      const response = await fetch(`/api/tasks/${task.id}/generate-prompt`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      })
-      
-      if (!response.ok) {
-        throw new Error('Failed to generate prompt')
-      }
-      
-      const data: GeneratedPrompt = await response.json()
-      setGeneratedPrompt(data)
-      setShowPrompt(true)
-      showNotification('Intelligent prompt generated successfully!', 'success')
-    } catch (error) {
-      console.error('Error generating prompt:', error)
-      showNotification('Failed to generate prompt', 'error')
-    } finally {
-      setIsGeneratingPrompt(false)
-    }
-  }
-
-  const copyPromptToClipboard = async () => {
-    if (!generatedPrompt) return
+  const copyDescriptionToClipboard = async () => {
+    if (!task?.description) return
     
     try {
-      await navigator.clipboard.writeText(generatedPrompt.prompt)
-      showNotification('Prompt copied to clipboard!', 'success')
+      await navigator.clipboard.writeText(task.description)
+      showNotification('Implementation prompt copied to clipboard!', 'success')
     } catch (error) {
-      showNotification('Failed to copy prompt', 'error')
+      showNotification('Failed to copy implementation prompt', 'error')
     }
   }
 
@@ -186,20 +149,6 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
             )}
           </div>
           <div className="modal-actions">
-            {!showPrompt && !editMode && (
-              <button 
-                onClick={handleGeneratePrompt} 
-                className="btn-generate-prompt"
-                disabled={isGeneratingPrompt}
-              >
-                {isGeneratingPrompt ? (
-                  <>⏳ Generating...</>
-                ) : (
-                  <>🤖 Generate Prompt</>
-                )}
-              </button>
-            )}
-            
             {editMode ? (
               <>
                 <button onClick={handleSave} className="btn-save">
@@ -226,39 +175,11 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
         </div>
 
         <div className="modal-body">
-          {showPrompt && generatedPrompt ? (
-            /* Prompt Display View */
-            <div className="prompt-view">
-              <div className="prompt-header">
-                <h2>🤖 Intelligent Prompt for AI Coding Tools</h2>
-                <div className="prompt-actions">
-                  <button onClick={copyPromptToClipboard} className="btn-copy">
-                    📋 Copy to Clipboard
-                  </button>
-                  <button onClick={() => setShowPrompt(false)} className="btn-back">
-                    ← Back to Task
-                  </button>
-                </div>
-              </div>
-              
-              <div className="prompt-content">
-                <pre className="prompt-text">{generatedPrompt.prompt}</pre>
-              </div>
-              
-              <div className="prompt-footer">
-                <p className="prompt-info">
-                  This prompt includes task details + semantically related memories from your project.
-                  Copy and paste into Cursor, Claude, or any AI coding tool.
-                </p>
-              </div>
-            </div>
-          ) : (
-            /* Regular Task Details View */
-            <div className="task-details-grid">
-              {/* Left Column - Main Content */}
-              <div className="main-content">
-                {/* Status and Priority Row */}
-                <div className="detail-row">
+          <div className="task-details-grid">
+            {/* Left Column - Main Content */}
+            <div className="main-content">
+              {/* Status and Priority Row */}
+              <div className="detail-row">
                 <div className="detail-field">
                   <label>Status:</label>
                   {editMode ? (
@@ -298,47 +219,53 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                 </div>
               </div>
 
-                {/* Description Section */}
-                <div className="description-section">
-                  <label>Description:</label>
-                  {editMode ? (
-                    <textarea
-                      value={formData.description}
-                      onChange={e => setFormData({...formData, description: e.target.value})}
-                      className="description-textarea"
-                      rows={10}
-                      placeholder="Detailed task description..."
-                    />
-                  ) : (
-                    <div className="description-display">
-                      {task.description || 'No description provided'}
-                    </div>
+              {/* Description Section */}
+              <div className="description-section">
+                <div className="description-header">
+                  <label>Implementation Prompt:</label>
+                  {!editMode && task.description && (
+                    <button onClick={copyDescriptionToClipboard} className="btn-copy-description">
+                      📋 Copy to Cursor
+                    </button>
                   )}
                 </div>
+                {editMode ? (
+                  <textarea
+                    value={formData.description}
+                    onChange={e => setFormData({...formData, description: e.target.value})}
+                    className="description-textarea"
+                    rows={10}
+                    placeholder="Enter your complete implementation prompt for Cursor..."
+                  />
+                ) : (
+                  <div className="description-display">
+                    {task.description || 'No implementation prompt provided'}
+                  </div>
+                )}
               </div>
+            </div>
 
-              {/* Right Column - Metadata */}
-              <div className="sidebar-content">
-                <div className="metadata-section">
-                  <h3>📊 Task Information</h3>
-                  <div className="metadata-list">
-                    <div className="metadata-item">
-                      <strong>Created:</strong>
-                      <span>{formatDate(task.created_at)}</span>
-                    </div>
-                    <div className="metadata-item">
-                      <strong>Updated:</strong>
-                      <span>{formatDate(task.updated_at)}</span>
-                    </div>
-                    <div className="metadata-item">
-                      <strong>Task ID:</strong>
-                      <span className="task-id">{task.id}</span>
-                    </div>
+            {/* Right Column - Metadata */}
+            <div className="sidebar-content">
+              <div className="metadata-section">
+                <h3>📊 Task Information</h3>
+                <div className="metadata-list">
+                  <div className="metadata-item">
+                    <strong>Created:</strong>
+                    <span>{formatDate(task.created_at)}</span>
+                  </div>
+                  <div className="metadata-item">
+                    <strong>Updated:</strong>
+                    <span>{formatDate(task.updated_at)}</span>
+                  </div>
+                  <div className="metadata-item">
+                    <strong>Task ID:</strong>
+                    <span className="task-id">{task.id}</span>
                   </div>
                 </div>
               </div>
             </div>
-          )}
+          </div>
         </div>
       </div>
     </FullScreenModal>

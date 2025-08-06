@@ -1065,40 +1065,7 @@ Please provide helpful, context-aware advice that considers the existing project
                 title = title[:max_length-3] + "..."
             return title
     
-    def _generate_cursor_prompt(self, task_title: str, task_description: str, project_context: dict) -> str:
-        """Generate optimized Cursor prompt for a specific task"""
-        
-        prompt = f"""
-# Cursor Prompt: {task_title}
 
-## Task Description
-{task_description}
-
-## Project Context
-- **Project**: {project_context.get('name', 'Unknown')}
-- **Tech Stack**: {project_context.get('tech_stack', 'Unknown')}
-- **Description**: {project_context.get('description', 'Unknown')}
-
-## Implementation Requirements
-1. Follow the project's existing code style and patterns
-2. Use the specified tech stack: {project_context.get('tech_stack', 'Unknown')}
-3. Implement the task as described above
-4. Include proper error handling and validation
-5. Add appropriate comments and documentation
-6. Consider integration with existing features
-
-## Code Guidelines
-- Write clean, maintainable code
-- Follow best practices for the tech stack
-- Include necessary imports and dependencies
-- Handle edge cases appropriately
-- Add tests if applicable
-
-## Expected Output
-Complete implementation of the task with all necessary files, components, and configurations.
-"""
-        
-        return prompt.strip()
     
     async def _update_memory_from_conversation(self, message: str, response: str, project_id: str, project_context: dict) -> None:
         """Extract and save important decisions/information from conversation using consolidated memory system"""
@@ -1856,60 +1823,7 @@ Complete implementation of the task with all necessary files, components, and co
         
         return len(intersection) / len(union) if union else 0.0
 
-    def generate_intelligent_prompt(self, task: Task, project: dict, related_memories: List[Memory]) -> str:
-        """Generate a comprehensive prompt for AI coding tools using task + related memories"""
-        try:
-            # Build context from memories
-            memory_context = ""
-            if related_memories:
-                memory_context = "\n## Related Context from Project Memory:\n"
-                for i, memory in enumerate(related_memories, 1):
-                    memory_context += f"\n### {i}. {memory.title} ({memory.type})\n"
-                    memory_context += f"{memory.content}\n"
-            
-            # Generate comprehensive prompt
-            prompt_template = f"""# Task: {task.title}
 
-## Project Context
-- **Project**: {project.get('name', 'Unknown Project')}
-- **Task Priority**: {task.priority}
-- **Task Status**: {task.status}
-- **Created**: {task.created_at.strftime('%Y-%m-%d %H:%M') if hasattr(task, 'created_at') else 'Not specified'}
-
-## Task Description
-{task.description}
-
-{memory_context}
-
-## Technical Requirements
-Based on the context above, please:
-
-1. **Analyze the task requirements** and break down what needs to be implemented
-2. **Consider the existing project context** and related decisions from the memory
-3. **Implement the solution** following best practices and the patterns established in this project
-4. **Include proper error handling** and validation
-5. **Add appropriate comments** explaining key decisions
-6. **Consider edge cases** and potential issues
-
-## Additional Context
-- Follow the existing code style and architecture patterns shown in the related memories
-- Ensure the implementation integrates well with existing features
-- Consider performance and scalability implications
-- Include tests if applicable
-
-Please provide a complete, production-ready implementation."""
-
-            return prompt_template
-            
-        except Exception as e:
-            logger.error(f"Error generating intelligent prompt: {e}")
-            # Fallback to simple prompt
-            return f"""# Task: {task.title}
-
-## Task Description
-{task.description}
-
-Please implement this task following best practices and include proper error handling."""
 
     # ============================================================================
     # ENHANCED CONTEXT UNDERSTANDING AND TOOL CALLING METHODS
