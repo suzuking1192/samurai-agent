@@ -181,7 +181,8 @@ class VectorContextService:
         session_messages: List[ChatMessage],
         relevant_tasks: List[Tuple[Task, float]],
         relevant_memories: List[Tuple[Memory, float]],
-        new_user_message: str = ""
+        new_user_message: str = "",
+        task_context: Optional[Any] = None
     ) -> str:
         """
         Assemble comprehensive context for the AI agent using vector-enhanced retrieval.
@@ -191,12 +192,30 @@ class VectorContextService:
             relevant_tasks: Tasks found via vector similarity with scores
             relevant_memories: Memories found via vector similarity with scores
             new_user_message: New user message to include
+            task_context: Optional task context to prioritize
             
         Returns:
             Formatted context string for the AI agent
         """
         try:
             context_parts = []
+            
+            # 0. Task Context (highest priority if provided)
+            if task_context:
+                context_parts.append("# 🎯 FOCUSED TASK CONTEXT")
+                context_parts.append("**IMPORTANT**: The user has selected this specific task as the main context for our conversation.")
+                context_parts.append("Your primary goal is to help refine and polish this task description for use in Cursor.")
+                context_parts.append("")
+                status_icon = "✅" if getattr(task_context, 'completed', False) else "⏸️"
+                context_parts.append(f"**Active Task**: {status_icon} {task_context.title}")
+                context_parts.append(f"**Description**: {task_context.description}")
+                context_parts.append(f"**Status**: {getattr(task_context, 'status', 'pending')}")
+                context_parts.append(f"**Priority**: {getattr(task_context, 'priority', 'medium')}")
+                if hasattr(task_context, 'prompt') and task_context.prompt:
+                    context_parts.append(f"**Current Prompt**: {task_context.prompt}")
+                context_parts.append("")
+                context_parts.append("**FOCUS**: Help the user create a refined, detailed task description that can be easily copied and pasted into Cursor.")
+                context_parts.append("")
             
             # 1. Current Session Chat History (always included)
             context_parts.append("# Current Conversation Context")

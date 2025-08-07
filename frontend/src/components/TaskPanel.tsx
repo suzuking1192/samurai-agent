@@ -7,9 +7,10 @@ import TaskDetailsView from './TaskDetailsView'
 interface TaskPanelProps {
   projectId?: string
   refreshTrigger?: number
+  onTaskContextUpdate?: () => void
 }
 
-const TaskPanel: React.FC<TaskPanelProps> = ({ projectId, refreshTrigger }) => {
+const TaskPanel: React.FC<TaskPanelProps> = ({ projectId, refreshTrigger, onTaskContextUpdate }) => {
   const [tasks, setTasks] = useState<Task[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
@@ -172,6 +173,8 @@ const TaskPanel: React.FC<TaskPanelProps> = ({ projectId, refreshTrigger }) => {
             onBack={handleBackToList}
             onSave={handleUpdateTask}
             onDelete={handleDeleteTask}
+            projectId={projectId}
+            onTaskContextUpdate={onTaskContextUpdate}
           />
         )}
       </div>

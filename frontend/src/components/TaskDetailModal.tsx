@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Task, TaskStatus, TaskPriority, TaskUpdate } from '../types'
 import FullScreenModal from './FullScreenModal'
+import { setTaskContext, getCurrentSession } from '../services/api'
 
 interface TaskDetailModalProps {
   task: Task | null
@@ -8,6 +9,8 @@ interface TaskDetailModalProps {
   onClose: () => void
   onSave: (taskId: string, updates: TaskUpdate) => Promise<void>
   onDelete: (taskId: string) => Promise<void>
+  projectId: string
+  onTaskContextUpdate?: () => void
 }
 
 const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
@@ -15,7 +18,9 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   isOpen,
   onClose,
   onSave,
-  onDelete
+  onDelete,
+  projectId,
+  onTaskContextUpdate
 }) => {
   const [editMode, setEditMode] = useState(false)
   const [formData, setFormData] = useState({
@@ -27,7 +32,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   })
 
   useEffect(() => {
-    if (task) {
+    if (task && isOpen) {
       setFormData({
         title: task.title,
         description: task.description,
@@ -35,8 +40,11 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
         priority: task.priority,
         due_date: ''
       })
+      
+      // Automatically set this task as context when modal is opened
+      setAsContext()
     }
-  }, [task])
+  }, [task, isOpen, projectId])
 
   const handleSave = async () => {
     if (!task) return
@@ -72,6 +80,28 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
       showNotification('Implementation prompt copied to clipboard!', 'success')
     } catch (error) {
       showNotification('Failed to copy implementation prompt', 'error')
+    }
+  }
+
+  const setAsContext = async () => {
+    if (!task || !projectId) return
+    
+    try {
+      // Get current session
+      const currentSession = await getCurrentSession(projectId)
+      
+      // Set task as context for the current session
+      await setTaskContext(projectId, currentSession.id, task.id)
+      
+      // Quiet success - no need for notification since it's automatic
+      console.log(`Task "${task.title}" automatically set as chat context`)
+      
+      // Trigger immediate update in Chat component
+      onTaskContextUpdate?.()
+    } catch (error) {
+      console.error('Failed to set task context:', error)
+      // Only show error notifications
+      showNotification('Failed to set task as context', 'error')
     }
   }
 

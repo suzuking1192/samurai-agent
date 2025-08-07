@@ -17,7 +17,8 @@ from models import (
     Project, ProjectCreateRequest, 
     ChatRequest, ChatResponse,
     TaskUpdateRequest, Task, Memory, ChatMessage,
-    Session, SessionCreateRequest, SessionListResponse
+    Session, SessionCreateRequest, SessionListResponse,
+    TaskContextRequest, TaskContextResponse
 )
 
 # Import your services  
@@ -207,11 +208,34 @@ async def chat_with_project(project_id: str, request: ChatRequest):
             current_session = file_service.create_session(project_id)
             logger.info(f"Created new session: {current_session.id}")
         
-        # 3. Load conversation history for context extraction
+        # 3. Handle task context from request or session
+        task_context = None
+        if request.task_context_id:
+            # Task context provided in request - set it for the session
+            task_context = file_service.get_task_by_id(project_id, request.task_context_id)
+            if task_context:
+                current_session.task_context_id = request.task_context_id
+                current_session.last_activity = datetime.now()
+                file_service.save_session(project_id, current_session)
+                logger.info(f"Set task context from request: {request.task_context_id}")
+            else:
+                logger.warning(f"Task context ID not found: {request.task_context_id}")
+        elif current_session.task_context_id:
+            # Use existing task context from session
+            task_context = file_service.get_task_by_id(project_id, current_session.task_context_id)
+            if task_context:
+                logger.info(f"Using existing task context: {current_session.task_context_id}")
+            else:
+                # Task was deleted, clear the context
+                current_session.task_context_id = None
+                file_service.save_session(project_id, current_session)
+                logger.info(f"Cleared invalid task context: {current_session.task_context_id}")
+        
+        # 4. Load conversation history for context extraction
         conversation_history = file_service.load_chat_messages_by_session(project_id, current_session.id)
         logger.info(f"Loaded {len(conversation_history)} conversation messages for context extraction")
         
-        # 4. Convert project to context dict for SamuraiAgent
+        # 5. Convert project to context dict for SamuraiAgent
         project_context = {
             "name": project.name,
             "description": project.description,
@@ -219,15 +243,18 @@ async def chat_with_project(project_id: str, request: ChatRequest):
         }
         
         logger.info(f"Project context: {project.name} - {project.tech_stack}")
+        if task_context:
+            logger.info(f"Task context: {task_context.title}")
         
-        # 5. Use Unified Samurai Agent to process the message with conversation history
+        # 6. Use Unified Samurai Agent to process the message with conversation history and task context
         logger.info("Processing message with Unified Samurai Agent...")
         result = await unified_samurai_agent.process_message(
             message=request.message,
             project_id=project_id,
             project_context=project_context,
             session_id=current_session.id,
-            conversation_history=conversation_history
+            conversation_history=conversation_history,
+            task_context=task_context
         )
         
         logger.info(f"Unified Samurai Agent response type: {result.get('type', 'unknown')}")
@@ -268,7 +295,8 @@ async def chat_with_project(project_id: str, request: ChatRequest):
             memories=current_memories,  # Include all memories for context
             type=result.get("type", "chat"),
             intent_analysis=result.get("intent_analysis"),  # Include intent analysis from unified agent
-            memory_updated=result.get("memory_updated", False)  # Include memory update status
+            memory_updated=result.get("memory_updated", False),  # Include memory update status
+            task_context=task_context  # Include the active task context
         )
     except HTTPException:
         raise
@@ -306,7 +334,30 @@ async def chat_with_progress(project_id: str, request: ChatRequest):
                 current_session = file_service.create_session(project_id)
                 logger.info(f"Created new session: {current_session.id}")
             
-            # 4. Get conversation history for planning-first agent (current session only)
+            # 4. Handle task context from request or session
+            task_context = None
+            if request.task_context_id:
+                # Task context provided in request - set it for the session
+                task_context = file_service.get_task_by_id(project_id, request.task_context_id)
+                if task_context:
+                    current_session.task_context_id = request.task_context_id
+                    current_session.last_activity = datetime.now()
+                    file_service.save_session(project_id, current_session)
+                    logger.info(f"Set task context from request: {request.task_context_id}")
+                else:
+                    logger.warning(f"Task context ID not found: {request.task_context_id}")
+            elif current_session.task_context_id:
+                # Use existing task context from session
+                task_context = file_service.get_task_by_id(project_id, current_session.task_context_id)
+                if task_context:
+                    logger.info(f"Using existing task context: {current_session.task_context_id}")
+                else:
+                    # Task was deleted, clear the context
+                    current_session.task_context_id = None
+                    file_service.save_session(project_id, current_session)
+                    logger.info(f"Cleared invalid task context: {current_session.task_context_id}")
+            
+            # 5. Get conversation history for planning-first agent (current session only)
             conversation_history = file_service.load_chat_messages_by_session(project_id, current_session.id)
             
             # 5. Create a progress queue for real-time updates
@@ -334,7 +385,8 @@ async def chat_with_progress(project_id: str, request: ChatRequest):
                     project_context=project_context,
                     session_id=current_session.id,
                     conversation_history=conversation_history,
-                    progress_callback=progress_callback
+                    progress_callback=progress_callback,
+                    task_context=task_context
                 )
             )
             
@@ -423,6 +475,29 @@ async def chat_stream(project_id: str, request: ChatRequest):
             if not current_session:
                 current_session = file_service.create_session(project_id)
             
+            # Handle task context from request or session
+            task_context = None
+            if request.task_context_id:
+                # Task context provided in request - set it for the session
+                task_context = file_service.get_task_by_id(project_id, request.task_context_id)
+                if task_context:
+                    current_session.task_context_id = request.task_context_id
+                    current_session.last_activity = datetime.now()
+                    file_service.save_session(project_id, current_session)
+                    logger.info(f"Set task context from request: {request.task_context_id}")
+                else:
+                    logger.warning(f"Task context ID not found: {request.task_context_id}")
+            elif current_session.task_context_id:
+                # Use existing task context from session
+                task_context = file_service.get_task_by_id(project_id, current_session.task_context_id)
+                if task_context:
+                    logger.info(f"Using existing task context: {current_session.task_context_id}")
+                else:
+                    # Task was deleted, clear the context
+                    current_session.task_context_id = None
+                    file_service.save_session(project_id, current_session)
+                    logger.info(f"Cleared invalid task context: {current_session.task_context_id}")
+            
             conversation_history = file_service.load_chat_messages_by_session(project_id, current_session.id)
             
             # 3. Create a simple progress callback that yields directly
@@ -450,7 +525,8 @@ async def chat_stream(project_id: str, request: ChatRequest):
                     project_context=project_context,
                     session_id=current_session.id,
                     conversation_history=conversation_history,
-                    progress_callback=progress_callback
+                    progress_callback=progress_callback,
+                    task_context=task_context
                 )
             )
             
@@ -914,6 +990,124 @@ async def end_session_with_consolidation(project_id: str, request: Request):
     except Exception as e:
         logger.error(f"Error ending session with consolidation: {e}")
         raise HTTPException(status_code=500, detail=f"Session end failed: {str(e)}")
+
+
+# Task Context endpoints
+@app.post("/projects/{project_id}/sessions/{session_id}/set-task-context", response_model=TaskContextResponse)
+async def set_task_context(project_id: str, session_id: str, request: TaskContextRequest):
+    """
+    Set task context for a specific session.
+    This makes the specified task the active context for the chat session.
+    """
+    try:
+        logger.info(f"Setting task context for session {session_id}: task {request.task_id}")
+        
+        # 1. Verify project exists
+        project = file_service.get_project_by_id(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # 2. Verify session exists
+        session = file_service.get_session_by_id(project_id, session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        # 3. Verify task exists
+        task = file_service.get_task_by_id(project_id, request.task_id)
+        if not task:
+            raise HTTPException(status_code=404, detail="Task not found")
+        
+        # 4. Update session with task context
+        session.task_context_id = request.task_id
+        session.last_activity = datetime.now()
+        file_service.save_session(project_id, session)
+        
+        logger.info(f"Task context set successfully: task {request.task_id} for session {session_id}")
+        
+        return TaskContextResponse(
+            success=True,
+            task_context=task,
+            session_id=session_id
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error setting task context: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to set task context: {str(e)}")
+
+@app.delete("/projects/{project_id}/sessions/{session_id}/task-context")
+async def clear_task_context(project_id: str, session_id: str):
+    """
+    Clear task context for a specific session.
+    This removes any active task context from the chat session.
+    """
+    try:
+        logger.info(f"Clearing task context for session {session_id}")
+        
+        # 1. Verify project exists
+        project = file_service.get_project_by_id(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # 2. Verify session exists
+        session = file_service.get_session_by_id(project_id, session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        # 3. Clear task context
+        session.task_context_id = None
+        session.last_activity = datetime.now()
+        file_service.save_session(project_id, session)
+        
+        logger.info(f"Task context cleared successfully for session {session_id}")
+        
+        return {"message": "Task context cleared successfully", "session_id": session_id}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error clearing task context: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to clear task context: {str(e)}")
+
+@app.get("/projects/{project_id}/sessions/{session_id}/task-context")
+async def get_task_context(project_id: str, session_id: str):
+    """
+    Get the current task context for a specific session.
+    """
+    try:
+        logger.info(f"Getting task context for session {session_id}")
+        
+        # 1. Verify project exists
+        project = file_service.get_project_by_id(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # 2. Verify session exists
+        session = file_service.get_session_by_id(project_id, session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        # 3. Get task context if it exists
+        task_context = None
+        if session.task_context_id:
+            task_context = file_service.get_task_by_id(project_id, session.task_context_id)
+            # If task was deleted but session still references it, clear the context
+            if not task_context:
+                session.task_context_id = None
+                file_service.save_session(project_id, session)
+        
+        return {
+            "session_id": session_id,
+            "task_context": task_context,
+            "has_context": task_context is not None
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting task context: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get task context: {str(e)}")
 
 
 # Legacy chat endpoint (keeping for backward compatibility)

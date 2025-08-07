@@ -438,13 +438,16 @@ class ChatRequest(BaseModel):
     
     Attributes:
         message: User message content
+        task_context_id: Optional task ID to use as context for this chat
     """
     message: str = Field(..., min_length=1, max_length=2000, description="User message")
+    task_context_id: Optional[str] = Field(default=None, description="Task ID to use as context for this chat")
 
     class Config:
         json_schema_extra = {
             "example": {
-                "message": "Help me implement user authentication"
+                "message": "Help me implement user authentication",
+                "task_context_id": "abc123"
             }
         }
 
@@ -459,6 +462,7 @@ class ChatResponse(BaseModel):
         type: Response type (chat, feature_breakdown, error)
         intent_analysis: Optional intent analysis from unified agent
         memory_updated: Whether memory was updated during this interaction
+        task_context: Optional task that was used as context for this response
     """
     response: str = Field(..., max_length=15000, description="Assistant response")
     tasks: Optional[List[Task]] = Field(default=None, description="Generated tasks")
@@ -466,6 +470,7 @@ class ChatResponse(BaseModel):
     type: str = Field(..., description="Response type")
     intent_analysis: Optional[Dict[str, Any]] = Field(default=None, description="Intent analysis from unified agent")
     memory_updated: Optional[bool] = Field(default=False, description="Whether memory was updated")
+    task_context: Optional[Task] = Field(default=None, description="Task used as context for this response")
 
     class Config:
         json_schema_extra = {
@@ -585,12 +590,14 @@ class Session(BaseModel):
         name: Session name (optional, can be auto-generated)
         created_at: Session creation timestamp
         last_activity: Last activity timestamp
+        task_context_id: Optional task ID that provides context for this session
     """
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Unique session identifier")
     project_id: str = Field(..., description="Project identifier")
     name: Optional[str] = Field(None, max_length=200, description="Session name")
     created_at: datetime = Field(default_factory=datetime.utcnow, description="Session creation timestamp")
     last_activity: datetime = Field(default_factory=datetime.utcnow, description="Last activity timestamp")
+    task_context_id: Optional[str] = Field(default=None, description="Task ID providing context for this session")
     
     class Config:
         """Pydantic configuration for JSON serialization."""
@@ -663,5 +670,49 @@ class ErrorResponse(BaseModel):
                 "error": "Project not found",
                 "code": "PROJECT_NOT_FOUND",
                 "details": "The requested project does not exist"
+            }
+        }
+
+class TaskContextRequest(BaseModel):
+    """
+    Request model for setting task context for a session.
+    
+    Attributes:
+        task_id: ID of the task to set as context
+        session_id: ID of the session to set context for
+    """
+    task_id: str = Field(..., description="Task ID to use as context")
+    session_id: str = Field(..., description="Session ID to set context for")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "task_id": "abc123",
+                "session_id": "session456"
+            }
+        }
+
+class TaskContextResponse(BaseModel):
+    """
+    Response model for task context operations.
+    
+    Attributes:
+        success: Whether the operation was successful
+        task_context: The task that was set as context
+        session_id: The session ID that was updated
+    """
+    success: bool = Field(..., description="Whether the operation was successful")
+    task_context: Optional[Task] = Field(default=None, description="Task set as context")
+    session_id: str = Field(..., description="Session ID that was updated")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "success": True,
+                "task_context": {
+                    "id": "abc123",
+                    "title": "Implement user authentication"
+                },
+                "session_id": "session456"
             }
         } 
