@@ -1354,249 +1354,58 @@ You are Samurai Engine's task breakdown specialist. Your role is to analyze feat
 
 **Technical Dependencies:**
 - Database schema before API endpoints
-- API endpoints before frontend integration
-- Core functionality before UI enhancements
-- Authentication before protected features
+- Backend APIs before frontend components
+- Core functionality before enhancements
+- Infrastructure before application logic
+
+**User Experience Flow:**
+- Essential user flows first
+- Core functionality before nice-to-have features
+- MVP features before advanced capabilities
 
 **Risk Mitigation:**
-- Highest-risk/most-complex tasks early
-- Core functionality before optional features
-- Integration points identified and planned
+- High-risk components early for validation
+- Critical path items prioritized
+- Dependencies clearly identified
 
-**Testing and Validation:**
-- Each task produces testable output
-- Progressive building allows validation at each step
-- Early tasks establish foundation for later ones
+### Step 5: Task Specification Format
 
-### Step 5: Project Context Integration
+**CRITICAL: Return ONLY a valid JSON array with no additional text, markdown, or explanations.**
 
-**Leverage existing project patterns:**
-
-**Code Pattern Consistency:**
-- How do they typically structure similar features?
-- What naming conventions and file organizations do they use?
-- What testing patterns are established?
-- What error handling approaches do they prefer?
-
-**Architecture Alignment:**
-- How does this feature fit their existing architecture?
-- What existing components/utilities can be leveraged?
-- What integration points with current features exist?
-- What data flow patterns should be maintained?
-
-### Step 6: Task Breakdown Decision & Self-Reflection
-
-**Decision Framework:**
-
-**SINGLE TASK (No breakdown needed):**
-- Feature request is already AI-agent sized
-- Single component or simple modification
-- Adding one clear piece of functionality
-- **Example:** "Add email validation to existing form"
-
-**MINIMAL BREAKDOWN (2-3 tasks):**
-- Feature has 2-3 distinct components
-- Clear separation between backend/frontend
-- Simple linear dependency chain
-- **Example:** "Add user profile: API + UI + Integration"
-
-**STRUCTURED BREAKDOWN (4-8 tasks):**
-- Complex feature with multiple systems
-- Multiple user flows or components
-- Complex dependency relationships
-- **Example:** "Full authentication system with multiple flows"
-
-**Self-Reflection Quality Check:**
-1. **AI Feasibility:** Can each task be completed by an AI coding agent independently?
-2. **Completeness:** Do tasks cover all aspects of the feature request?
-3. **Logical Flow:** Is the development sequence logical and dependency-aware?
-4. **Project Fit:** Do tasks align with existing code patterns and architecture?
-5. **Right-Sized:** Are tasks neither too trivial nor too complex for AI agents?
-
-### Step 7: Task Specification Generation
-
-**For each task, create complete Task model data:**
-
-**Task Structure (matching Task model):**
-```json
-{{
-    "title": "Concise, action-oriented title (max 200 chars)",
-    "description": "Complete, copy-paste ready implementation guide (max 1000 chars)",
-    "priority": "high|medium|low",
-    "order": 0
-}}
-```
-
-**Task Title Guidelines:**
-- Action verb + specific component/feature
-- Reference existing code patterns when relevant
-- Clear enough to understand scope immediately
-- Keep under 200 characters
-
-**Task Description Guidelines (Most Critical - Serves as Cursor Prompt):**
-- Complete, standalone implementation instructions
-- Include full project context and tech stack
-- Reference existing code patterns and file structure
-- Specify exact files to create/modify
-- Include acceptance criteria and testing guidance
-- Must be copy-paste ready for Cursor
-- Keep under 1000 characters while being comprehensive
-
-**Priority Assignment Logic:**
-- **High:** Core functionality, blocking dependencies, critical path items
-- **Medium:** Important features, standard functionality, non-blocking work
-- **Low:** Nice-to-have features, optimizations, polish items
-
-**Order Assignment:**
-- Sequential numbers (0, 1, 2, ...) based on dependency order
-- Tasks with no dependencies get lower numbers
-- Dependent tasks get higher numbers
-- Ensures logical development progression
-
----
-
-## CURSOR-READY DESCRIPTION FRAMEWORK
-
-**Each task's description field must be a complete, standalone implementation guide:**
-
-### Description Template Structure (under 1000 chars):
-```
-PROJECT: {context.project_context.get('name', 'Unknown')} | TECH: {context.project_context.get('tech_stack', 'Unknown')}
-
-CONTEXT: [Brief existing patterns context]
-
-TASK: [Specific implementation requirements]
-
-FILES: [Files to create/modify]
-
-REQUIREMENTS:
-- [Key requirement 1]
-- [Key requirement 2]
-- [Key requirement 3]
-
-ACCEPTANCE: [How to verify completion]
-
-Follow existing code patterns and maintain consistency.
-```
-
-### Description Quality Standards:
-- **Self-contained:** AI agent needs no additional context
-- **Specific:** Exact files, functions, and implementations specified
-- **Context-aware:** References existing project patterns
-- **Actionable:** Clear steps and deliverables
-- **Testable:** Includes validation criteria
-- **Consistent:** Maintains project coding standards
-- **Concise:** Maximum impact within 1000 character limit
-
----
-
-## TASK BREAKDOWN EXECUTION
-
-**Based on your analysis above, execute the task breakdown:**
-
-### Complexity Assessment Results:
-- Technical Complexity: [Score]
-- Feature Scope: [Score] 
-- AI Implementation Difficulty: [Score]
-- **Overall Complexity:** [Score]
-
-### Breakdown Strategy Selected:
-[MICRO TASKS | BALANCED TASKS | STRUCTURED BREAKDOWN]
-
-### Reasoning:
-[2-3 sentences explaining why this breakdown approach fits the feature request]
-
-### Generated Tasks:
-
+**Required JSON Format:**
 ```json
 [
     {{
-        "title": "Task title following guidelines above",
-        "description": "PROJECT: {context.project_context.get('name', 'Unknown')} | TECH: {context.project_context.get('tech_stack', 'Unknown')}\\n\\nCONTEXT: Brief existing patterns context\\n\\nTASK: Specific implementation requirements\\n\\nFILES: Files to create/modify\\n\\nREQUIREMENTS:\\n- Key requirement 1\\n- Key requirement 2\\n\\nACCEPTANCE: Verification criteria\\n\\nFollow existing code patterns and maintain consistency.",
+        "title": "Task Title",
+        "description": "Complete task description with implementation details, file paths, and acceptance criteria",
         "priority": "high|medium|low",
         "order": 0
     }},
-    {{
-        "title": "Second task title",
-        "description": "Complete second task description following same template structure under 1000 chars",
-        "priority": "medium",
-        "order": 1
-    }}
+    ...
 ]
 ```
 
----
+**Task Description Template:**
+```
+PROJECT: [Project Name] | TECH: [Tech Stack]
 
-## SPECIAL CASES & ADAPTATIONS
+TASK: [Specific task objective]
 
-**If Feature Request is Already AI-Sized:**
-```json
-{{
-    "breakdown_needed": false,
-    "reason": "Feature request is already appropriately sized for AI implementation",
-    "recommendation": "Implement as single focused task",
-    "single_task": {{
-        "title": "Enhanced title based on original request",
-        "description": "PROJECT: {context.project_context.get('name', 'Unknown')} | TECH: {context.project_context.get('tech_stack', 'Unknown')}\\n\\nCONTEXT: Brief existing patterns context\\n\\nTASK: Complete implementation requirements\\n\\nFILES: Files to modify\\n\\nREQUIREMENTS:\\n- Key deliverables\\n\\nACCEPTANCE: Success criteria",
-        "priority": "medium",
-        "order": 0
-    }}
-}}
+FILES: [List of files to create/modify]
+
+REQUIREMENTS:
+- [Specific requirement 1]
+- [Specific requirement 2]
+- [Specific requirement 3]
+
+ACCEPTANCE: [How to verify task completion]
 ```
 
-**If Feature Request is Unclear/Incomplete:**
-```json
-{{
-    "breakdown_needed": false,
-    "reason": "Feature request needs more specification before task breakdown",
-    "missing_details": ["specific", "aspects", "needing", "clarification"],
-    "recommendation": "Gather more detailed requirements before creating implementation tasks"
-}}
-```
-
----
-
-## QUALITY STANDARDS FOR FINAL OUTPUT
-
-**Each task must:**
-- Have title under 200 characters
-- Have description under 1000 characters serving as complete Cursor prompt
-- Include appropriate priority based on dependency and importance
-- Have correct order number for development sequence
-- Be implementable by Cursor using only the description field
-
-**Each task description must:**
-- Be completely self-contained with full context
-- Reference specific existing files and patterns
-- Include exact deliverables and acceptance criteria
-- Maintain consistency with project architecture
-- Enable successful AI implementation without additional questions
-- Fit within 1000 character limit while remaining comprehensive
-
-**Overall breakdown must:**
-- Cover complete feature request scope
-- Maintain logical development sequence through order field
-- Optimize for Cursor implementation success
-- Balance task granularity (not too many, not too few)
-- Generate production-ready, copy-paste descriptions
-
-Remember: The description field is now the complete implementation guide - it must contain everything an AI coding agent needs to successfully implement the task without additional context or clarification, all within the 1000 character limit.
-
----
-
-## QUALITY STANDARDS FOR FINAL OUTPUT
-
-**Each task must:**
-- Be implementable by AI coding agent independently
-- Have clear, specific deliverables
-- Reference existing project patterns and files
-- Include validation criteria
-- Maintain logical development sequence
-- Align with project architecture and conventions
-
-**Overall breakdown must:**
-- Cover complete feature request
-- Minimize unnecessary task proliferation
+**IMPORTANT:**
+- Return ONLY the JSON array, no markdown formatting
+- No explanations, no additional text
+- Ensure valid JSON syntax
+- Each task must have title, description, priority, and order fields
 - Optimize for AI agent implementation success
 - Maintain project consistency and quality
 - Enable progressive development and testing
@@ -1606,63 +1415,142 @@ Remember: The goal is creating the optimal number of AI-friendly tasks that enab
             
             response = await self.gemini_service.chat_with_system_prompt(message, system_prompt)
             
-            try:
-                # Clean the response to handle markdown code blocks
-                cleaned_response = response.strip()
-                if cleaned_response.startswith('```json'):
-                    cleaned_response = cleaned_response[7:]  # Remove ```json
-                if cleaned_response.startswith('```'):
-                    cleaned_response = cleaned_response[3:]  # Remove ```
-                if cleaned_response.endswith('```'):
-                    cleaned_response = cleaned_response[:-3]  # Remove ```
-                cleaned_response = cleaned_response.strip()
-                
-                parsed_response = json.loads(cleaned_response)
-                
-                # Handle special cases from enhanced prompt
-                if isinstance(parsed_response, dict):
-                    if parsed_response.get("breakdown_needed") == False:
-                        if "single_task" in parsed_response:
-                            return [parsed_response["single_task"]]
-                        else:
-                            # Return a single task with the original message
-                            return [{
-                                "title": "Implement feature request",
-                                "description": f"PROJECT: {context.project_context.get('name', 'Unknown')} | TECH: {context.project_context.get('tech_stack', 'Unknown')}\n\nTASK: {message}\n\nFILES: To be determined based on implementation\n\nREQUIREMENTS:\n- Implement the requested feature\n- Follow existing code patterns\n\nACCEPTANCE: Feature works as requested",
-                                "priority": "medium",
-                                "order": 0
-                            }]
-                    else:
-                        # If it's a dict but not a special case, try to extract tasks
-                        return [parsed_response]
-                
-                # Handle normal array response
-                if isinstance(parsed_response, list):
-                    return parsed_response
-                
-                # Fallback for unexpected response format
-                logger.warning("Unexpected response format from task breakdown, using fallback")
-                return [{"title": "Implement feature", "description": message}]
-                
-            except json.JSONDecodeError as e:
-                logger.warning(f"Failed to parse task breakdown JSON: {e}")
-                # Try to extract JSON from the response using regex
-                import re
-                json_pattern = r'\[.*\]'
-                matches = re.findall(json_pattern, response, re.DOTALL)
-                if matches:
-                    try:
-                        parsed_response = json.loads(matches[0])
-                        if isinstance(parsed_response, list):
-                            return parsed_response
-                    except:
-                        pass
-                
-                return [{"title": "Implement feature", "description": message}]
+            # Enhanced JSON parsing with multiple fallback strategies
+            parsed_response = self._parse_task_breakdown_response(response, message, context)
+            return parsed_response
                 
         except Exception as e:
             logger.error(f"Error generating task breakdown: {e}")
             return [{"title": "Implement feature", "description": message}]
+
+    def _parse_task_breakdown_response(self, response: str, original_message: str, context: ConversationContext) -> List[dict]:
+        """Enhanced JSON parsing with multiple fallback strategies."""
+        try:
+            # Strategy 1: Direct JSON parsing
+            cleaned_response = response.strip()
+            
+            # Remove markdown code blocks
+            if cleaned_response.startswith('```json'):
+                cleaned_response = cleaned_response[7:]
+            if cleaned_response.startswith('```'):
+                cleaned_response = cleaned_response[3:]
+            if cleaned_response.endswith('```'):
+                cleaned_response = cleaned_response[:-3]
+            cleaned_response = cleaned_response.strip()
+            
+            # Try direct parsing
+            parsed_response = json.loads(cleaned_response)
+            
+            # Handle special cases from enhanced prompt
+            if isinstance(parsed_response, dict):
+                if parsed_response.get("breakdown_needed") == False:
+                    if "single_task" in parsed_response:
+                        return [parsed_response["single_task"]]
+                    else:
+                        return [self._create_fallback_task(original_message, context)]
+                else:
+                    # If it's a dict but not a special case, try to extract tasks
+                    return [parsed_response]
+            
+            # Handle normal array response
+            if isinstance(parsed_response, list):
+                return parsed_response
+            
+            # Fallback for unexpected response format
+            logger.warning("Unexpected response format from task breakdown, using fallback")
+            return [self._create_fallback_task(original_message, context)]
+            
+        except json.JSONDecodeError as e:
+            logger.warning(f"Failed to parse task breakdown JSON: {e}")
+            
+            # Strategy 2: Extract JSON using regex patterns
+            import re
+            
+            # Try to find JSON array pattern
+            json_patterns = [
+                r'\[.*?\]',  # Basic array pattern
+                r'\[\s*\{.*?\}\s*\]',  # Array with objects
+                r'\[\s*\{.*?\}\s*(?:,\s*\{.*?\}\s*)*\]',  # Array with multiple objects
+            ]
+            
+            for pattern in json_patterns:
+                matches = re.findall(pattern, response, re.DOTALL)
+                for match in matches:
+                    try:
+                        parsed_response = json.loads(match)
+                        if isinstance(parsed_response, list) and len(parsed_response) > 0:
+                            # Validate that each item has required fields
+                            valid_tasks = []
+                            for task in parsed_response:
+                                if isinstance(task, dict) and task.get('title'):
+                                    valid_tasks.append(task)
+                            
+                            if valid_tasks:
+                                logger.info(f"Successfully extracted {len(valid_tasks)} tasks using regex pattern")
+                                return valid_tasks
+                    except:
+                        continue
+            
+            # Strategy 3: Try to extract individual task objects
+            task_patterns = [
+                r'\{[^}]*"title"[^}]*\}',  # Object with title field
+                r'\{[^}]*"description"[^}]*\}',  # Object with description field
+            ]
+            
+            for pattern in task_patterns:
+                matches = re.findall(pattern, response, re.DOTALL)
+                tasks = []
+                for match in matches:
+                    try:
+                        task = json.loads(match)
+                        if isinstance(task, dict) and task.get('title'):
+                            tasks.append(task)
+                    except:
+                        continue
+                
+                if tasks:
+                    logger.info(f"Successfully extracted {len(tasks)} individual tasks")
+                    return tasks
+            
+            # Strategy 4: Create task from response content
+            logger.warning("All JSON parsing strategies failed, creating task from response content")
+            return [self._create_task_from_response_content(response, original_message, context)]
+
+    def _create_fallback_task(self, message: str, context: ConversationContext) -> dict:
+        """Create a fallback task when parsing fails."""
+        return {
+            "title": "Implement feature request",
+            "description": f"PROJECT: {context.project_context.get('name', 'Unknown')} | TECH: {context.project_context.get('tech_stack', 'Unknown')}\n\nTASK: {message}\n\nFILES: To be determined based on implementation\n\nREQUIREMENTS:\n- Implement the requested feature\n- Follow existing code patterns\n\nACCEPTANCE: Feature works as requested",
+            "priority": "medium",
+            "order": 0
+        }
+
+    def _create_task_from_response_content(self, response: str, original_message: str, context: ConversationContext) -> dict:
+        """Create a task by extracting useful information from the AI response."""
+        # Try to extract meaningful content from the response
+        lines = response.split('\n')
+        title = "Implement feature request"
+        description_parts = []
+        
+        for line in lines:
+            line = line.strip()
+            if line and not line.startswith('#') and not line.startswith('```') and not line.startswith('{') and not line.startswith('['):
+                # Skip markdown headers, code blocks, and JSON syntax
+                if len(line) > 10:  # Only include substantial lines
+                    description_parts.append(line)
+        
+        if description_parts:
+            # Use the first few meaningful lines as description
+            description = '\n'.join(description_parts[:5])  # Limit to first 5 lines
+        else:
+            description = f"Implement the requested feature: {original_message}"
+        
+        return {
+            "title": title,
+            "description": f"PROJECT: {context.project_context.get('name', 'Unknown')} | TECH: {context.project_context.get('tech_stack', 'Unknown')}\n\nTASK: {original_message}\n\nAI ANALYSIS:\n{description}\n\nREQUIREMENTS:\n- Implement the requested feature\n- Follow existing code patterns\n\nACCEPTANCE: Feature works as requested",
+            "priority": "medium",
+            "order": 0
+        }
 
     async def _generate_task_breakdown_with_extended_context(self, message: str, context: ConversationContext, conversation_context: str) -> List[dict]:
         """Generate task breakdown with comprehensive conversation context."""
@@ -1711,11 +1599,9 @@ Return JSON array with tasks that comprehensively capture the extended conversat
             
             response = await self.gemini_service.chat_with_system_prompt(message, system_prompt)
             
-            try:
-                return json.loads(response)
-            except json.JSONDecodeError:
-                logger.warning("Failed to parse task breakdown JSON, using fallback")
-                return [{"title": "Implement feature", "description": f"Implement the feature comprehensively discussed: {message}"}]
+            # Use the same robust parsing method
+            parsed_response = self._parse_task_breakdown_response(response, message, context)
+            return parsed_response
                 
         except Exception as e:
             logger.error(f"Error generating task breakdown: {e}")
@@ -1745,7 +1631,7 @@ Return JSON array with tasks that comprehensively capture the extended conversat
         for task_data in task_breakdown:
             try:
                 # Create task using tool registry
-                result = await self.tool_registry.execute_tool(
+                result = self.tool_registry.execute_tool(
                     "create_task",
                     title=task_data["title"],
                     description=task_data["description"],
@@ -2018,23 +1904,36 @@ Return JSON with the detected action and context-specific parameters informed by
     "actions": [
         {{
             "tool_name": "tool_to_execute",
-            "parameters": {{"param1": "value1"}},
+            "parameters": {{
+                "param1": "value1",
+                "param2": "value2",
+                "project_id": "{project_id}"
+            }},
+            "requires_search_first": true/false,
+            "search_tool": "search_tasks|search_memories",
+            "search_query": "search terms if needed",
             "description": "Action description with conversation context"
         }}
     ]
 }}
 """
             
-            # Execute action detection and execution logic here with extended context
+            # Get LLM analysis
             response = await self.gemini_service.chat_with_system_prompt(message, action_analysis_prompt)
             
-            # Parse and execute actions (implementation depends on your existing logic)
-            return {
-                "response": "Action completed based on comprehensive conversation context.",
-                "tool_calls_made": 1,
-                "tool_results": [],
-                "action_type": "context_aware_action_extended"
-            }
+            # Parse the LLM response
+            action_analysis = self._parse_action_analysis(response)
+            
+            if not action_analysis.get("actions_detected", False):
+                return {
+                    "response": "I'm not sure what specific action you want me to take. Could you be more explicit about what you'd like me to do?",
+                    "tool_calls_made": 0,
+                    "tool_results": [],
+                    "action_type": "no_actions_detected"
+                }
+            
+            # Execute the detected actions
+            return await self._execute_detected_actions(action_analysis, project_id, context)
             
         except Exception as e:
             logger.error(f"Error executing direct action with extended context: {e}")
@@ -2071,10 +1970,10 @@ Return JSON with the detected action and context-specific parameters informed by
                 }
             
             # Execute completion
-            result = await self.tool_registry.execute_tool(
-                "update_task_status",
-                task_id=matching_task.id,
-                status="completed",
+            result = self.tool_registry.execute_tool(
+                "change_task_status",
+                task_identifier=matching_task.id,
+                new_status="completed",
                 project_id=project_id
             )
             
@@ -2123,9 +2022,9 @@ Return JSON with the detected action and context-specific parameters informed by
                 }
             
             # Execute deletion
-            result = await self.tool_registry.execute_tool(
+            result = self.tool_registry.execute_tool(
                 "delete_task",
-                task_id=matching_task.id,
+                task_identifier=matching_task.id,
                 project_id=project_id
             )
             
@@ -2180,21 +2079,41 @@ Return JSON with the detected action and context-specific parameters informed by
                         response_parts.append(f"❌ Could not find items for: {action.get('description', 'unknown action')}")
                         continue
                 
-                # Execute the main action
+                # Execute the main action using AgentToolRegistry
                 tool_name = action.get("tool_name")
                 parameters = action.get("parameters", {})
                 
+                # Ensure project_id is in parameters
+                if "project_id" not in parameters:
+                    parameters["project_id"] = project_id
+                
                 if tool_name in self.tool_registry.get_available_tools():
-                    result = self.tool_registry.execute_tool(tool_name, **parameters)
-                    tool_results.append(result)
-                    total_tool_calls += 1
-                    
-                    if result.get("success", False):
-                        response_parts.append(result.get("message", f"✅ Completed: {action.get('description')}"))
-                    else:
-                        response_parts.append(result.get("message", f"❌ Failed: {action.get('description')}"))
+                    try:
+                        # Actually execute the tool through the registry
+                        result = self.tool_registry.execute_tool(tool_name, **parameters)
+                        tool_results.append(result)
+                        total_tool_calls += 1
+                        
+                        if result.get("success", False):
+                            response_parts.append(result.get("message", f"✅ Completed: {action.get('description')}"))
+                        else:
+                            response_parts.append(result.get("message", f"❌ Failed: {action.get('description')}"))
+                            
+                    except Exception as tool_error:
+                        logger.error(f"Tool execution error for {tool_name}: {tool_error}")
+                        response_parts.append(f"❌ Error executing {tool_name}: {str(tool_error)}")
+                        tool_results.append({
+                            "success": False,
+                            "error": str(tool_error),
+                            "tool_name": tool_name
+                        })
                 else:
-                    response_parts.append(f"❌ Unknown action: {tool_name}")
+                    response_parts.append(f"❌ Unknown tool: {tool_name}")
+                    tool_results.append({
+                        "success": False,
+                        "error": f"Unknown tool: {tool_name}",
+                        "tool_name": tool_name
+                    })
             
             # Generate comprehensive response
             if response_parts:
@@ -2279,13 +2198,25 @@ Return JSON with the detected action and context-specific parameters informed by
             
             if start_idx >= 0 and end_idx > start_idx:
                 json_str = response[start_idx:end_idx]
-                return json.loads(json_str)
+                parsed = json.loads(json_str)
+                
+                # Validate the parsed response has required fields
+                if "actions_detected" in parsed and "actions" in parsed:
+                    return parsed
+                else:
+                    logger.warning("Parsed JSON missing required fields")
+                    return {"actions_detected": False}
+                    
             else:
                 logger.warning("No JSON found in action analysis response")
                 return {"actions_detected": False}
                 
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse action analysis JSON: {e}")
+            logger.debug(f"Raw response: {response}")
+            return {"actions_detected": False}
+        except Exception as e:
+            logger.error(f"Unexpected error parsing action analysis: {e}")
             return {"actions_detected": False}
 
     async def _fallback_action_detection(self, message: str, context: ConversationContext, project_id: str) -> dict:
