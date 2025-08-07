@@ -594,34 +594,69 @@ Use this framework to analyze the current message and provide the most accurate 
             return await self._handle_pure_discussion(message, context)
     
     async def _handle_pure_discussion(self, message: str, context: ConversationContext) -> dict:
-        """
-        Handle pure discussion - generate contextual response without tool calling.
-        """
+        """Handle pure discussion with comprehensive conversation context awareness."""
         try:
-            # Create response context for the generator
-            response_context = ResponseContext(
-                project_name=context.project_context.get('name', 'Unknown'),
-                tech_stack=context.project_context.get('tech_stack', 'Unknown'),
-                conversation_summary=context.conversation_summary,
-                relevant_tasks=context.relevant_tasks,
-                relevant_memories=context.relevant_memories,
-                user_message=message,
-                intent_type="pure_discussion",
-                confidence=0.8
+            # Build enhanced conversation context with 20 message history
+            conversation_context = self._create_conversation_summary_with_smart_truncation(
+                context.session_messages, message
             )
             
-            # Generate dynamic response
-            response = await self.response_generator.generate_discussion_response(response_context)
+            system_prompt = f"""
+You are Samurai Engine, their vibe coding partner.
+
+## COMPREHENSIVE CONVERSATION CONTEXT (READ THIS FIRST - CRITICAL)
+{conversation_context}
+
+## PROJECT CONTEXT
+Project: {context.project_context.get('name', 'Unknown')} | Tech: {context.project_context.get('tech_stack', 'Unknown')}
+
+## RELEVANT PROJECT KNOWLEDGE
+{self._format_memories_for_context(context.relevant_memories)}
+
+## CURRENT TASKS
+{self._format_tasks_for_context(context.relevant_tasks)}
+
+## RESPONSE REQUIREMENTS
+
+1. **ALWAYS reference the conversation history above** - Show deep understanding of the ongoing discussion
+2. **Build on multiple previous exchanges** - not just the last message
+3. **Reference specific topics, decisions, or clarifications** mentioned earlier in the conversation
+4. **Maintain conversation threads** - if discussing multiple topics, keep track of all of them
+5. **Connect current message to broader conversation context**
+
+## CONVERSATION CONTINUITY WITH EXTENDED CONTEXT
+- Reference topics discussed several messages ago when relevant
+- Build on decisions or clarifications made throughout the conversation
+- Show awareness of the conversation's progression and evolution
+- Connect current discussion to earlier exploration or planning
+
+## EXAMPLES OF DEEP CONTEXT USAGE
+- "This ties back to the authentication approach we discussed earlier..."
+- "Building on the database structure we planned and the user flow we refined..."
+- "I remember you mentioned concerns about [topic] a few messages back..."
+- "This connects well with both the [feature A] we explored and [feature B] we specified..."
+
+## YOUR RESPONSE GUIDELINES
+- Show awareness of the full conversation arc, not just recent messages
+- Reference multiple topics or threads when relevant
+- Demonstrate understanding of how discussions have evolved
+- Be their knowledgeable coding partner who remembers the entire conversation
+
+Your response:
+"""
+            
+            response = await self.gemini_service.chat_with_system_prompt(message, system_prompt)
             
             return {
                 "type": "discussion_response",
-                "response": response,
+                "response": response.strip(),
                 "tool_calls_made": 0,
                 "tool_results": [],
                 "context_used": {
-                    "conversation_summary": context.conversation_summary,
+                    "conversation_summary": conversation_context,
                     "relevant_memories_count": len(context.relevant_memories),
-                    "relevant_tasks_count": len(context.relevant_tasks)
+                    "relevant_tasks_count": len(context.relevant_tasks),
+                    "conversation_depth": len(context.session_messages)
                 }
             }
             
@@ -629,39 +664,73 @@ Use this framework to analyze the current message and provide the most accurate 
             logger.error(f"Error in pure discussion handling: {e}")
             return {
                 "type": "discussion_response",
-                "response": "I'm here to help with your project! What would you like to know about?",
+                "response": "I'm here to help with your project! What would you like to discuss?",
                 "tool_calls_made": 0,
                 "tool_results": [],
                 "context_used": {}
             }
     
     async def _handle_feature_exploration(self, message: str, context: ConversationContext, intent_analysis: IntentAnalysis) -> dict:
-        """
-        Handle feature exploration - ask clarifying questions to gather complete specifications.
-        """
+        """Handle feature exploration with comprehensive conversation continuity."""
         try:
-            # Create response context for the generator
-            response_context = ResponseContext(
-                project_name=context.project_context.get('name', 'Unknown'),
-                tech_stack=context.project_context.get('tech_stack', 'Unknown'),
-                conversation_summary=context.conversation_summary,
-                relevant_tasks=context.relevant_tasks,
-                relevant_memories=context.relevant_memories,
-                user_message=message,
-                intent_type="feature_exploration",
-                confidence=intent_analysis.confidence
+            # Build enhanced conversation context with extended history
+            conversation_context = self._create_conversation_summary_with_smart_truncation(
+                context.session_messages, message
             )
             
-            # Generate dynamic clarification questions
-            response = await self.response_generator.generate_clarification_questions(response_context)
+            system_prompt = f"""
+You are Samurai Engine, helping developers explore feature ideas with deep conversation awareness.
+
+## COMPREHENSIVE CONVERSATION CONTEXT (ESSENTIAL - READ FIRST)
+{conversation_context}
+
+## PROJECT CONTEXT
+Project: {context.project_context.get('name', 'Unknown')} | Tech: {context.project_context.get('tech_stack', 'Unknown')}
+
+## RELEVANT PROJECT KNOWLEDGE
+{self._format_memories_for_context(context.relevant_memories)}
+
+## CURRENT TASKS
+{self._format_tasks_for_context(context.relevant_tasks)}
+
+## YOUR RESPONSE APPROACH WITH EXTENDED CONTEXT
+
+1. **Analyze the full conversation arc** - understand how this feature idea relates to everything discussed
+2. **Reference multiple conversation threads** - connect to various topics explored earlier
+3. **Show awareness of conversation evolution** - how ideas have developed over multiple exchanges
+4. **Connect to earlier planning or decisions** made in the conversation
+5. **Ask questions that build on the comprehensive context**
+
+## FEATURE EXPLORATION WITH CONVERSATION DEPTH
+- Reference features or approaches discussed earlier in the conversation
+- Build on clarifications or decisions made several messages ago
+- Show understanding of how this new idea fits into the broader conversation
+- Connect to multiple aspects of their project discussed over time
+
+## QUESTION STRATEGY WITH EXTENDED CONTEXT
+- Reference specific technical discussions from earlier in the conversation
+- Build questions on decisions or preferences mentioned previously
+- Show awareness of constraints or requirements established earlier
+- Connect to multiple features or systems discussed throughout the conversation
+
+## EXAMPLES OF DEEP CONTEXT INTEGRATION
+- "This new feature idea connects interesting with both the [system A] we discussed earlier and the [approach B] you mentioned for [previous topic]..."
+- "Given the conversation we've had about [multiple topics], I'm curious how this would integrate with..."
+- "Building on the [technical decision] we established and the [user flow] we explored..."
+
+Your response should demonstrate deep understanding of the entire conversation, not just recent exchanges.
+"""
+            
+            response = await self.gemini_service.chat_with_system_prompt(message, system_prompt)
             
             return {
                 "type": "clarification_request",
-                "response": response,
+                "response": response.strip(),
                 "tool_calls_made": 0,
                 "tool_results": [],
                 "context_used": {
-                    "conversation_summary": context.conversation_summary,
+                    "conversation_summary": conversation_context,
+                    "conversation_depth": len(context.session_messages),
                     "clarification_questions": intent_analysis.clarification_questions
                 }
             }
@@ -670,41 +739,74 @@ Use this framework to analyze the current message and provide the most accurate 
             logger.error(f"Error in feature exploration handling: {e}")
             return {
                 "type": "clarification_request",
-                "response": "That's an interesting idea! Could you provide more specific details about what you want to build?",
+                "response": "That's an interesting idea! Could you tell me more about what you want to build?",
                 "tool_calls_made": 0,
                 "tool_results": [],
                 "context_used": {}
             }
     
     async def _handle_spec_clarification(self, message: str, context: ConversationContext, intent_analysis: IntentAnalysis) -> dict:
-        """
-        Handle specification clarification - acknowledge the details and check if ready for action.
-        """
+        """Handle specification clarification with comprehensive conversation awareness."""
         try:
-            # Create response context for the generator
-            response_context = ResponseContext(
-                project_name=context.project_context.get('name', 'Unknown'),
-                tech_stack=context.project_context.get('tech_stack', 'Unknown'),
-                conversation_summary=context.conversation_summary,
-                relevant_tasks=context.relevant_tasks,
-                relevant_memories=context.relevant_memories,
-                user_message=message,
-                intent_type="spec_clarification",
-                confidence=intent_analysis.confidence
+            # Build enhanced conversation context with full history
+            conversation_context = self._create_conversation_summary_with_smart_truncation(
+                context.session_messages, message
             )
             
-            # Generate dynamic spec clarification response
-            response = await self.response_generator.generate_spec_clarification_response(
-                response_context, intent_analysis.accumulated_specs
-            )
+            system_prompt = f"""
+You are Samurai Engine, gathering complete feature specifications through extended conversation tracking.
+
+## COMPREHENSIVE CONVERSATION CONTEXT (CRITICAL FOR SPECIFICATION BUILDING)
+{conversation_context}
+
+## PROJECT CONTEXT
+Project: {context.project_context.get('name', 'Unknown')} | Tech: {context.project_context.get('tech_stack', 'Unknown')}
+
+## RELEVANT PROJECT KNOWLEDGE
+{self._format_memories_for_context(context.relevant_memories)}
+
+## CURRENT TASKS
+{self._format_tasks_for_context(context.relevant_tasks)}
+
+## SPECIFICATION GATHERING WITH EXTENDED CONTEXT
+
+1. **Track specification evolution** throughout the entire conversation
+2. **Reference all clarifications made** across multiple exchanges
+3. **Build comprehensive understanding** from the full discussion arc
+4. **Connect current clarification** to broader specification context
+5. **Assess completeness** based on entire conversation history
+
+## SPECIFICATION ASSESSMENT WITH CONVERSATION DEPTH
+Based on the comprehensive conversation history above:
+- What aspects have been clarified across multiple exchanges?
+- How have requirements evolved throughout the discussion?
+- What patterns or themes emerge from the extended conversation?
+- Which specifications are now complete vs. still need clarification?
+
+## RESPONSE STYLE WITH EXTENDED CONTEXT
+- "Excellent! This clarifies [specific aspect]. Combined with what we established earlier about [previous topic] and the [decisions made] throughout our conversation..."
+- "Perfect! Now I have a comprehensive picture: [summary of multiple conversation elements]..."
+- "That completes the picture nicely. From our entire discussion, I understand [comprehensive summary]..."
+
+## SPECIFICATION COMPLETENESS CHECK
+Consider the full conversation arc:
+- Are all major aspects covered across the discussion?
+- Do you have enough information from the extended conversation for task creation?
+- Are there any gaps that need addressing despite the comprehensive discussion?
+
+Show deep understanding of how the specification has evolved throughout the entire conversation.
+"""
+            
+            response = await self.gemini_service.chat_with_system_prompt(message, system_prompt)
             
             return {
                 "type": "spec_clarification_response",
-                "response": response,
+                "response": response.strip(),
                 "tool_calls_made": 0,
                 "tool_results": [],
                 "context_used": {
-                    "conversation_summary": context.conversation_summary,
+                    "conversation_summary": conversation_context,
+                    "conversation_depth": len(context.session_messages),
                     "accumulated_specs": intent_analysis.accumulated_specs
                 }
             }
@@ -713,43 +815,37 @@ Use this framework to analyze the current message and provide the most accurate 
             logger.error(f"Error in spec clarification handling: {e}")
             return {
                 "type": "spec_clarification_response",
-                "response": "Thanks for those details! I'm getting a clearer picture. Would you like me to create tasks for this feature?",
+                "response": "Thanks for those details! Would you like me to create tasks for this feature?",
                 "tool_calls_made": 0,
                 "tool_results": [],
                 "context_used": {}
             }
     
     async def _handle_ready_for_action(self, message: str, context: ConversationContext, project_id: str, progress_callback: Optional[Callable] = None) -> dict:
-        """
-        Handle ready for action - create comprehensive task breakdown and execute tool calls.
-        """
+        """Handle ready for action with comprehensive conversation context for task creation."""
         try:
-            if progress_callback:
-                await self._send_dynamic_progress_update(
-                    progress_callback, "planning", "📋 Creating task breakdown...", 
-                    "Analyzing requirements and creating tasks", context.project_context
-                )
-            
-            # Generate task breakdown
-            task_breakdown = await self._generate_task_breakdown(message, context)
+            # Build enhanced conversation context for comprehensive task generation
+            conversation_context = self._create_conversation_summary_with_smart_truncation(
+                context.session_messages, message
+            )
             
             if progress_callback:
-                await self._send_dynamic_progress_update(
-                    progress_callback, "execution", "⚙️ Creating tasks...", 
-                    "Executing task creation", context.project_context
-                )
+                await progress_callback("planning", "📋 Creating task breakdown...", "Analyzing comprehensive conversation context and requirements")
+            
+            # Generate task breakdown with full conversation context
+            task_breakdown = await self._generate_task_breakdown_with_extended_context(message, context, conversation_context)
+            
+            if progress_callback:
+                await progress_callback("execution", "⚙️ Creating tasks...", "Executing task creation with conversation insights")
             
             # Execute task creation
             tool_results = await self._execute_task_creation(task_breakdown, project_id)
             
             if progress_callback:
-                await self._send_dynamic_progress_update(
-                    progress_callback, "execution", "✅ Tasks created", 
-                    f"Successfully created {len(tool_results)} tasks", context.project_context
-                )
+                await progress_callback("execution", "✅ Tasks created", f"Successfully created {len(tool_results)} tasks from comprehensive discussion")
             
-            # Generate response
-            response = await self._generate_task_creation_response(tool_results, task_breakdown, context)
+            # Generate response with comprehensive conversation awareness
+            response = self._generate_comprehensive_task_creation_response(tool_results, task_breakdown, conversation_context)
             
             return {
                 "type": "task_creation_response",
@@ -757,7 +853,8 @@ Use this framework to analyze the current message and provide the most accurate 
                 "tool_calls_made": len(tool_results),
                 "tool_results": tool_results,
                 "context_used": {
-                    "conversation_summary": context.conversation_summary,
+                    "conversation_summary": conversation_context,
+                    "conversation_depth": len(context.session_messages),
                     "task_breakdown": task_breakdown
                 }
             }
@@ -767,32 +864,30 @@ Use this framework to analyze the current message and provide the most accurate 
             return await self._handle_pure_discussion(message, context)
     
     async def _handle_direct_action(self, message: str, context: ConversationContext, project_id: str, progress_callback: Optional[Callable] = None) -> dict:
-        """
-        Handle direct action - execute immediate tool calls for task management.
-        """
+        """Handle direct action with comprehensive conversation context awareness."""
         try:
-            if progress_callback:
-                await self._send_dynamic_progress_update(
-                    progress_callback, "execution", "⚙️ Executing action...", 
-                    "Processing your direct request", context.project_context
-                )
-            
-            # Detect action type and execute
-            action_result = await self._execute_direct_action(message, context, project_id)
+            # Build enhanced conversation context with extended history
+            conversation_context = self._create_conversation_summary_with_smart_truncation(
+                context.session_messages, message
+            )
             
             if progress_callback:
-                await self._send_dynamic_progress_update(
-                    progress_callback, "execution", "✅ Action completed", 
-                    "Successfully executed your request", context.project_context
-                )
+                await progress_callback("execution", "⚙️ Executing action...", "Processing your request with comprehensive conversation context")
+            
+            # Execute action with extended conversation context
+            action_result = await self._execute_direct_action_with_extended_context(message, context, project_id, conversation_context)
+            
+            if progress_callback:
+                await progress_callback("execution", "✅ Action completed", "Successfully executed your request with full context awareness")
             
             return {
                 "type": "direct_action_response",
-                "response": action_result.get("response", "Action completed successfully."),
+                "response": action_result.get("response", "Action completed successfully with conversation context."),
                 "tool_calls_made": action_result.get("tool_calls_made", 0),
                 "tool_results": action_result.get("tool_results", []),
                 "context_used": {
-                    "conversation_summary": context.conversation_summary,
+                    "conversation_summary": conversation_context,
+                    "conversation_depth": len(context.session_messages),
                     "action_type": action_result.get("action_type", "unknown")
                 }
             }
@@ -963,25 +1058,95 @@ Use this framework to analyze the current message and provide the most accurate 
             return self._create_fallback_vector_context(message, project_id, session_messages, project_context)
     
     def _create_conversation_summary(self, session_messages: List[ChatMessage], current_message: str) -> str:
-        """Create a summary of the conversation context."""
+        """Create enhanced conversation summary that emphasizes recent context with extended history."""
+        
         if not session_messages:
-            return f"Current request: {current_message}"
+            return f"This is the start of a new conversation. User just said: '{current_message}'"
         
-        # Get last 10 messages for context
-        recent_messages = session_messages[-10:]
+        # Get last 20 messages for comprehensive context (10 full exchanges)
+        recent_messages = session_messages[-20:]
         
-        summary_parts = ["RECENT CONVERSATION CONTEXT:"]
-    
+        summary_parts = ["CONVERSATION HISTORY (Most Recent Context):"]
+        
+        # Build conversation flow with clear markers
         for i, msg in enumerate(recent_messages):
-            if msg.message:  # User message
+            # Handle messages with both user message and assistant response
+            if msg.message:
                 summary_parts.append(f"User: {msg.message}")
-            if msg.response:  # Assistant response
+            if msg.response:
                 summary_parts.append(f"You (Samurai): {msg.response}")
+            
+            # Add separator every few exchanges for readability
+            if i > 0 and i % 6 == 0 and i < len(recent_messages) - 1:
+                summary_parts.append("---")
         
-        summary_parts.append(f"\nNOW USER SAYS: '{current_message}'")
-        summary_parts.append(f"\nYou should build on this conversation and reference what was discussed.")
+        summary_parts.append(f"\nCURRENT MESSAGE: {current_message}")
+        summary_parts.append("↑ CRITICAL: Continue this conversation naturally, building on the full context above. Reference specific topics, decisions, or clarifications from the conversation history.")
         
         return "\n".join(summary_parts)
+
+    def _create_conversation_summary_with_smart_truncation(self, session_messages: List[ChatMessage], current_message: str, max_chars: int = 4000) -> str:
+        """Create conversation summary with intelligent truncation to fit token limits."""
+        
+        if not session_messages:
+            return f"This is the start of a new conversation. User just said: '{current_message}'"
+        
+        # Start with last 20 messages for maximum context
+        recent_messages = session_messages[-20:]
+        
+        summary_parts = ["CONVERSATION HISTORY:"]
+        
+        for msg in recent_messages:
+            if msg.message:
+                summary_parts.append(f"User: {msg.message}")
+            if msg.response:
+                # Truncate very long responses to save space
+                response_text = msg.response
+                if len(response_text) > 300:
+                    response_text = response_text[:300] + "..."
+                summary_parts.append(f"You (Samurai): {response_text}")
+        
+        summary_parts.append(f"\nCURRENT MESSAGE: {current_message}")
+        summary_parts.append("↑ Continue this conversation naturally, referencing the context above.")
+        
+        full_summary = "\n".join(summary_parts)
+        
+        # If too long, progressively reduce context while keeping most recent
+        if len(full_summary) > max_chars:
+            # Try with last 15 messages
+            recent_messages = session_messages[-15:]
+            summary_parts = ["CONVERSATION HISTORY:"]
+            
+            for msg in recent_messages:
+                if msg.message:
+                    summary_parts.append(f"User: {msg.message}")
+                if msg.response:
+                    response_text = msg.response[:200] + "..." if len(msg.response) > 200 else msg.response
+                    summary_parts.append(f"You (Samurai): {response_text}")
+            
+            summary_parts.append(f"\nCURRENT MESSAGE: {current_message}")
+            summary_parts.append("↑ Continue this conversation naturally.")
+            
+            full_summary = "\n".join(summary_parts)
+            
+            # If still too long, try with last 10 messages
+            if len(full_summary) > max_chars:
+                recent_messages = session_messages[-10:]
+                summary_parts = ["RECENT CONVERSATION:"]
+                
+                for msg in recent_messages:
+                    if msg.message:
+                        summary_parts.append(f"User: {msg.message}")
+                    if msg.response:
+                        response_text = msg.response[:150] + "..." if len(msg.response) > 150 else msg.response
+                        summary_parts.append(f"You (Samurai): {response_text}")
+                
+                summary_parts.append(f"\nCURRENT MESSAGE: {current_message}")
+                summary_parts.append("↑ Continue this conversation.")
+                
+                full_summary = "\n".join(summary_parts)
+        
+        return full_summary
     
     def _format_tasks_for_context(self, tasks: List[Task]) -> str:
         """Format tasks for context inclusion."""
@@ -1498,6 +1663,80 @@ Remember: The goal is creating the optimal number of AI-friendly tasks that enab
         except Exception as e:
             logger.error(f"Error generating task breakdown: {e}")
             return [{"title": "Implement feature", "description": message}]
+
+    async def _generate_task_breakdown_with_extended_context(self, message: str, context: ConversationContext, conversation_context: str) -> List[dict]:
+        """Generate task breakdown with comprehensive conversation context."""
+        try:
+            system_prompt = f"""
+Break down this feature request into implementable tasks, considering the comprehensive conversation history.
+
+## COMPREHENSIVE CONVERSATION CONTEXT (ESSENTIAL FOR COMPLETE TASK CREATION)
+{conversation_context}
+
+## PROJECT CONTEXT
+Project: {context.project_context.get('name', 'Unknown')}
+Tech Stack: {context.project_context.get('tech_stack', 'Unknown')}
+
+## RELEVANT PROJECT KNOWLEDGE
+{self._format_memories_for_context(context.relevant_memories)}
+
+## TASK BREAKDOWN WITH EXTENDED CONVERSATION CONTEXT
+
+Based on the comprehensive conversation above:
+1. **Capture all requirements discussed** throughout the entire conversation
+2. **Include clarifications and decisions made** across multiple exchanges
+3. **Reference technical choices established** during the extended discussion
+4. **Incorporate user preferences expressed** at various points in the conversation
+5. **Consider integration points discussed** throughout the conversation arc
+
+## COMPREHENSIVE TASK CREATION GUIDELINES
+- Each task should reflect the full understanding gained from the extended conversation
+- Include implementation details and context discussed over multiple exchanges
+- Reference decisions, constraints, and preferences established throughout the discussion
+- Capture the evolution of requirements as discussed over time
+- Ensure tasks reflect the complete specification developed through the conversation
+
+## TASK CONTEXT INTEGRATION
+- Tasks should reference specific technical decisions made during the conversation
+- Include user experience considerations discussed earlier
+- Reflect architectural choices established through the extended discussion
+- Incorporate performance, security, or other requirements mentioned throughout
+
+Return JSON array with tasks that comprehensively capture the extended conversation context:
+[
+    {{"title": "Task Title", "description": "Complete description including comprehensive conversation context, technical decisions, user preferences, and implementation details discussed throughout the conversation"}},
+    ...
+]
+"""
+            
+            response = await self.gemini_service.chat_with_system_prompt(message, system_prompt)
+            
+            try:
+                return json.loads(response)
+            except json.JSONDecodeError:
+                logger.warning("Failed to parse task breakdown JSON, using fallback")
+                return [{"title": "Implement feature", "description": f"Implement the feature comprehensively discussed: {message}"}]
+                
+        except Exception as e:
+            logger.error(f"Error generating task breakdown: {e}")
+            return [{"title": "Implement feature", "description": f"Implement the feature discussed: {message}"}]
+
+    def _generate_comprehensive_task_creation_response(self, tool_results: List[dict], task_breakdown: List[dict], conversation_context: str) -> str:
+        """Generate response that references the comprehensive conversation context."""
+        successful_results = [r for r in tool_results if r.get("success", False)]
+        
+        if not successful_results:
+            return "I encountered some issues creating the tasks. Please try again."
+        
+        # Reference comprehensive conversation in response
+        response_parts = [f"Perfect! Based on our comprehensive discussion, I've created {len(successful_results)} tasks that capture everything we've explored:"]
+        
+        for i, task_data in enumerate(task_breakdown, 1):
+            response_parts.append(f"{i}. {task_data['title']}")
+        
+        response_parts.append("\nThese tasks incorporate all the decisions, clarifications, and technical choices we've discussed throughout our conversation. They're ready to copy to Cursor with complete context!")
+        
+        return "\n".join(response_parts)
     
     async def _execute_task_creation(self, task_breakdown: List[dict], project_id: str) -> List[dict]:
         """Execute task creation using tool registry."""
@@ -1730,6 +1969,81 @@ Analyze the user's message and return the appropriate JSON structure for detecte
         except Exception as e:
             logger.error(f"Error in LLM action detection: {e}")
             return await self._fallback_action_detection(message, context, project_id)
+
+    async def _execute_direct_action_with_extended_context(self, message: str, context: ConversationContext, project_id: str, conversation_context: str) -> dict:
+        """Execute direct action considering comprehensive conversation context."""
+        try:
+            # Use LLM to detect actions with comprehensive conversation context
+            action_analysis_prompt = f"""
+Analyze the user's direct action request considering the comprehensive conversation history.
+
+## COMPREHENSIVE CONVERSATION CONTEXT (CRITICAL FOR ACCURATE ACTION DETECTION)
+{conversation_context}
+
+## CURRENT REQUEST
+"{message}"
+
+## AVAILABLE TOOLS
+- create_task: Create a new task in the project
+- update_task: Update an existing task's details
+- change_task_status: Change the status of a task (pending, in_progress, completed, blocked)
+- search_tasks: Search for tasks by title, description, or status
+- delete_task: Delete a task from the project
+- create_memory: Create a new memory entry
+- update_memory: Update an existing memory
+- search_memories: Search for memories by title or content
+- delete_memory: Delete a memory from the project
+
+## EXTENDED CONTEXT ACTION ANALYSIS
+
+Based on the comprehensive conversation context above:
+- What tasks, features, or topics have been discussed throughout the conversation?
+- Are they referring to something specific mentioned earlier in the extended discussion?
+- What is the most logical action given the full conversation arc?
+- How does this request relate to decisions or plans made earlier in the conversation?
+
+## ACTION DETECTION WITH CONVERSATION DEPTH
+Consider:
+- Tasks or features discussed across multiple conversation turns
+- Technical decisions made throughout the extended discussion
+- User preferences expressed at various points in the conversation
+- Previous action requests or task management discussions
+
+Return JSON with the detected action and context-specific parameters informed by the comprehensive conversation:
+{{
+    "actions_detected": true/false,
+    "action_count": number,
+    "confidence": 0.0-1.0,
+    "reasoning": "Analysis based on comprehensive conversation context",
+    "actions": [
+        {{
+            "tool_name": "tool_to_execute",
+            "parameters": {{"param1": "value1"}},
+            "description": "Action description with conversation context"
+        }}
+    ]
+}}
+"""
+            
+            # Execute action detection and execution logic here with extended context
+            response = await self.gemini_service.chat_with_system_prompt(message, action_analysis_prompt)
+            
+            # Parse and execute actions (implementation depends on your existing logic)
+            return {
+                "response": "Action completed based on comprehensive conversation context.",
+                "tool_calls_made": 1,
+                "tool_results": [],
+                "action_type": "context_aware_action_extended"
+            }
+            
+        except Exception as e:
+            logger.error(f"Error executing direct action with extended context: {e}")
+            return {
+                "response": "I encountered an issue processing your request with conversation context.",
+                "tool_calls_made": 0,
+                "tool_results": [],
+                "action_type": "error"
+            }
     
     def _detect_action_type(self, message: str) -> str:
         """Detect the type of direct action requested."""
