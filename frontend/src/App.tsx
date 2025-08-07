@@ -10,6 +10,7 @@ import { Project } from './types'
 function App() {
   const [selectedProject, setSelectedProject] = useState<Project | null>(null)
   const [taskRefreshTrigger, setTaskRefreshTrigger] = useState(0)
+  const [taskContextTrigger, setTaskContextTrigger] = useState(0)
   const [showMemory, setShowMemory] = useState(false)
 
   const handleProjectSelect = (project: Project) => {
@@ -18,6 +19,10 @@ function App() {
 
   const handleTaskRefresh = () => {
     setTaskRefreshTrigger(prev => prev + 1)
+  }
+
+  const handleTaskContextUpdate = () => {
+    setTaskContextTrigger(prev => prev + 1)
   }
 
   const toggleMemory = () => {
@@ -58,12 +63,20 @@ function App() {
         
         {/* Chat Interface - Dynamic Width */}
         <div className="chat-container">
-          <Chat projectId={selectedProject?.id} onTaskGenerated={handleTaskRefresh} />
+          <Chat 
+            projectId={selectedProject?.id} 
+            onTaskGenerated={handleTaskRefresh}
+            taskContextTrigger={taskContextTrigger}
+          />
         </div>
         
         {/* Tasks Panel - Dynamic Width */}
         <div className="panel tasks-panel scrollable-panel">
-          <TaskPanel projectId={selectedProject?.id} refreshTrigger={taskRefreshTrigger} />
+          <TaskPanel 
+            projectId={selectedProject?.id} 
+            refreshTrigger={taskRefreshTrigger}
+            onTaskContextUpdate={handleTaskContextUpdate}
+          />
         </div>
       </div>
     </div>

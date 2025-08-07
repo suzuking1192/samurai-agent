@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
-import { ChatMessage, ChatRequest, ChatResponse, Session } from '../types'
-import { sendChatMessage, sendChatMessageWithProgress, getChatMessages, createSession, getCurrentSession, getSessionMessages, getConversationHistory, endSessionWithConsolidation, SessionEndResponse } from '../services/api'
+import { ChatMessage, ChatRequest, ChatResponse, Session, Task } from '../types'
+import { sendChatMessage, sendChatMessageWithProgress, getChatMessages, createSession, getCurrentSession, getSessionMessages, getConversationHistory, endSessionWithConsolidation, SessionEndResponse, getTaskContext, clearTaskContext } from '../services/api'
 import ProgressDisplay from './ProgressDisplay'
 
 interface ChatProps {
   projectId?: string
   onTaskGenerated?: () => void
+  taskContextTrigger?: number // Add trigger for immediate task context updates
 }
 
 interface OptimisticMessage extends ChatMessage {
@@ -15,7 +16,7 @@ interface OptimisticMessage extends ChatMessage {
   progress?: any[]
 }
 
-const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated }) => {
+const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrigger }) => {
   const [messages, setMessages] = useState<OptimisticMessage[]>([])
   const [inputMessage, setInputMessage] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -25,6 +26,7 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated }) => {
   const [isProcessing, setIsProcessing] = useState(false)
   const [isLoadingHistory, setIsLoadingHistory] = useState(false)
   const [currentSession, setCurrentSession] = useState<Session | null>(null)
+  const [taskContext, setTaskContext] = useState<Task | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const chatMessagesRef = useRef<HTMLDivElement>(null)
 
@@ -55,8 +57,16 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated }) => {
   useEffect(() => {
     if (currentSession && projectId) {
       loadConversationHistory(currentSession.id)
+      loadTaskContext(currentSession.id)
     }
   }, [currentSession?.id, projectId])
+
+  // Immediate task context update when taskContextTrigger changes
+  useEffect(() => {
+    if (currentSession?.id && projectId && taskContextTrigger) {
+      loadTaskContext(currentSession.id)
+    }
+  }, [taskContextTrigger, currentSession?.id, projectId])
 
   const loadCurrentSession = async () => {
     if (!projectId) return
@@ -97,6 +107,33 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated }) => {
       setMessages([])
     } finally {
       setIsLoadingHistory(false)
+    }
+  }
+
+  const loadTaskContext = async (sessionId: string) => {
+    if (!projectId || !sessionId) return
+    
+    try {
+      const response = await getTaskContext(projectId, sessionId)
+      setTaskContext(response.task_context || null)
+    } catch (error) {
+      console.error('Error loading task context:', error)
+      setTaskContext(null)
+    }
+  }
+
+  const handleClearTaskContext = async () => {
+    if (!projectId || !currentSession?.id) return
+    
+    try {
+      await clearTaskContext(projectId, currentSession.id)
+      setTaskContext(null)
+      setNotification({ type: 'info', message: 'Task context cleared' })
+      setTimeout(() => setNotification(null), 3000)
+    } catch (error) {
+      console.error('Error clearing task context:', error)
+      setNotification({ type: 'error', message: 'Failed to clear task context' })
+      setTimeout(() => setNotification(null), 3000)
     }
   }
 
@@ -419,6 +456,29 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated }) => {
           </button>
         )}
       </div>
+
+      {/* Task Context Indicator */}
+      {taskContext && (
+        <div className="task-context-indicator">
+          <div className="task-context-content">
+            <div className="task-context-info">
+              <span className="task-context-icon">🎯</span>
+              <div className="task-context-text">
+                <strong>Focused on this task:</strong>
+                <span className="task-context-title">{taskContext.title}</span>
+                <span className="task-context-subtitle">I'll help you refine this task description for Cursor</span>
+              </div>
+            </div>
+            <button
+              onClick={handleClearTaskContext}
+              className="task-context-clear"
+              title="Clear task context"
+            >
+              ✖️
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Notification */}
       {notification && (

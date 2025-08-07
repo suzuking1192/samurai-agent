@@ -1,18 +1,23 @@
 import React, { useState, useEffect } from 'react'
 import { Task, TaskStatus, TaskPriority, TaskUpdate } from '../types'
+import { setTaskContext, getCurrentSession } from '../services/api'
 
 interface TaskDetailsViewProps {
   task: Task
   onBack: () => void
   onSave: (taskId: string, updates: TaskUpdate) => Promise<void>
   onDelete: (taskId: string) => Promise<void>
+  projectId: string
+  onTaskContextUpdate?: () => void
 }
 
 const TaskDetailsView: React.FC<TaskDetailsViewProps> = ({
   task,
   onBack,
   onSave,
-  onDelete
+  onDelete,
+  projectId,
+  onTaskContextUpdate
 }) => {
   const [editMode, setEditMode] = useState(false)
   const [formData, setFormData] = useState({
@@ -32,8 +37,11 @@ const TaskDetailsView: React.FC<TaskDetailsViewProps> = ({
         priority: task.priority,
         due_date: ''
       })
+      
+      // Automatically set this task as context when opened
+      setAsContext()
     }
-  }, [task])
+  }, [task, projectId])
 
   const handleSave = async () => {
     try {
@@ -65,6 +73,28 @@ const TaskDetailsView: React.FC<TaskDetailsViewProps> = ({
       showNotification('Implementation prompt copied to clipboard!', 'success')
     } catch (error) {
       showNotification('Failed to copy implementation prompt', 'error')
+    }
+  }
+
+  const setAsContext = async () => {
+    if (!task || !projectId) return
+    
+    try {
+      // Get current session
+      const currentSession = await getCurrentSession(projectId)
+      
+      // Set task as context for the current session
+      await setTaskContext(projectId, currentSession.id, task.id)
+      
+      // Quiet success - no need for notification since it's automatic
+      console.log(`Task "${task.title}" automatically set as chat context`)
+      
+      // Trigger immediate update in Chat component
+      onTaskContextUpdate?.()
+    } catch (error) {
+      console.error('Failed to set task context:', error)
+      // Only show error notifications
+      showNotification('Failed to set task as context', 'error')
     }
   }
 
@@ -234,7 +264,7 @@ const TaskDetailsView: React.FC<TaskDetailsViewProps> = ({
             )}
           </div>
 
-          {/* Copy Implementation Prompt Button */}
+          {/* Action Buttons */}
           <div className="detail-section">
             <button 
               onClick={copyDescriptionToClipboard}

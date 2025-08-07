@@ -98,7 +98,8 @@ class UnifiedSamuraiAgent:
         project_context: dict, 
         session_id: str = None, 
         conversation_history: List[ChatMessage] = None,
-        progress_callback: Optional[Callable[[str, str, str, Dict[str, Any]], None]] = None
+        progress_callback: Optional[Callable[[str, str, str, Dict[str, Any]], None]] = None,
+        task_context: Optional[Any] = None
     ) -> dict:
         """
         Process user message with unified architecture and smart memory management.
@@ -110,6 +111,7 @@ class UnifiedSamuraiAgent:
             session_id: Session identifier
             conversation_history: Conversation history
             progress_callback: Optional callback for progress updates
+            task_context: Optional task context to provide focused assistance
         """
         
         try:
@@ -269,7 +271,7 @@ class UnifiedSamuraiAgent:
             
             # Generate vector-enhanced context
             vector_context = await self._build_vector_enhanced_context(
-                message, project_id, session_messages, project_context
+                message, project_id, session_messages, project_context, task_context
             )
             
             # Create conversation summary
@@ -1017,7 +1019,7 @@ Show deep understanding of how the specification has evolved throughout the enti
             return {"status": "error", "error": str(e)}
     
     # Helper methods for context and processing
-    async def _build_vector_enhanced_context(self, message: str, project_id: str, session_messages: List[ChatMessage], project_context: dict) -> dict:
+    async def _build_vector_enhanced_context(self, message: str, project_id: str, session_messages: List[ChatMessage], project_context: dict, task_context: Optional[Any] = None) -> dict:
         """Build vector-enhanced context using existing vector context service."""
         try:
             # Generate conversation embedding
@@ -1026,7 +1028,7 @@ Show deep understanding of how the specification has evolved throughout the enti
             )
             
             if not conversation_embedding:
-                return self._create_fallback_vector_context(message, project_id, session_messages, project_context)
+                return self._create_fallback_vector_context(message, project_id, session_messages, project_context, task_context)
             
             # Get all tasks and memories
             all_tasks = self.file_service.load_tasks(project_id)
@@ -1037,13 +1039,34 @@ Show deep understanding of how the specification has evolved throughout the enti
                 conversation_embedding, all_tasks, project_id
             )
             
+            # If task context is provided, prioritize it
+            if task_context:
+                # Create high-priority task context entry
+                task_context_entry = {
+                    "task": task_context,
+                    "score": 1.0,  # Highest possible score
+                    "reason": "Active task context - primary focus for this conversation"
+                }
+                
+                # Filter out the task context from relevant_tasks if it's already there
+                relevant_tasks = [item for item in relevant_tasks if item.get("task", {}).get("id") != task_context.id]
+                
+                # Add task context at the beginning with highest priority
+                relevant_tasks.insert(0, task_context_entry)
+                
+                logger.info(f"Prioritized task context: {task_context.title}")
+            
             relevant_memories = vector_context_service.find_relevant_memories(
                 conversation_embedding, all_memories, project_id
             )
             
             # Assemble context
             assembled_context = vector_context_service.assemble_vector_context(
-                session_messages, relevant_tasks, relevant_memories, message
+                session_messages=session_messages,
+                relevant_tasks=relevant_tasks,
+                relevant_memories=relevant_memories,
+                new_user_message=message,
+                task_context=task_context
             )
             
             return {
@@ -1055,7 +1078,7 @@ Show deep understanding of how the specification has evolved throughout the enti
             
         except Exception as e:
             logger.error(f"Error building vector-enhanced context: {e}")
-            return self._create_fallback_vector_context(message, project_id, session_messages, project_context)
+            return self._create_fallback_vector_context(message, project_id, session_messages, project_context, task_context)
     
     def _create_conversation_summary(self, session_messages: List[ChatMessage], current_message: str) -> str:
         """Create enhanced conversation summary that emphasizes recent context with extended history."""
@@ -1204,11 +1227,23 @@ Show deep understanding of how the specification has evolved throughout the enti
             accumulated_specs={}
         )
     
-    def _create_fallback_vector_context(self, message: str, project_id: str, session_messages: List[ChatMessage], project_context: dict) -> dict:
+    def _create_fallback_vector_context(self, message: str, project_id: str, session_messages: List[ChatMessage], project_context: dict, task_context: Optional[Any] = None) -> dict:
         """Create fallback vector context."""
+        relevant_tasks = []
+        context_message = f"Current request: {message}"
+        
+        # Include task context even in fallback mode
+        if task_context:
+            relevant_tasks = [{
+                "task": task_context,
+                "score": 1.0,
+                "reason": "Active task context - primary focus for this conversation"
+            }]
+            context_message += f"\n\nFOCUSED TASK CONTEXT:\nTask: {task_context.title}\nDescription: {task_context.description}"
+        
         return {
-            "assembled_context": f"Current request: {message}",
-            "relevant_tasks_with_scores": [],
+            "assembled_context": context_message,
+            "relevant_tasks_with_scores": relevant_tasks,
             "relevant_memories_with_scores": [],
             "vector_embedding": None
         }
