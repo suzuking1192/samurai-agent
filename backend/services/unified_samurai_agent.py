@@ -594,34 +594,69 @@ Use this framework to analyze the current message and provide the most accurate 
             return await self._handle_pure_discussion(message, context)
     
     async def _handle_pure_discussion(self, message: str, context: ConversationContext) -> dict:
-        """
-        Handle pure discussion - generate contextual response without tool calling.
-        """
+        """Handle pure discussion with comprehensive conversation context awareness."""
         try:
-            # Create response context for the generator
-            response_context = ResponseContext(
-                project_name=context.project_context.get('name', 'Unknown'),
-                tech_stack=context.project_context.get('tech_stack', 'Unknown'),
-                conversation_summary=context.conversation_summary,
-                relevant_tasks=context.relevant_tasks,
-                relevant_memories=context.relevant_memories,
-                user_message=message,
-                intent_type="pure_discussion",
-                confidence=0.8
+            # Build enhanced conversation context with 20 message history
+            conversation_context = self._create_conversation_summary_with_smart_truncation(
+                context.session_messages, message
             )
             
-            # Generate dynamic response
-            response = await self.response_generator.generate_discussion_response(response_context)
+            system_prompt = f"""
+You are Samurai Engine, their vibe coding partner.
+
+## COMPREHENSIVE CONVERSATION CONTEXT (READ THIS FIRST - CRITICAL)
+{conversation_context}
+
+## PROJECT CONTEXT
+Project: {context.project_context.get('name', 'Unknown')} | Tech: {context.project_context.get('tech_stack', 'Unknown')}
+
+## RELEVANT PROJECT KNOWLEDGE
+{self._format_memories_for_context(context.relevant_memories)}
+
+## CURRENT TASKS
+{self._format_tasks_for_context(context.relevant_tasks)}
+
+## RESPONSE REQUIREMENTS
+
+1. **ALWAYS reference the conversation history above** - Show deep understanding of the ongoing discussion
+2. **Build on multiple previous exchanges** - not just the last message
+3. **Reference specific topics, decisions, or clarifications** mentioned earlier in the conversation
+4. **Maintain conversation threads** - if discussing multiple topics, keep track of all of them
+5. **Connect current message to broader conversation context**
+
+## CONVERSATION CONTINUITY WITH EXTENDED CONTEXT
+- Reference topics discussed several messages ago when relevant
+- Build on decisions or clarifications made throughout the conversation
+- Show awareness of the conversation's progression and evolution
+- Connect current discussion to earlier exploration or planning
+
+## EXAMPLES OF DEEP CONTEXT USAGE
+- "This ties back to the authentication approach we discussed earlier..."
+- "Building on the database structure we planned and the user flow we refined..."
+- "I remember you mentioned concerns about [topic] a few messages back..."
+- "This connects well with both the [feature A] we explored and [feature B] we specified..."
+
+## YOUR RESPONSE GUIDELINES
+- Show awareness of the full conversation arc, not just recent messages
+- Reference multiple topics or threads when relevant
+- Demonstrate understanding of how discussions have evolved
+- Be their knowledgeable coding partner who remembers the entire conversation
+
+Your response:
+"""
+            
+            response = await self.gemini_service.chat_with_system_prompt(message, system_prompt)
             
             return {
                 "type": "discussion_response",
-                "response": response,
+                "response": response.strip(),
                 "tool_calls_made": 0,
                 "tool_results": [],
                 "context_used": {
-                    "conversation_summary": context.conversation_summary,
+                    "conversation_summary": conversation_context,
                     "relevant_memories_count": len(context.relevant_memories),
-                    "relevant_tasks_count": len(context.relevant_tasks)
+                    "relevant_tasks_count": len(context.relevant_tasks),
+                    "conversation_depth": len(context.session_messages)
                 }
             }
             
@@ -629,39 +664,73 @@ Use this framework to analyze the current message and provide the most accurate 
             logger.error(f"Error in pure discussion handling: {e}")
             return {
                 "type": "discussion_response",
-                "response": "I'm here to help with your project! What would you like to know about?",
+                "response": "I'm here to help with your project! What would you like to discuss?",
                 "tool_calls_made": 0,
                 "tool_results": [],
                 "context_used": {}
             }
     
     async def _handle_feature_exploration(self, message: str, context: ConversationContext, intent_analysis: IntentAnalysis) -> dict:
-        """
-        Handle feature exploration - ask clarifying questions to gather complete specifications.
-        """
+        """Handle feature exploration with comprehensive conversation continuity."""
         try:
-            # Create response context for the generator
-            response_context = ResponseContext(
-                project_name=context.project_context.get('name', 'Unknown'),
-                tech_stack=context.project_context.get('tech_stack', 'Unknown'),
-                conversation_summary=context.conversation_summary,
-                relevant_tasks=context.relevant_tasks,
-                relevant_memories=context.relevant_memories,
-                user_message=message,
-                intent_type="feature_exploration",
-                confidence=intent_analysis.confidence
+            # Build enhanced conversation context with extended history
+            conversation_context = self._create_conversation_summary_with_smart_truncation(
+                context.session_messages, message
             )
             
-            # Generate dynamic clarification questions
-            response = await self.response_generator.generate_clarification_questions(response_context)
+            system_prompt = f"""
+You are Samurai Engine, helping developers explore feature ideas with deep conversation awareness.
+
+## COMPREHENSIVE CONVERSATION CONTEXT (ESSENTIAL - READ FIRST)
+{conversation_context}
+
+## PROJECT CONTEXT
+Project: {context.project_context.get('name', 'Unknown')} | Tech: {context.project_context.get('tech_stack', 'Unknown')}
+
+## RELEVANT PROJECT KNOWLEDGE
+{self._format_memories_for_context(context.relevant_memories)}
+
+## CURRENT TASKS
+{self._format_tasks_for_context(context.relevant_tasks)}
+
+## YOUR RESPONSE APPROACH WITH EXTENDED CONTEXT
+
+1. **Analyze the full conversation arc** - understand how this feature idea relates to everything discussed
+2. **Reference multiple conversation threads** - connect to various topics explored earlier
+3. **Show awareness of conversation evolution** - how ideas have developed over multiple exchanges
+4. **Connect to earlier planning or decisions** made in the conversation
+5. **Ask questions that build on the comprehensive context**
+
+## FEATURE EXPLORATION WITH CONVERSATION DEPTH
+- Reference features or approaches discussed earlier in the conversation
+- Build on clarifications or decisions made several messages ago
+- Show understanding of how this new idea fits into the broader conversation
+- Connect to multiple aspects of their project discussed over time
+
+## QUESTION STRATEGY WITH EXTENDED CONTEXT
+- Reference specific technical discussions from earlier in the conversation
+- Build questions on decisions or preferences mentioned previously
+- Show awareness of constraints or requirements established earlier
+- Connect to multiple features or systems discussed throughout the conversation
+
+## EXAMPLES OF DEEP CONTEXT INTEGRATION
+- "This new feature idea connects interesting with both the [system A] we discussed earlier and the [approach B] you mentioned for [previous topic]..."
+- "Given the conversation we've had about [multiple topics], I'm curious how this would integrate with..."
+- "Building on the [technical decision] we established and the [user flow] we explored..."
+
+Your response should demonstrate deep understanding of the entire conversation, not just recent exchanges.
+"""
+            
+            response = await self.gemini_service.chat_with_system_prompt(message, system_prompt)
             
             return {
                 "type": "clarification_request",
-                "response": response,
+                "response": response.strip(),
                 "tool_calls_made": 0,
                 "tool_results": [],
                 "context_used": {
-                    "conversation_summary": context.conversation_summary,
+                    "conversation_summary": conversation_context,
+                    "conversation_depth": len(context.session_messages),
                     "clarification_questions": intent_analysis.clarification_questions
                 }
             }
@@ -670,41 +739,74 @@ Use this framework to analyze the current message and provide the most accurate 
             logger.error(f"Error in feature exploration handling: {e}")
             return {
                 "type": "clarification_request",
-                "response": "That's an interesting idea! Could you provide more specific details about what you want to build?",
+                "response": "That's an interesting idea! Could you tell me more about what you want to build?",
                 "tool_calls_made": 0,
                 "tool_results": [],
                 "context_used": {}
             }
     
     async def _handle_spec_clarification(self, message: str, context: ConversationContext, intent_analysis: IntentAnalysis) -> dict:
-        """
-        Handle specification clarification - acknowledge the details and check if ready for action.
-        """
+        """Handle specification clarification with comprehensive conversation awareness."""
         try:
-            # Create response context for the generator
-            response_context = ResponseContext(
-                project_name=context.project_context.get('name', 'Unknown'),
-                tech_stack=context.project_context.get('tech_stack', 'Unknown'),
-                conversation_summary=context.conversation_summary,
-                relevant_tasks=context.relevant_tasks,
-                relevant_memories=context.relevant_memories,
-                user_message=message,
-                intent_type="spec_clarification",
-                confidence=intent_analysis.confidence
+            # Build enhanced conversation context with full history
+            conversation_context = self._create_conversation_summary_with_smart_truncation(
+                context.session_messages, message
             )
             
-            # Generate dynamic spec clarification response
-            response = await self.response_generator.generate_spec_clarification_response(
-                response_context, intent_analysis.accumulated_specs
-            )
+            system_prompt = f"""
+You are Samurai Engine, gathering complete feature specifications through extended conversation tracking.
+
+## COMPREHENSIVE CONVERSATION CONTEXT (CRITICAL FOR SPECIFICATION BUILDING)
+{conversation_context}
+
+## PROJECT CONTEXT
+Project: {context.project_context.get('name', 'Unknown')} | Tech: {context.project_context.get('tech_stack', 'Unknown')}
+
+## RELEVANT PROJECT KNOWLEDGE
+{self._format_memories_for_context(context.relevant_memories)}
+
+## CURRENT TASKS
+{self._format_tasks_for_context(context.relevant_tasks)}
+
+## SPECIFICATION GATHERING WITH EXTENDED CONTEXT
+
+1. **Track specification evolution** throughout the entire conversation
+2. **Reference all clarifications made** across multiple exchanges
+3. **Build comprehensive understanding** from the full discussion arc
+4. **Connect current clarification** to broader specification context
+5. **Assess completeness** based on entire conversation history
+
+## SPECIFICATION ASSESSMENT WITH CONVERSATION DEPTH
+Based on the comprehensive conversation history above:
+- What aspects have been clarified across multiple exchanges?
+- How have requirements evolved throughout the discussion?
+- What patterns or themes emerge from the extended conversation?
+- Which specifications are now complete vs. still need clarification?
+
+## RESPONSE STYLE WITH EXTENDED CONTEXT
+- "Excellent! This clarifies [specific aspect]. Combined with what we established earlier about [previous topic] and the [decisions made] throughout our conversation..."
+- "Perfect! Now I have a comprehensive picture: [summary of multiple conversation elements]..."
+- "That completes the picture nicely. From our entire discussion, I understand [comprehensive summary]..."
+
+## SPECIFICATION COMPLETENESS CHECK
+Consider the full conversation arc:
+- Are all major aspects covered across the discussion?
+- Do you have enough information from the extended conversation for task creation?
+- Are there any gaps that need addressing despite the comprehensive discussion?
+
+Show deep understanding of how the specification has evolved throughout the entire conversation.
+"""
+            
+            response = await self.gemini_service.chat_with_system_prompt(message, system_prompt)
             
             return {
                 "type": "spec_clarification_response",
-                "response": response,
+                "response": response.strip(),
                 "tool_calls_made": 0,
                 "tool_results": [],
                 "context_used": {
-                    "conversation_summary": context.conversation_summary,
+                    "conversation_summary": conversation_context,
+                    "conversation_depth": len(context.session_messages),
                     "accumulated_specs": intent_analysis.accumulated_specs
                 }
             }
@@ -713,43 +815,37 @@ Use this framework to analyze the current message and provide the most accurate 
             logger.error(f"Error in spec clarification handling: {e}")
             return {
                 "type": "spec_clarification_response",
-                "response": "Thanks for those details! I'm getting a clearer picture. Would you like me to create tasks for this feature?",
+                "response": "Thanks for those details! Would you like me to create tasks for this feature?",
                 "tool_calls_made": 0,
                 "tool_results": [],
                 "context_used": {}
             }
     
     async def _handle_ready_for_action(self, message: str, context: ConversationContext, project_id: str, progress_callback: Optional[Callable] = None) -> dict:
-        """
-        Handle ready for action - create comprehensive task breakdown and execute tool calls.
-        """
+        """Handle ready for action with comprehensive conversation context for task creation."""
         try:
-            if progress_callback:
-                await self._send_dynamic_progress_update(
-                    progress_callback, "planning", "📋 Creating task breakdown...", 
-                    "Analyzing requirements and creating tasks", context.project_context
-                )
-            
-            # Generate task breakdown
-            task_breakdown = await self._generate_task_breakdown(message, context)
+            # Build enhanced conversation context for comprehensive task generation
+            conversation_context = self._create_conversation_summary_with_smart_truncation(
+                context.session_messages, message
+            )
             
             if progress_callback:
-                await self._send_dynamic_progress_update(
-                    progress_callback, "execution", "⚙️ Creating tasks...", 
-                    "Executing task creation", context.project_context
-                )
+                await progress_callback("planning", "📋 Creating task breakdown...", "Analyzing comprehensive conversation context and requirements")
+            
+            # Generate task breakdown with full conversation context
+            task_breakdown = await self._generate_task_breakdown_with_extended_context(message, context, conversation_context)
+            
+            if progress_callback:
+                await progress_callback("execution", "⚙️ Creating tasks...", "Executing task creation with conversation insights")
             
             # Execute task creation
             tool_results = await self._execute_task_creation(task_breakdown, project_id)
             
             if progress_callback:
-                await self._send_dynamic_progress_update(
-                    progress_callback, "execution", "✅ Tasks created", 
-                    f"Successfully created {len(tool_results)} tasks", context.project_context
-                )
+                await progress_callback("execution", "✅ Tasks created", f"Successfully created {len(tool_results)} tasks from comprehensive discussion")
             
-            # Generate response
-            response = await self._generate_task_creation_response(tool_results, task_breakdown, context)
+            # Generate response with comprehensive conversation awareness
+            response = self._generate_comprehensive_task_creation_response(tool_results, task_breakdown, conversation_context)
             
             return {
                 "type": "task_creation_response",
@@ -757,7 +853,8 @@ Use this framework to analyze the current message and provide the most accurate 
                 "tool_calls_made": len(tool_results),
                 "tool_results": tool_results,
                 "context_used": {
-                    "conversation_summary": context.conversation_summary,
+                    "conversation_summary": conversation_context,
+                    "conversation_depth": len(context.session_messages),
                     "task_breakdown": task_breakdown
                 }
             }
@@ -767,32 +864,30 @@ Use this framework to analyze the current message and provide the most accurate 
             return await self._handle_pure_discussion(message, context)
     
     async def _handle_direct_action(self, message: str, context: ConversationContext, project_id: str, progress_callback: Optional[Callable] = None) -> dict:
-        """
-        Handle direct action - execute immediate tool calls for task management.
-        """
+        """Handle direct action with comprehensive conversation context awareness."""
         try:
-            if progress_callback:
-                await self._send_dynamic_progress_update(
-                    progress_callback, "execution", "⚙️ Executing action...", 
-                    "Processing your direct request", context.project_context
-                )
-            
-            # Detect action type and execute
-            action_result = await self._execute_direct_action(message, context, project_id)
+            # Build enhanced conversation context with extended history
+            conversation_context = self._create_conversation_summary_with_smart_truncation(
+                context.session_messages, message
+            )
             
             if progress_callback:
-                await self._send_dynamic_progress_update(
-                    progress_callback, "execution", "✅ Action completed", 
-                    "Successfully executed your request", context.project_context
-                )
+                await progress_callback("execution", "⚙️ Executing action...", "Processing your request with comprehensive conversation context")
+            
+            # Execute action with extended conversation context
+            action_result = await self._execute_direct_action_with_extended_context(message, context, project_id, conversation_context)
+            
+            if progress_callback:
+                await progress_callback("execution", "✅ Action completed", "Successfully executed your request with full context awareness")
             
             return {
                 "type": "direct_action_response",
-                "response": action_result.get("response", "Action completed successfully."),
+                "response": action_result.get("response", "Action completed successfully with conversation context."),
                 "tool_calls_made": action_result.get("tool_calls_made", 0),
                 "tool_results": action_result.get("tool_results", []),
                 "context_used": {
-                    "conversation_summary": context.conversation_summary,
+                    "conversation_summary": conversation_context,
+                    "conversation_depth": len(context.session_messages),
                     "action_type": action_result.get("action_type", "unknown")
                 }
             }
@@ -963,23 +1058,95 @@ Use this framework to analyze the current message and provide the most accurate 
             return self._create_fallback_vector_context(message, project_id, session_messages, project_context)
     
     def _create_conversation_summary(self, session_messages: List[ChatMessage], current_message: str) -> str:
-        """Create a summary of the conversation context."""
+        """Create enhanced conversation summary that emphasizes recent context with extended history."""
+        
         if not session_messages:
-            return f"Current request: {current_message}"
+            return f"This is the start of a new conversation. User just said: '{current_message}'"
         
-        # Get last 5 messages for context
-        recent_messages = session_messages[-5:]
+        # Get last 20 messages for comprehensive context (10 full exchanges)
+        recent_messages = session_messages[-20:]
         
-        summary_parts = []
-        for msg in recent_messages:
-            if msg.message and not msg.response:
+        summary_parts = ["CONVERSATION HISTORY (Most Recent Context):"]
+        
+        # Build conversation flow with clear markers
+        for i, msg in enumerate(recent_messages):
+            # Handle messages with both user message and assistant response
+            if msg.message:
                 summary_parts.append(f"User: {msg.message}")
-            elif msg.response and not msg.message:
-                summary_parts.append(f"Assistant: {msg.response}")
+            if msg.response:
+                summary_parts.append(f"You (Samurai): {msg.response}")
+            
+            # Add separator every few exchanges for readability
+            if i > 0 and i % 6 == 0 and i < len(recent_messages) - 1:
+                summary_parts.append("---")
         
-        summary_parts.append(f"Current: {current_message}")
+        summary_parts.append(f"\nCURRENT MESSAGE: {current_message}")
+        summary_parts.append("↑ CRITICAL: Continue this conversation naturally, building on the full context above. Reference specific topics, decisions, or clarifications from the conversation history.")
         
         return "\n".join(summary_parts)
+
+    def _create_conversation_summary_with_smart_truncation(self, session_messages: List[ChatMessage], current_message: str, max_chars: int = 4000) -> str:
+        """Create conversation summary with intelligent truncation to fit token limits."""
+        
+        if not session_messages:
+            return f"This is the start of a new conversation. User just said: '{current_message}'"
+        
+        # Start with last 20 messages for maximum context
+        recent_messages = session_messages[-20:]
+        
+        summary_parts = ["CONVERSATION HISTORY:"]
+        
+        for msg in recent_messages:
+            if msg.message:
+                summary_parts.append(f"User: {msg.message}")
+            if msg.response:
+                # Truncate very long responses to save space
+                response_text = msg.response
+                if len(response_text) > 300:
+                    response_text = response_text[:300] + "..."
+                summary_parts.append(f"You (Samurai): {response_text}")
+        
+        summary_parts.append(f"\nCURRENT MESSAGE: {current_message}")
+        summary_parts.append("↑ Continue this conversation naturally, referencing the context above.")
+        
+        full_summary = "\n".join(summary_parts)
+        
+        # If too long, progressively reduce context while keeping most recent
+        if len(full_summary) > max_chars:
+            # Try with last 15 messages
+            recent_messages = session_messages[-15:]
+            summary_parts = ["CONVERSATION HISTORY:"]
+            
+            for msg in recent_messages:
+                if msg.message:
+                    summary_parts.append(f"User: {msg.message}")
+                if msg.response:
+                    response_text = msg.response[:200] + "..." if len(msg.response) > 200 else msg.response
+                    summary_parts.append(f"You (Samurai): {response_text}")
+            
+            summary_parts.append(f"\nCURRENT MESSAGE: {current_message}")
+            summary_parts.append("↑ Continue this conversation naturally.")
+            
+            full_summary = "\n".join(summary_parts)
+            
+            # If still too long, try with last 10 messages
+            if len(full_summary) > max_chars:
+                recent_messages = session_messages[-10:]
+                summary_parts = ["RECENT CONVERSATION:"]
+                
+                for msg in recent_messages:
+                    if msg.message:
+                        summary_parts.append(f"User: {msg.message}")
+                    if msg.response:
+                        response_text = msg.response[:150] + "..." if len(msg.response) > 150 else msg.response
+                        summary_parts.append(f"You (Samurai): {response_text}")
+                
+                summary_parts.append(f"\nCURRENT MESSAGE: {current_message}")
+                summary_parts.append("↑ Continue this conversation.")
+                
+                full_summary = "\n".join(summary_parts)
+        
+        return full_summary
     
     def _format_tasks_for_context(self, tasks: List[Task]) -> str:
         """Format tasks for context inclusion."""
@@ -1187,249 +1354,58 @@ You are Samurai Engine's task breakdown specialist. Your role is to analyze feat
 
 **Technical Dependencies:**
 - Database schema before API endpoints
-- API endpoints before frontend integration
-- Core functionality before UI enhancements
-- Authentication before protected features
+- Backend APIs before frontend components
+- Core functionality before enhancements
+- Infrastructure before application logic
+
+**User Experience Flow:**
+- Essential user flows first
+- Core functionality before nice-to-have features
+- MVP features before advanced capabilities
 
 **Risk Mitigation:**
-- Highest-risk/most-complex tasks early
-- Core functionality before optional features
-- Integration points identified and planned
+- High-risk components early for validation
+- Critical path items prioritized
+- Dependencies clearly identified
 
-**Testing and Validation:**
-- Each task produces testable output
-- Progressive building allows validation at each step
-- Early tasks establish foundation for later ones
+### Step 5: Task Specification Format
 
-### Step 5: Project Context Integration
+**CRITICAL: Return ONLY a valid JSON array with no additional text, markdown, or explanations.**
 
-**Leverage existing project patterns:**
-
-**Code Pattern Consistency:**
-- How do they typically structure similar features?
-- What naming conventions and file organizations do they use?
-- What testing patterns are established?
-- What error handling approaches do they prefer?
-
-**Architecture Alignment:**
-- How does this feature fit their existing architecture?
-- What existing components/utilities can be leveraged?
-- What integration points with current features exist?
-- What data flow patterns should be maintained?
-
-### Step 6: Task Breakdown Decision & Self-Reflection
-
-**Decision Framework:**
-
-**SINGLE TASK (No breakdown needed):**
-- Feature request is already AI-agent sized
-- Single component or simple modification
-- Adding one clear piece of functionality
-- **Example:** "Add email validation to existing form"
-
-**MINIMAL BREAKDOWN (2-3 tasks):**
-- Feature has 2-3 distinct components
-- Clear separation between backend/frontend
-- Simple linear dependency chain
-- **Example:** "Add user profile: API + UI + Integration"
-
-**STRUCTURED BREAKDOWN (4-8 tasks):**
-- Complex feature with multiple systems
-- Multiple user flows or components
-- Complex dependency relationships
-- **Example:** "Full authentication system with multiple flows"
-
-**Self-Reflection Quality Check:**
-1. **AI Feasibility:** Can each task be completed by an AI coding agent independently?
-2. **Completeness:** Do tasks cover all aspects of the feature request?
-3. **Logical Flow:** Is the development sequence logical and dependency-aware?
-4. **Project Fit:** Do tasks align with existing code patterns and architecture?
-5. **Right-Sized:** Are tasks neither too trivial nor too complex for AI agents?
-
-### Step 7: Task Specification Generation
-
-**For each task, create complete Task model data:**
-
-**Task Structure (matching Task model):**
-```json
-{{
-    "title": "Concise, action-oriented title (max 200 chars)",
-    "description": "Complete, copy-paste ready implementation guide (max 1000 chars)",
-    "priority": "high|medium|low",
-    "order": 0
-}}
-```
-
-**Task Title Guidelines:**
-- Action verb + specific component/feature
-- Reference existing code patterns when relevant
-- Clear enough to understand scope immediately
-- Keep under 200 characters
-
-**Task Description Guidelines (Most Critical - Serves as Cursor Prompt):**
-- Complete, standalone implementation instructions
-- Include full project context and tech stack
-- Reference existing code patterns and file structure
-- Specify exact files to create/modify
-- Include acceptance criteria and testing guidance
-- Must be copy-paste ready for Cursor
-- Keep under 1000 characters while being comprehensive
-
-**Priority Assignment Logic:**
-- **High:** Core functionality, blocking dependencies, critical path items
-- **Medium:** Important features, standard functionality, non-blocking work
-- **Low:** Nice-to-have features, optimizations, polish items
-
-**Order Assignment:**
-- Sequential numbers (0, 1, 2, ...) based on dependency order
-- Tasks with no dependencies get lower numbers
-- Dependent tasks get higher numbers
-- Ensures logical development progression
-
----
-
-## CURSOR-READY DESCRIPTION FRAMEWORK
-
-**Each task's description field must be a complete, standalone implementation guide:**
-
-### Description Template Structure (under 1000 chars):
-```
-PROJECT: {context.project_context.get('name', 'Unknown')} | TECH: {context.project_context.get('tech_stack', 'Unknown')}
-
-CONTEXT: [Brief existing patterns context]
-
-TASK: [Specific implementation requirements]
-
-FILES: [Files to create/modify]
-
-REQUIREMENTS:
-- [Key requirement 1]
-- [Key requirement 2]
-- [Key requirement 3]
-
-ACCEPTANCE: [How to verify completion]
-
-Follow existing code patterns and maintain consistency.
-```
-
-### Description Quality Standards:
-- **Self-contained:** AI agent needs no additional context
-- **Specific:** Exact files, functions, and implementations specified
-- **Context-aware:** References existing project patterns
-- **Actionable:** Clear steps and deliverables
-- **Testable:** Includes validation criteria
-- **Consistent:** Maintains project coding standards
-- **Concise:** Maximum impact within 1000 character limit
-
----
-
-## TASK BREAKDOWN EXECUTION
-
-**Based on your analysis above, execute the task breakdown:**
-
-### Complexity Assessment Results:
-- Technical Complexity: [Score]
-- Feature Scope: [Score] 
-- AI Implementation Difficulty: [Score]
-- **Overall Complexity:** [Score]
-
-### Breakdown Strategy Selected:
-[MICRO TASKS | BALANCED TASKS | STRUCTURED BREAKDOWN]
-
-### Reasoning:
-[2-3 sentences explaining why this breakdown approach fits the feature request]
-
-### Generated Tasks:
-
+**Required JSON Format:**
 ```json
 [
     {{
-        "title": "Task title following guidelines above",
-        "description": "PROJECT: {context.project_context.get('name', 'Unknown')} | TECH: {context.project_context.get('tech_stack', 'Unknown')}\\n\\nCONTEXT: Brief existing patterns context\\n\\nTASK: Specific implementation requirements\\n\\nFILES: Files to create/modify\\n\\nREQUIREMENTS:\\n- Key requirement 1\\n- Key requirement 2\\n\\nACCEPTANCE: Verification criteria\\n\\nFollow existing code patterns and maintain consistency.",
+        "title": "Task Title",
+        "description": "Complete task description with implementation details, file paths, and acceptance criteria",
         "priority": "high|medium|low",
         "order": 0
     }},
-    {{
-        "title": "Second task title",
-        "description": "Complete second task description following same template structure under 1000 chars",
-        "priority": "medium",
-        "order": 1
-    }}
+    ...
 ]
 ```
 
----
+**Task Description Template:**
+```
+PROJECT: [Project Name] | TECH: [Tech Stack]
 
-## SPECIAL CASES & ADAPTATIONS
+TASK: [Specific task objective]
 
-**If Feature Request is Already AI-Sized:**
-```json
-{{
-    "breakdown_needed": false,
-    "reason": "Feature request is already appropriately sized for AI implementation",
-    "recommendation": "Implement as single focused task",
-    "single_task": {{
-        "title": "Enhanced title based on original request",
-        "description": "PROJECT: {context.project_context.get('name', 'Unknown')} | TECH: {context.project_context.get('tech_stack', 'Unknown')}\\n\\nCONTEXT: Brief existing patterns context\\n\\nTASK: Complete implementation requirements\\n\\nFILES: Files to modify\\n\\nREQUIREMENTS:\\n- Key deliverables\\n\\nACCEPTANCE: Success criteria",
-        "priority": "medium",
-        "order": 0
-    }}
-}}
+FILES: [List of files to create/modify]
+
+REQUIREMENTS:
+- [Specific requirement 1]
+- [Specific requirement 2]
+- [Specific requirement 3]
+
+ACCEPTANCE: [How to verify task completion]
 ```
 
-**If Feature Request is Unclear/Incomplete:**
-```json
-{{
-    "breakdown_needed": false,
-    "reason": "Feature request needs more specification before task breakdown",
-    "missing_details": ["specific", "aspects", "needing", "clarification"],
-    "recommendation": "Gather more detailed requirements before creating implementation tasks"
-}}
-```
-
----
-
-## QUALITY STANDARDS FOR FINAL OUTPUT
-
-**Each task must:**
-- Have title under 200 characters
-- Have description under 1000 characters serving as complete Cursor prompt
-- Include appropriate priority based on dependency and importance
-- Have correct order number for development sequence
-- Be implementable by Cursor using only the description field
-
-**Each task description must:**
-- Be completely self-contained with full context
-- Reference specific existing files and patterns
-- Include exact deliverables and acceptance criteria
-- Maintain consistency with project architecture
-- Enable successful AI implementation without additional questions
-- Fit within 1000 character limit while remaining comprehensive
-
-**Overall breakdown must:**
-- Cover complete feature request scope
-- Maintain logical development sequence through order field
-- Optimize for Cursor implementation success
-- Balance task granularity (not too many, not too few)
-- Generate production-ready, copy-paste descriptions
-
-Remember: The description field is now the complete implementation guide - it must contain everything an AI coding agent needs to successfully implement the task without additional context or clarification, all within the 1000 character limit.
-
----
-
-## QUALITY STANDARDS FOR FINAL OUTPUT
-
-**Each task must:**
-- Be implementable by AI coding agent independently
-- Have clear, specific deliverables
-- Reference existing project patterns and files
-- Include validation criteria
-- Maintain logical development sequence
-- Align with project architecture and conventions
-
-**Overall breakdown must:**
-- Cover complete feature request
-- Minimize unnecessary task proliferation
+**IMPORTANT:**
+- Return ONLY the JSON array, no markdown formatting
+- No explanations, no additional text
+- Ensure valid JSON syntax
+- Each task must have title, description, priority, and order fields
 - Optimize for AI agent implementation success
 - Maintain project consistency and quality
 - Enable progressive development and testing
@@ -1439,63 +1415,214 @@ Remember: The goal is creating the optimal number of AI-friendly tasks that enab
             
             response = await self.gemini_service.chat_with_system_prompt(message, system_prompt)
             
-            try:
-                # Clean the response to handle markdown code blocks
-                cleaned_response = response.strip()
-                if cleaned_response.startswith('```json'):
-                    cleaned_response = cleaned_response[7:]  # Remove ```json
-                if cleaned_response.startswith('```'):
-                    cleaned_response = cleaned_response[3:]  # Remove ```
-                if cleaned_response.endswith('```'):
-                    cleaned_response = cleaned_response[:-3]  # Remove ```
-                cleaned_response = cleaned_response.strip()
-                
-                parsed_response = json.loads(cleaned_response)
-                
-                # Handle special cases from enhanced prompt
-                if isinstance(parsed_response, dict):
-                    if parsed_response.get("breakdown_needed") == False:
-                        if "single_task" in parsed_response:
-                            return [parsed_response["single_task"]]
-                        else:
-                            # Return a single task with the original message
-                            return [{
-                                "title": "Implement feature request",
-                                "description": f"PROJECT: {context.project_context.get('name', 'Unknown')} | TECH: {context.project_context.get('tech_stack', 'Unknown')}\n\nTASK: {message}\n\nFILES: To be determined based on implementation\n\nREQUIREMENTS:\n- Implement the requested feature\n- Follow existing code patterns\n\nACCEPTANCE: Feature works as requested",
-                                "priority": "medium",
-                                "order": 0
-                            }]
-                    else:
-                        # If it's a dict but not a special case, try to extract tasks
-                        return [parsed_response]
-                
-                # Handle normal array response
-                if isinstance(parsed_response, list):
-                    return parsed_response
-                
-                # Fallback for unexpected response format
-                logger.warning("Unexpected response format from task breakdown, using fallback")
-                return [{"title": "Implement feature", "description": message}]
-                
-            except json.JSONDecodeError as e:
-                logger.warning(f"Failed to parse task breakdown JSON: {e}")
-                # Try to extract JSON from the response using regex
-                import re
-                json_pattern = r'\[.*\]'
-                matches = re.findall(json_pattern, response, re.DOTALL)
-                if matches:
-                    try:
-                        parsed_response = json.loads(matches[0])
-                        if isinstance(parsed_response, list):
-                            return parsed_response
-                    except:
-                        pass
-                
-                return [{"title": "Implement feature", "description": message}]
+            # Enhanced JSON parsing with multiple fallback strategies
+            parsed_response = self._parse_task_breakdown_response(response, message, context)
+            return parsed_response
                 
         except Exception as e:
             logger.error(f"Error generating task breakdown: {e}")
             return [{"title": "Implement feature", "description": message}]
+
+    def _parse_task_breakdown_response(self, response: str, original_message: str, context: ConversationContext) -> List[dict]:
+        """Enhanced JSON parsing with multiple fallback strategies."""
+        try:
+            # Strategy 1: Direct JSON parsing
+            cleaned_response = response.strip()
+            
+            # Remove markdown code blocks
+            if cleaned_response.startswith('```json'):
+                cleaned_response = cleaned_response[7:]
+            if cleaned_response.startswith('```'):
+                cleaned_response = cleaned_response[3:]
+            if cleaned_response.endswith('```'):
+                cleaned_response = cleaned_response[:-3]
+            cleaned_response = cleaned_response.strip()
+            
+            # Try direct parsing
+            parsed_response = json.loads(cleaned_response)
+            
+            # Handle special cases from enhanced prompt
+            if isinstance(parsed_response, dict):
+                if parsed_response.get("breakdown_needed") == False:
+                    if "single_task" in parsed_response:
+                        return [parsed_response["single_task"]]
+                    else:
+                        return [self._create_fallback_task(original_message, context)]
+                else:
+                    # If it's a dict but not a special case, try to extract tasks
+                    return [parsed_response]
+            
+            # Handle normal array response
+            if isinstance(parsed_response, list):
+                return parsed_response
+            
+            # Fallback for unexpected response format
+            logger.warning("Unexpected response format from task breakdown, using fallback")
+            return [self._create_fallback_task(original_message, context)]
+            
+        except json.JSONDecodeError as e:
+            logger.warning(f"Failed to parse task breakdown JSON: {e}")
+            
+            # Strategy 2: Extract JSON using regex patterns
+            import re
+            
+            # Try to find JSON array pattern
+            json_patterns = [
+                r'\[.*?\]',  # Basic array pattern
+                r'\[\s*\{.*?\}\s*\]',  # Array with objects
+                r'\[\s*\{.*?\}\s*(?:,\s*\{.*?\}\s*)*\]',  # Array with multiple objects
+            ]
+            
+            for pattern in json_patterns:
+                matches = re.findall(pattern, response, re.DOTALL)
+                for match in matches:
+                    try:
+                        parsed_response = json.loads(match)
+                        if isinstance(parsed_response, list) and len(parsed_response) > 0:
+                            # Validate that each item has required fields
+                            valid_tasks = []
+                            for task in parsed_response:
+                                if isinstance(task, dict) and task.get('title'):
+                                    valid_tasks.append(task)
+                            
+                            if valid_tasks:
+                                logger.info(f"Successfully extracted {len(valid_tasks)} tasks using regex pattern")
+                                return valid_tasks
+                    except:
+                        continue
+            
+            # Strategy 3: Try to extract individual task objects
+            task_patterns = [
+                r'\{[^}]*"title"[^}]*\}',  # Object with title field
+                r'\{[^}]*"description"[^}]*\}',  # Object with description field
+            ]
+            
+            for pattern in task_patterns:
+                matches = re.findall(pattern, response, re.DOTALL)
+                tasks = []
+                for match in matches:
+                    try:
+                        task = json.loads(match)
+                        if isinstance(task, dict) and task.get('title'):
+                            tasks.append(task)
+                    except:
+                        continue
+                
+                if tasks:
+                    logger.info(f"Successfully extracted {len(tasks)} individual tasks")
+                    return tasks
+            
+            # Strategy 4: Create task from response content
+            logger.warning("All JSON parsing strategies failed, creating task from response content")
+            return [self._create_task_from_response_content(response, original_message, context)]
+
+    def _create_fallback_task(self, message: str, context: ConversationContext) -> dict:
+        """Create a fallback task when parsing fails."""
+        return {
+            "title": "Implement feature request",
+            "description": f"PROJECT: {context.project_context.get('name', 'Unknown')} | TECH: {context.project_context.get('tech_stack', 'Unknown')}\n\nTASK: {message}\n\nFILES: To be determined based on implementation\n\nREQUIREMENTS:\n- Implement the requested feature\n- Follow existing code patterns\n\nACCEPTANCE: Feature works as requested",
+            "priority": "medium",
+            "order": 0
+        }
+
+    def _create_task_from_response_content(self, response: str, original_message: str, context: ConversationContext) -> dict:
+        """Create a task by extracting useful information from the AI response."""
+        # Try to extract meaningful content from the response
+        lines = response.split('\n')
+        title = "Implement feature request"
+        description_parts = []
+        
+        for line in lines:
+            line = line.strip()
+            if line and not line.startswith('#') and not line.startswith('```') and not line.startswith('{') and not line.startswith('['):
+                # Skip markdown headers, code blocks, and JSON syntax
+                if len(line) > 10:  # Only include substantial lines
+                    description_parts.append(line)
+        
+        if description_parts:
+            # Use the first few meaningful lines as description
+            description = '\n'.join(description_parts[:5])  # Limit to first 5 lines
+        else:
+            description = f"Implement the requested feature: {original_message}"
+        
+        return {
+            "title": title,
+            "description": f"PROJECT: {context.project_context.get('name', 'Unknown')} | TECH: {context.project_context.get('tech_stack', 'Unknown')}\n\nTASK: {original_message}\n\nAI ANALYSIS:\n{description}\n\nREQUIREMENTS:\n- Implement the requested feature\n- Follow existing code patterns\n\nACCEPTANCE: Feature works as requested",
+            "priority": "medium",
+            "order": 0
+        }
+
+    async def _generate_task_breakdown_with_extended_context(self, message: str, context: ConversationContext, conversation_context: str) -> List[dict]:
+        """Generate task breakdown with comprehensive conversation context."""
+        try:
+            system_prompt = f"""
+Break down this feature request into implementable tasks, considering the comprehensive conversation history.
+
+## COMPREHENSIVE CONVERSATION CONTEXT (ESSENTIAL FOR COMPLETE TASK CREATION)
+{conversation_context}
+
+## PROJECT CONTEXT
+Project: {context.project_context.get('name', 'Unknown')}
+Tech Stack: {context.project_context.get('tech_stack', 'Unknown')}
+
+## RELEVANT PROJECT KNOWLEDGE
+{self._format_memories_for_context(context.relevant_memories)}
+
+## TASK BREAKDOWN WITH EXTENDED CONVERSATION CONTEXT
+
+Based on the comprehensive conversation above:
+1. **Capture all requirements discussed** throughout the entire conversation
+2. **Include clarifications and decisions made** across multiple exchanges
+3. **Reference technical choices established** during the extended discussion
+4. **Incorporate user preferences expressed** at various points in the conversation
+5. **Consider integration points discussed** throughout the conversation arc
+
+## COMPREHENSIVE TASK CREATION GUIDELINES
+- Each task should reflect the full understanding gained from the extended conversation
+- Include implementation details and context discussed over multiple exchanges
+- Reference decisions, constraints, and preferences established throughout the discussion
+- Capture the evolution of requirements as discussed over time
+- Ensure tasks reflect the complete specification developed through the conversation
+
+## TASK CONTEXT INTEGRATION
+- Tasks should reference specific technical decisions made during the conversation
+- Include user experience considerations discussed earlier
+- Reflect architectural choices established through the extended discussion
+- Incorporate performance, security, or other requirements mentioned throughout
+
+Return JSON array with tasks that comprehensively capture the extended conversation context:
+[
+    {{"title": "Task Title", "description": "Complete description including comprehensive conversation context, technical decisions, user preferences, and implementation details discussed throughout the conversation"}},
+    ...
+]
+"""
+            
+            response = await self.gemini_service.chat_with_system_prompt(message, system_prompt)
+            
+            # Use the same robust parsing method
+            parsed_response = self._parse_task_breakdown_response(response, message, context)
+            return parsed_response
+                
+        except Exception as e:
+            logger.error(f"Error generating task breakdown: {e}")
+            return [{"title": "Implement feature", "description": f"Implement the feature discussed: {message}"}]
+
+    def _generate_comprehensive_task_creation_response(self, tool_results: List[dict], task_breakdown: List[dict], conversation_context: str) -> str:
+        """Generate response that references the comprehensive conversation context."""
+        successful_results = [r for r in tool_results if r.get("success", False)]
+        
+        if not successful_results:
+            return "I encountered some issues creating the tasks. Please try again."
+        
+        # Reference comprehensive conversation in response
+        response_parts = [f"Perfect! Based on our comprehensive discussion, I've created {len(successful_results)} tasks that capture everything we've explored:"]
+        
+        for i, task_data in enumerate(task_breakdown, 1):
+            response_parts.append(f"{i}. {task_data['title']}")
+        
+        response_parts.append("\nThese tasks incorporate all the decisions, clarifications, and technical choices we've discussed throughout our conversation. They're ready to copy to Cursor with complete context!")
+        
+        return "\n".join(response_parts)
     
     async def _execute_task_creation(self, task_breakdown: List[dict], project_id: str) -> List[dict]:
         """Execute task creation using tool registry."""
@@ -1504,7 +1631,7 @@ Remember: The goal is creating the optimal number of AI-friendly tasks that enab
         for task_data in task_breakdown:
             try:
                 # Create task using tool registry
-                result = await self.tool_registry.execute_tool(
+                result = self.tool_registry.execute_tool(
                     "create_task",
                     title=task_data["title"],
                     description=task_data["description"],
@@ -1728,6 +1855,94 @@ Analyze the user's message and return the appropriate JSON structure for detecte
         except Exception as e:
             logger.error(f"Error in LLM action detection: {e}")
             return await self._fallback_action_detection(message, context, project_id)
+
+    async def _execute_direct_action_with_extended_context(self, message: str, context: ConversationContext, project_id: str, conversation_context: str) -> dict:
+        """Execute direct action considering comprehensive conversation context."""
+        try:
+            # Use LLM to detect actions with comprehensive conversation context
+            action_analysis_prompt = f"""
+Analyze the user's direct action request considering the comprehensive conversation history.
+
+## COMPREHENSIVE CONVERSATION CONTEXT (CRITICAL FOR ACCURATE ACTION DETECTION)
+{conversation_context}
+
+## CURRENT REQUEST
+"{message}"
+
+## AVAILABLE TOOLS
+- create_task: Create a new task in the project
+- update_task: Update an existing task's details
+- change_task_status: Change the status of a task (pending, in_progress, completed, blocked)
+- search_tasks: Search for tasks by title, description, or status
+- delete_task: Delete a task from the project
+- create_memory: Create a new memory entry
+- update_memory: Update an existing memory
+- search_memories: Search for memories by title or content
+- delete_memory: Delete a memory from the project
+
+## EXTENDED CONTEXT ACTION ANALYSIS
+
+Based on the comprehensive conversation context above:
+- What tasks, features, or topics have been discussed throughout the conversation?
+- Are they referring to something specific mentioned earlier in the extended discussion?
+- What is the most logical action given the full conversation arc?
+- How does this request relate to decisions or plans made earlier in the conversation?
+
+## ACTION DETECTION WITH CONVERSATION DEPTH
+Consider:
+- Tasks or features discussed across multiple conversation turns
+- Technical decisions made throughout the extended discussion
+- User preferences expressed at various points in the conversation
+- Previous action requests or task management discussions
+
+Return JSON with the detected action and context-specific parameters informed by the comprehensive conversation:
+{{
+    "actions_detected": true/false,
+    "action_count": number,
+    "confidence": 0.0-1.0,
+    "reasoning": "Analysis based on comprehensive conversation context",
+    "actions": [
+        {{
+            "tool_name": "tool_to_execute",
+            "parameters": {{
+                "param1": "value1",
+                "param2": "value2",
+                "project_id": "{project_id}"
+            }},
+            "requires_search_first": true/false,
+            "search_tool": "search_tasks|search_memories",
+            "search_query": "search terms if needed",
+            "description": "Action description with conversation context"
+        }}
+    ]
+}}
+"""
+            
+            # Get LLM analysis
+            response = await self.gemini_service.chat_with_system_prompt(message, action_analysis_prompt)
+            
+            # Parse the LLM response
+            action_analysis = self._parse_action_analysis(response)
+            
+            if not action_analysis.get("actions_detected", False):
+                return {
+                    "response": "I'm not sure what specific action you want me to take. Could you be more explicit about what you'd like me to do?",
+                    "tool_calls_made": 0,
+                    "tool_results": [],
+                    "action_type": "no_actions_detected"
+                }
+            
+            # Execute the detected actions
+            return await self._execute_detected_actions(action_analysis, project_id, context)
+            
+        except Exception as e:
+            logger.error(f"Error executing direct action with extended context: {e}")
+            return {
+                "response": "I encountered an issue processing your request with conversation context.",
+                "tool_calls_made": 0,
+                "tool_results": [],
+                "action_type": "error"
+            }
     
     def _detect_action_type(self, message: str) -> str:
         """Detect the type of direct action requested."""
@@ -1755,10 +1970,10 @@ Analyze the user's message and return the appropriate JSON structure for detecte
                 }
             
             # Execute completion
-            result = await self.tool_registry.execute_tool(
-                "update_task_status",
-                task_id=matching_task.id,
-                status="completed",
+            result = self.tool_registry.execute_tool(
+                "change_task_status",
+                task_identifier=matching_task.id,
+                new_status="completed",
                 project_id=project_id
             )
             
@@ -1807,9 +2022,9 @@ Analyze the user's message and return the appropriate JSON structure for detecte
                 }
             
             # Execute deletion
-            result = await self.tool_registry.execute_tool(
+            result = self.tool_registry.execute_tool(
                 "delete_task",
-                task_id=matching_task.id,
+                task_identifier=matching_task.id,
                 project_id=project_id
             )
             
@@ -1864,21 +2079,41 @@ Analyze the user's message and return the appropriate JSON structure for detecte
                         response_parts.append(f"❌ Could not find items for: {action.get('description', 'unknown action')}")
                         continue
                 
-                # Execute the main action
+                # Execute the main action using AgentToolRegistry
                 tool_name = action.get("tool_name")
                 parameters = action.get("parameters", {})
                 
+                # Ensure project_id is in parameters
+                if "project_id" not in parameters:
+                    parameters["project_id"] = project_id
+                
                 if tool_name in self.tool_registry.get_available_tools():
-                    result = self.tool_registry.execute_tool(tool_name, **parameters)
-                    tool_results.append(result)
-                    total_tool_calls += 1
-                    
-                    if result.get("success", False):
-                        response_parts.append(result.get("message", f"✅ Completed: {action.get('description')}"))
-                    else:
-                        response_parts.append(result.get("message", f"❌ Failed: {action.get('description')}"))
+                    try:
+                        # Actually execute the tool through the registry
+                        result = self.tool_registry.execute_tool(tool_name, **parameters)
+                        tool_results.append(result)
+                        total_tool_calls += 1
+                        
+                        if result.get("success", False):
+                            response_parts.append(result.get("message", f"✅ Completed: {action.get('description')}"))
+                        else:
+                            response_parts.append(result.get("message", f"❌ Failed: {action.get('description')}"))
+                            
+                    except Exception as tool_error:
+                        logger.error(f"Tool execution error for {tool_name}: {tool_error}")
+                        response_parts.append(f"❌ Error executing {tool_name}: {str(tool_error)}")
+                        tool_results.append({
+                            "success": False,
+                            "error": str(tool_error),
+                            "tool_name": tool_name
+                        })
                 else:
-                    response_parts.append(f"❌ Unknown action: {tool_name}")
+                    response_parts.append(f"❌ Unknown tool: {tool_name}")
+                    tool_results.append({
+                        "success": False,
+                        "error": f"Unknown tool: {tool_name}",
+                        "tool_name": tool_name
+                    })
             
             # Generate comprehensive response
             if response_parts:
@@ -1963,13 +2198,25 @@ Analyze the user's message and return the appropriate JSON structure for detecte
             
             if start_idx >= 0 and end_idx > start_idx:
                 json_str = response[start_idx:end_idx]
-                return json.loads(json_str)
+                parsed = json.loads(json_str)
+                
+                # Validate the parsed response has required fields
+                if "actions_detected" in parsed and "actions" in parsed:
+                    return parsed
+                else:
+                    logger.warning("Parsed JSON missing required fields")
+                    return {"actions_detected": False}
+                    
             else:
                 logger.warning("No JSON found in action analysis response")
                 return {"actions_detected": False}
                 
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse action analysis JSON: {e}")
+            logger.debug(f"Raw response: {response}")
+            return {"actions_detected": False}
+        except Exception as e:
+            logger.error(f"Unexpected error parsing action analysis: {e}")
             return {"actions_detected": False}
 
     async def _fallback_action_detection(self, message: str, context: ConversationContext, project_id: str) -> dict:

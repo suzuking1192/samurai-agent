@@ -324,10 +324,9 @@ class Task(BaseModel):
         id: Unique identifier for the task
         project_id: Project identifier
         title: Task title
-        description: Task description
+        description: Task description (serves as the implementation prompt for Cursor)
         status: Task status (pending, in_progress, completed)
         priority: Task priority (low, medium, high)
-        prompt: Generated Cursor prompt for the task (optional)
         completed: Whether the task is completed (legacy field)
         order: Task order/priority (legacy field)
         created_at: Timestamp when the task was created
@@ -338,10 +337,9 @@ class Task(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Unique task identifier")
     project_id: str = Field(..., description="Project identifier")
     title: str = Field(..., min_length=1, max_length=200, description="Task title")
-    description: str = Field(..., max_length=5000, description="Task description")
+    description: str = Field(..., max_length=5000, description="Task description (serves as the implementation prompt for Cursor)")
     status: str = Field(default="pending", pattern="^(pending|in_progress|completed)$", description="Task status")
     priority: str = Field(default="medium", pattern="^(low|medium|high)$", description="Task priority")
-    prompt: Optional[str] = Field(default="", max_length=2000, description="Generated Cursor prompt")
     completed: bool = Field(default=False, description="Task completion status (legacy)")
     order: int = Field(default=0, ge=0, description="Task order/priority (legacy)")
     created_at: datetime = Field(default_factory=datetime.utcnow, description="Creation timestamp")
@@ -358,8 +356,7 @@ class Task(BaseModel):
             "example": {
                 "id": "550e8400-e29b-41d4-a716-446655440002",
                 "title": "Implement User Authentication",
-                "description": "Create login and registration endpoints",
-                "prompt": "Create a user authentication system with JWT tokens",
+                "description": "Create login and registration endpoints with JWT tokens, including proper validation and error handling",
                 "completed": False,
                 "order": 1,
                 "created_at": "2024-01-01T00:00:00"
