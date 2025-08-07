@@ -57,14 +57,15 @@ const ProgressDisplay: React.FC<ProgressDisplayProps> = ({ progress, isVisible }
     <div className="agent-progress">
       <div className="progress-header">
         <span className="progress-title">Agent Progress</span>
-        <span className="progress-count">{progress.length} steps</span>
+        <span className="progress-count">Step {progress.length}</span>
       </div>
       
       <div className="progress-steps">
-        {progress.map((step, index) => (
+        {/* Only show the latest progress step */}
+        {progress.slice(-1).map((step, index) => (
           <div 
             key={index}
-            className={`progress-step ${step.step} ${index === progress.length - 1 ? 'current' : 'completed'}`}
+            className={`progress-step ${step.step} current`}
           >
             <div className="step-icon">
               {getStepIcon(step.step)}

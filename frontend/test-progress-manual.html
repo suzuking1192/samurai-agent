@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Progress Display Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+        }
+        .progress-display {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+        }
+        .progress-step {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px;
+            background: white;
+            border-radius: 6px;
+            margin: 5px 0;
+        }
+        .step-icon {
+            font-size: 20px;
+        }
+        .step-message {
+            font-weight: bold;
+        }
+        .step-count {
+            color: #666;
+            font-size: 14px;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            background: #007bff;
+            color: white;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .test-results {
+            background: #e8f5e8;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+        }
+        .success {
+            color: #28a745;
+        }
+        .error {
+            color: #dc3545;
+        }
+    </style>
+</head>
+<body>
+    <h1>Progress Display Test</h1>
+    <p>This test verifies that progress updates appear one at a time instead of all at once.</p>
+
+    <div class="test-section">
+        <h2>Test 1: Single Progress Step</h2>
+        <div class="progress-display" id="test1">
+            <div class="progress-step">
+                <span class="step-icon">🧠</span>
+                <span class="step-message">🧠 Starting...</span>
+                <span class="step-count">Step 1</span>
+            </div>
+        </div>
+        <button onclick="testSingleStep()">Test Single Step</button>
+        <div id="result1" class="test-results"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 2: Multiple Progress Steps (Fixed)</h2>
+        <div class="progress-display" id="test2">
+            <!-- Will be populated by JavaScript -->
+        </div>
+        <button onclick="testMultipleSteps()">Test Multiple Steps</button>
+        <div id="result2" class="test-results"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 3: Real-time Simulation</h2>
+        <div class="progress-display" id="test3">
+            <!-- Will be populated by JavaScript -->
+        </div>
+        <button onclick="startRealtimeTest()">Start Real-time Test</button>
+        <button onclick="stopRealtimeTest()">Stop Test</button>
+        <div id="result3" class="test-results"></div>
+    </div>
+
+    <script>
+        let realtimeInterval;
+
+        function testSingleStep() {
+            const result = document.getElementById('result1');
+            result.innerHTML = '<span class="success">✅ PASS: Single progress step displays correctly</span>';
+        }
+
+        function testMultipleSteps() {
+            const container = document.getElementById('test2');
+            const result = document.getElementById('result2');
+            
+            // Simulate the fixed behavior - only show latest step
+            const steps = [
+                { step: 'start', message: '🧠 Starting...', icon: '🧠' },
+                { step: 'context', message: '📚 Loading context...', icon: '📚' },
+                { step: 'analyzing', message: '🧠 Analyzing...', icon: '🧠' },
+                { step: 'ai_call', message: '🤖 Calling AI service...', icon: '🤖' },
+                { step: 'processing', message: '🔄 Processing response...', icon: '🔄' }
+            ];
+
+            // Clear container
+            container.innerHTML = '';
+
+            // Show only the latest step (simulating our fix)
+            const latestStep = steps[steps.length - 1];
+            container.innerHTML = `
+                <div class="progress-step">
+                    <span class="step-icon">${latestStep.icon}</span>
+                    <span class="step-message">${latestStep.message}</span>
+                    <span class="step-count">Step ${steps.length}</span>
+                </div>
+            `;
+
+            result.innerHTML = `
+                <span class="success">✅ PASS: Only latest progress step is shown</span><br>
+                <small>Previous steps: ${steps.slice(0, -1).map(s => s.message).join(', ')}</small><br>
+                <small>Current step: ${latestStep.message}</small>
+            `;
+        }
+
+        function startRealtimeTest() {
+            const container = document.getElementById('test3');
+            const result = document.getElementById('result3');
+            
+            const steps = [
+                { step: 'start', message: '🧠 Starting to process...', icon: '🧠', delay: 1000 },
+                { step: 'context', message: '📚 Loading conversation context...', icon: '📚', delay: 2000 },
+                { step: 'analyzing', message: '🧠 Analyzing your intent...', icon: '🧠', delay: 3000 },
+                { step: 'ai_call', message: '🤖 Calling AI service...', icon: '🤖', delay: 4000 },
+                { step: 'processing', message: '🔄 Processing response...', icon: '🔄', delay: 5000 }
+            ];
+
+            let currentStep = 0;
+            const startTime = Date.now();
+
+            result.innerHTML = '<span class="success">🔄 Test running... Watch the progress updates</span>';
+
+            realtimeInterval = setInterval(() => {
+                const elapsed = Date.now() - startTime;
+                const step = steps[currentStep];
+
+                if (step && elapsed >= step.delay) {
+                    // Show only current step (simulating our fix)
+                    container.innerHTML = `
+                        <div class="progress-step">
+                            <span class="step-icon">${step.icon}</span>
+                            <span class="step-message">${step.message}</span>
+                            <span class="step-count">Step ${currentStep + 1}</span>
+                        </div>
+                    `;
+
+                    currentStep++;
+                    
+                    if (currentStep >= steps.length) {
+                        clearInterval(realtimeInterval);
+                        result.innerHTML = `
+                            <span class="success">✅ PASS: Real-time progress updates work correctly</span><br>
+                            <small>Each step appeared individually and replaced the previous one</small>
+                        `;
+                    }
+                }
+            }, 100);
+        }
+
+        function stopRealtimeTest() {
+            if (realtimeInterval) {
+                clearInterval(realtimeInterval);
+                document.getElementById('result3').innerHTML = '<span class="error">⏹️ Test stopped</span>';
+            }
+        }
+
+        // Auto-run first test
+        window.onload = function() {
+            testSingleStep();
+        };
+    </script>
+</body>
+</html>

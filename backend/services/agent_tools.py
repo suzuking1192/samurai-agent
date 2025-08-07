@@ -28,7 +28,7 @@ class CreateTaskTool(TaskTool):
     description: str = "Create a new task in the project"
     
     def execute(self, title: str, description: str, priority: str = "medium", 
-                due_date: Optional[str] = None, project_id: str = None) -> Dict[str, Any]:
+                due_date: Optional[str] = None, project_id: str = None, status: str = "pending") -> Dict[str, Any]:
         """
         Create a new task
         """
