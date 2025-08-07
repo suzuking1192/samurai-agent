@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react'
-import { Task, TaskPriority, TaskCreate, TaskUpdate, TaskStatus } from '../types'
+import { Task, TaskCreate, TaskUpdate, TaskStatus } from '../types'
 import { getTasks, createTask, updateTask, deleteTask } from '../services/api'
-import TaskDetailModal from './TaskDetailModal'
+import TaskListView from './TaskListView'
+import TaskDetailsView from './TaskDetailsView'
 
 interface TaskPanelProps {
   projectId?: string
@@ -11,13 +12,8 @@ interface TaskPanelProps {
 const TaskPanel: React.FC<TaskPanelProps> = ({ projectId, refreshTrigger }) => {
   const [tasks, setTasks] = useState<Task[]>([])
   const [isLoading, setIsLoading] = useState(false)
-  const [showCreateForm, setShowCreateForm] = useState(false)
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
-  const [newTask, setNewTask] = useState<TaskCreate>({
-    title: '',
-    description: '',
-    priority: TaskPriority.MEDIUM
-  })
+  const [taskPanelView, setTaskPanelView] = useState<'list' | 'details'>('list')
 
   useEffect(() => {
     if (projectId) {
@@ -46,18 +42,12 @@ const TaskPanel: React.FC<TaskPanelProps> = ({ projectId, refreshTrigger }) => {
     }
   }
 
-  const handleCreateTask = async () => {
-    if (!projectId || !newTask.title.trim()) return
+  const handleCreateTask = async (newTask: TaskCreate) => {
+    if (!projectId) return
 
     try {
       const createdTask = await createTask(projectId, newTask)
       setTasks(prev => [createdTask, ...prev]) // Add to beginning for newest first
-      setNewTask({
-        title: '',
-        description: '',
-        priority: TaskPriority.MEDIUM
-      })
-      setShowCreateForm(false)
     } catch (error) {
       console.error('Error creating task:', error)
     }
@@ -114,24 +104,14 @@ const TaskPanel: React.FC<TaskPanelProps> = ({ projectId, refreshTrigger }) => {
     }
   }
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString)
-    const now = new Date()
-    const diffTime = Math.abs(now.getTime() - date.getTime())
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-    
-    if (diffDays === 1) return 'Today'
-    if (diffDays === 2) return 'Yesterday'
-    if (diffDays <= 7) return `${diffDays - 1} days ago`
-    return date.toLocaleDateString()
-  }
-
-  const openTaskModal = (task: Task) => {
+  const handleTaskClick = (task: Task) => {
     setSelectedTask(task)
+    setTaskPanelView('details')
   }
 
-  const closeTaskModal = () => {
+  const handleBackToList = () => {
     setSelectedTask(null)
+    setTaskPanelView('list')
   }
 
   const showNotification = (message: string, type: 'success' | 'error') => {
@@ -157,9 +137,6 @@ const TaskPanel: React.FC<TaskPanelProps> = ({ projectId, refreshTrigger }) => {
     }, 3000)
   }
 
-  // Filter out completed tasks for display
-  const activeTasks = tasks.filter(task => task.status !== TaskStatus.COMPLETED)
-
   if (!projectId) {
     return (
       <div className="task-panel">
@@ -178,114 +155,26 @@ const TaskPanel: React.FC<TaskPanelProps> = ({ projectId, refreshTrigger }) => {
     <div className="task-panel">
       <div className="panel-header">
         <h3>📋 Tasks</h3>
-        <span className="task-count">({activeTasks.length})</span>
+        <span className="task-count">({tasks.filter(task => task.status !== TaskStatus.COMPLETED).length})</span>
       </div>
 
       <div className="panel-content">
-        {showCreateForm && (
-          <div className="create-task-form">
-            <h4>Create New Task</h4>
-            <input
-              type="text"
-              placeholder="Task title"
-              value={newTask.title}
-              onChange={(e) => setNewTask(prev => ({ ...prev, title: e.target.value }))}
-              className="input"
-            />
-            <textarea
-              placeholder="Task description"
-              value={newTask.description}
-              onChange={(e) => setNewTask(prev => ({ ...prev, description: e.target.value }))}
-              className="input"
-              rows={3}
-            />
-            <select
-              value={newTask.priority}
-              onChange={(e) => setNewTask(prev => ({ ...prev, priority: e.target.value as TaskPriority }))}
-              className="input"
-            >
-              <option value={TaskPriority.LOW}>Low Priority</option>
-              <option value={TaskPriority.MEDIUM}>Medium Priority</option>
-              <option value={TaskPriority.HIGH}>High Priority</option>
-            </select>
-            <div className="form-actions">
-              <button
-                onClick={handleCreateTask}
-                disabled={!newTask.title.trim()}
-                className="button"
-              >
-                Create Task
-              </button>
-              <button
-                onClick={() => setShowCreateForm(false)}
-                className="button secondary"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
-
-        {!showCreateForm && (
-          <button
-            onClick={() => setShowCreateForm(true)}
-            className="add-task-btn"
-            style={{ margin: '12px', padding: '8px 16px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}
-          >
-            + Add Task
-          </button>
-        )}
-
-        {isLoading ? (
-          <div className="loading-indicator">
-            <span>Loading tasks...</span>
-          </div>
-        ) : activeTasks.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-icon">✨</div>
-            <p>No active tasks</p>
-            <p className="empty-subtitle">All caught up! Add a new task to get started.</p>
-          </div>
+        {taskPanelView === 'list' ? (
+          <TaskListView 
+            tasks={tasks}
+            isLoading={isLoading}
+            onTaskClick={handleTaskClick}
+            onCreateTask={handleCreateTask}
+          />
         ) : (
-          <div className="task-list">
-            {activeTasks.map(task => (
-              <div 
-                key={task.id} 
-                className="task-item" 
-                data-task-id={task.id}
-                onClick={() => openTaskModal(task)}
-              >
-                <div className="task-header">
-                  <div className="task-title">{task.title}</div>
-                  <div className="task-status">
-                    <span className={`status-dot ${task.status}`}></span>
-                  </div>
-                </div>
-                {task.description && (
-                  <div className="task-description">
-                    {task.description.length > 60 
-                      ? `${task.description.substring(0, 60)}...` 
-                      : task.description}
-                  </div>
-                )}
-                <div className="task-meta">
-                  <span className="task-date">{formatDate(task.created_at)}</span>
-                </div>
-              </div>
-            ))}
-          </div>
+          <TaskDetailsView 
+            task={selectedTask!}
+            onBack={handleBackToList}
+            onSave={handleUpdateTask}
+            onDelete={handleDeleteTask}
+          />
         )}
       </div>
-
-      {selectedTask && (
-        <TaskDetailModal
-          task={selectedTask}
-          isOpen={true}
-          onClose={closeTaskModal}
-          onSave={handleUpdateTask}
-          onDelete={handleDeleteTask}
-        />
-      )}
     </div>
   )
 }

@@ -10,6 +10,7 @@ import { Project } from './types'
 function App() {
   const [selectedProject, setSelectedProject] = useState<Project | null>(null)
   const [taskRefreshTrigger, setTaskRefreshTrigger] = useState(0)
+  const [showMemory, setShowMemory] = useState(false)
 
   const handleProjectSelect = (project: Project) => {
     setSelectedProject(project)
@@ -19,9 +20,13 @@ function App() {
     setTaskRefreshTrigger(prev => prev + 1)
   }
 
+  const toggleMemory = () => {
+    setShowMemory(!showMemory)
+  }
+
   return (
     <div className="app">
-      {/* Clean Header without Hide Buttons */}
+      {/* Header with Memory Toggle */}
       <header className="header">
         <div className="header-content">
           <h1 className="header-title">🥷 Samurai Agent</h1>
@@ -32,22 +37,31 @@ function App() {
             selectedProject={selectedProject} 
             onProjectSelect={handleProjectSelect} 
           />
+          <button 
+            onClick={toggleMemory}
+            className="memory-toggle-btn"
+            title={showMemory ? 'Hide Memory Panel' : 'Show Memory Panel'}
+          >
+            {showMemory ? '🧠 Hide Memory' : '🧠 Show Memory'}
+          </button>
         </div>
       </header>
       
-      {/* Fixed Three Panel Layout - No Hide Functionality */}
-      <div className="main-container">
-        {/* LEFT: Memory Panel - Fixed Width */}
-        <div className="panel memory-panel scrollable-panel">
-          <MemoryPanel projectId={selectedProject?.id} />
-        </div>
+      {/* Dynamic Layout Container */}
+      <div className={`main-container ${showMemory ? 'memory-expanded' : 'memory-hidden'}`}>
+        {/* Memory Panel - Conditionally Rendered */}
+        {showMemory && (
+          <div className="panel memory-panel scrollable-panel">
+            <MemoryPanel projectId={selectedProject?.id} />
+          </div>
+        )}
         
-        {/* CENTER: Chat Interface - Flexible */}
+        {/* Chat Interface - Dynamic Width */}
         <div className="chat-container">
           <Chat projectId={selectedProject?.id} onTaskGenerated={handleTaskRefresh} />
         </div>
         
-        {/* RIGHT: Tasks Panel - Fixed Width */}
+        {/* Tasks Panel - Dynamic Width */}
         <div className="panel tasks-panel scrollable-panel">
           <TaskPanel projectId={selectedProject?.id} refreshTrigger={taskRefreshTrigger} />
         </div>

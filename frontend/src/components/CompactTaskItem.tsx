@@ -1,22 +1,22 @@
 import React, { useState } from 'react'
 import { Task, TaskStatus, TaskPriority, TaskUpdate } from '../types'
-import TaskDetailModal from './TaskDetailModal'
 
 interface CompactTaskItemProps {
   task: Task
   onUpdate: (taskId: string, updates: TaskUpdate) => void
   onDelete: (taskId: string) => void
+  onTaskClick: (task: Task) => void
   style?: React.CSSProperties
 }
 
 const CompactTaskItem: React.FC<CompactTaskItemProps> = ({ 
   task, 
   onUpdate, 
-  onDelete, 
+  onDelete,
+  onTaskClick,
   style 
 }) => {
   const [showActions, setShowActions] = useState(false)
-  const [modalOpen, setModalOpen] = useState(false)
 
   const getStatusIcon = (status: TaskStatus) => {
     switch (status) {
@@ -71,7 +71,7 @@ const CompactTaskItem: React.FC<CompactTaskItemProps> = ({
 
   const handleItemClick = (e: React.MouseEvent) => {
     e.preventDefault()
-    setModalOpen(true)
+    onTaskClick(task)
   }
 
   const handleStatusChange = async (newStatus: TaskStatus) => {
@@ -94,84 +94,66 @@ const CompactTaskItem: React.FC<CompactTaskItemProps> = ({
     }
   }
 
-  const handleSaveTask = async (taskId: string, updates: TaskUpdate) => {
-    await onUpdate(taskId, updates)
-  }
-
-  const handleDeleteTask = async (taskId: string) => {
-    await onDelete(taskId)
-  }
-
   return (
-    <>
-      <div 
-        className="compact-task-item"
-        data-task-id={task.id}
-        style={style}
-        onMouseEnter={() => setShowActions(true)}
-        onMouseLeave={() => setShowActions(false)}
-        onClick={handleItemClick}
-      >
-        <div className="item-header">
-          <span className="task-status-icon" style={{ color: getStatusColor(task.status) }}>
-            {getStatusIcon(task.status)}
-          </span>
-          
-          <span className="task-priority-icon">
-            {getPriorityIcon(task.priority)}
-          </span>
-          
-          <div className="item-title">
-            {task.title}
-          </div>
-          
-          {showActions && (
-            <div className="item-actions">
-              <select
-                value={task.status}
-                onChange={(e) => handleStatusChange(e.target.value as TaskStatus)}
-                className="action-btn"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <option value={TaskStatus.PENDING}>Pending</option>
-                <option value={TaskStatus.IN_PROGRESS}>In Progress</option>
-                <option value={TaskStatus.COMPLETED}>Completed</option>
-              </select>
-              
-              <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onDelete(task.id)
-                }}
-                className="action-btn"
-                title="Delete task"
-              >
-                🗑️
-              </button>
-            </div>
-          )}
+    <div 
+      className="compact-task-item"
+      data-task-id={task.id}
+      style={style}
+      onMouseEnter={() => setShowActions(true)}
+      onMouseLeave={() => setShowActions(false)}
+      onClick={handleItemClick}
+    >
+      <div className="item-header">
+        <span className="task-status-icon" style={{ color: getStatusColor(task.status) }}>
+          {getStatusIcon(task.status)}
+        </span>
+        
+        <span className="task-priority-icon">
+          {getPriorityIcon(task.priority)}
+        </span>
+        
+        <div className="item-title">
+          {task.title}
         </div>
         
-        {task.description && (
-          <div className="item-description">
-            {task.description}
+        {showActions && (
+          <div className="item-actions">
+            <select
+              value={task.status}
+              onChange={(e) => handleStatusChange(e.target.value as TaskStatus)}
+              className="action-btn"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <option value={TaskStatus.PENDING}>Pending</option>
+              <option value={TaskStatus.IN_PROGRESS}>In Progress</option>
+              <option value={TaskStatus.COMPLETED}>Completed</option>
+            </select>
+            
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                onDelete(task.id)
+              }}
+              className="action-btn"
+              title="Delete task"
+            >
+              🗑️
+            </button>
           </div>
         )}
-        
-        <div className="item-meta">
-          <span className="status-dot" style={{ backgroundColor: getStatusColor(task.status) }}></span>
-          <span className="date">{formatDate(task.created_at)}</span>
-        </div>
       </div>
       
-      <TaskDetailModal
-        task={task}
-        isOpen={modalOpen}
-        onClose={() => setModalOpen(false)}
-        onSave={handleSaveTask}
-        onDelete={handleDeleteTask}
-      />
-    </>
+      {task.description && (
+        <div className="item-description">
+          {task.description}
+        </div>
+      )}
+      
+      <div className="item-meta">
+        <span className="status-dot" style={{ backgroundColor: getStatusColor(task.status) }}></span>
+        <span className="date">{formatDate(task.created_at)}</span>
+      </div>
+    </div>
   )
 }
 

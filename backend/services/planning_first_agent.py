@@ -701,8 +701,8 @@ class PlanningFirstAgent:
             )
             
             # Execute the tool
-            tool_result = await self.tool_registry.execute_tool(
-                step.tool_name, enhanced_parameters, project_id
+            tool_result = self.tool_registry.execute_tool(
+                step.tool_name, **enhanced_parameters
             )
             
             return {
