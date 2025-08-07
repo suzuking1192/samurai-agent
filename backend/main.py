@@ -500,12 +500,13 @@ async def chat_stream(project_id: str, request: ChatRequest):
             
             conversation_history = file_service.load_chat_messages_by_session(project_id, current_session.id)
             
-            # 3. Create a simple progress callback that yields directly
-            progress_events = []
+            # 3. Create a real-time progress streaming system using asyncio.Queue
+            progress_queue = asyncio.Queue()
+            processing_done = asyncio.Event()
             
             async def progress_callback(step: str, message: str, details: str = "", metadata: dict = None):
-                """Capture progress updates"""
-                progress_events.append({
+                """Real-time progress callback that immediately queues progress updates"""
+                progress_event = {
                     'type': 'progress',
                     'progress': {
                         'step': step,
@@ -514,39 +515,51 @@ async def chat_stream(project_id: str, request: ChatRequest):
                         'timestamp': datetime.now().isoformat(),
                         'metadata': metadata or {}
                     }
-                })
-            
-            # 4. Process with unified agent
-            # Start processing
-            processing_task = asyncio.create_task(
-                unified_samurai_agent.process_message(
-                    message=request.message,
-                    project_id=project_id,
-                    project_context=project_context,
-                    session_id=current_session.id,
-                    conversation_history=conversation_history,
-                    progress_callback=progress_callback,
-                    task_context=task_context
-                )
-            )
-            
-            # 5. Stream progress events as they occur
-            last_event_count = 0
-            while not processing_task.done():
-                # Check for new progress events
-                if len(progress_events) > last_event_count:
-                    # Send new events
-                    for event in progress_events[last_event_count:]:
-                        yield f"data: {json.dumps(event)}\n\n"
-                    last_event_count = len(progress_events)
+                }
                 
-                # Small delay to prevent busy waiting
-                await asyncio.sleep(0.05)
+                # Immediately queue the progress event for streaming
+                await progress_queue.put(progress_event)
+                logger.debug(f"Queued progress update: {step} - {message}")
             
-            # Check for any remaining progress events after processing completes
-            if len(progress_events) > last_event_count:
-                for event in progress_events[last_event_count:]:
-                    yield f"data: {json.dumps(event)}\n\n"
+            # 4. Start the agent processing task
+            async def process_and_signal():
+                """Wrapper to signal when processing is complete"""
+                try:
+                    result = await unified_samurai_agent.process_message(
+                        message=request.message,
+                        project_id=project_id,
+                        project_context=project_context,
+                        session_id=current_session.id,
+                        conversation_history=conversation_history,
+                        progress_callback=progress_callback,
+                        task_context=task_context
+                    )
+                    return result
+                finally:
+                    # Signal that processing is complete
+                    processing_done.set()
+            
+            processing_task = asyncio.create_task(process_and_signal())
+            
+            # 5. Stream progress events in real-time as they occur
+            while not processing_done.is_set() or not progress_queue.empty():
+                try:
+                    # Wait for progress updates with a short timeout
+                    progress_event = await asyncio.wait_for(
+                        progress_queue.get(), 
+                        timeout=0.1
+                    )
+                    
+                    # Immediately stream the progress update
+                    yield f"data: {json.dumps(progress_event)}\n\n"
+                    logger.debug(f"Streamed progress update: {progress_event['progress']['step']}")
+                    
+                except asyncio.TimeoutError:
+                    # No progress updates available, continue waiting
+                    continue
+                except Exception as e:
+                    logger.error(f"Error streaming progress: {e}")
+                    break
             
             # 6. Get final result
             result = await processing_task

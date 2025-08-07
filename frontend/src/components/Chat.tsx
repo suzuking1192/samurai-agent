@@ -345,9 +345,14 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrig
             frontendReceivedAt: progress.frontendReceivedAt
           })
           
+          // Update progress immediately for real-time display
           setMessages(prev => prev.map(msg => 
             msg.id === optimisticMessage.id 
-              ? { ...msg, progress: [...(msg.progress || []), progressWithTimestamp] }
+              ? { 
+                  ...msg, 
+                  // Replace progress array instead of appending to show latest state
+                  progress: [progressWithTimestamp]
+                }
               : msg
           ))
           updateAgentActivity(progress.message || 'Processing...')

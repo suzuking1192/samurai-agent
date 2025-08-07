@@ -132,7 +132,8 @@ class UnifiedSamuraiAgent:
                 )
             
             conversation_context = await self._load_comprehensive_context(
-                message, project_id, session_id, conversation_history, project_context
+                message, project_id, session_id, conversation_history, project_context,
+                task_context=task_context
             )
             
             if progress_callback:
@@ -149,7 +150,7 @@ class UnifiedSamuraiAgent:
                 )
             
             intent_analysis = await self._analyze_user_intent(
-                message, conversation_context
+                message, conversation_context, progress_callback=progress_callback
             )
             
             if progress_callback:
@@ -255,7 +256,8 @@ class UnifiedSamuraiAgent:
         project_id: str, 
         session_id: str, 
         conversation_history: List[ChatMessage], 
-        project_context: dict
+        project_context: dict,
+        task_context: Optional[Any] = None
     ) -> ConversationContext:
         """
         Load comprehensive context including conversation history, vector-similar tasks/memories, and project context.
@@ -294,7 +296,12 @@ class UnifiedSamuraiAgent:
             logger.error(f"Error loading comprehensive context: {e}")
             return self._create_fallback_context(message, project_id, project_context)
     
-    async def _analyze_user_intent(self, message: str, context: ConversationContext) -> IntentAnalysis:
+    async def _analyze_user_intent(
+        self, 
+        message: str, 
+        context: ConversationContext,
+        progress_callback: Optional[Callable[[str, str, str, Dict[str, Any]], None]] = None
+    ) -> IntentAnalysis:
         """
         Analyze user intent with enhanced understanding using the Samurai Engine prompt.
         """
@@ -487,6 +494,10 @@ Return ONLY the category name: pure_discussion, feature_exploration, spec_clarif
 
 Use this framework to analyze the current message and provide the most accurate intent classification."""
 
+            # Send progress update before AI call
+            if progress_callback:
+                await progress_callback("ai_call", "🤖 Calling AI service...", "Analyzing your intent with AI")
+            
             response = await self.gemini_service.chat_with_system_prompt(message, system_prompt)
             
             # Clean and parse response
@@ -573,10 +584,10 @@ Use this framework to analyze the current message and provide the most accurate 
         """
         try:
             if intent_analysis.intent_type == "pure_discussion":
-                return await self._handle_pure_discussion(message, context)
+                return await self._handle_pure_discussion(message, context, progress_callback)
             
             elif intent_analysis.intent_type == "feature_exploration":
-                return await self._handle_feature_exploration(message, context, intent_analysis)
+                return await self._handle_feature_exploration(message, context, intent_analysis, progress_callback)
             
             elif intent_analysis.intent_type == "spec_clarification":
                 return await self._handle_spec_clarification(message, context, intent_analysis)
@@ -595,7 +606,7 @@ Use this framework to analyze the current message and provide the most accurate 
             logger.error(f"Error in response path execution: {e}")
             return await self._handle_pure_discussion(message, context)
     
-    async def _handle_pure_discussion(self, message: str, context: ConversationContext) -> dict:
+    async def _handle_pure_discussion(self, message: str, context: ConversationContext, progress_callback: Optional[Callable] = None) -> dict:
         """Handle pure discussion with comprehensive conversation context awareness."""
         try:
             # Build enhanced conversation context with 20 message history
@@ -647,6 +658,10 @@ Project: {context.project_context.get('name', 'Unknown')} | Tech: {context.proje
 Your response:
 """
             
+            # Send progress update before AI call
+            if progress_callback:
+                await progress_callback("ai_call", "🤖 Calling AI service...", "Generating response with conversation context")
+            
             response = await self.gemini_service.chat_with_system_prompt(message, system_prompt)
             
             return {
@@ -672,7 +687,7 @@ Your response:
                 "context_used": {}
             }
     
-    async def _handle_feature_exploration(self, message: str, context: ConversationContext, intent_analysis: IntentAnalysis) -> dict:
+    async def _handle_feature_exploration(self, message: str, context: ConversationContext, intent_analysis: IntentAnalysis, progress_callback: Optional[Callable] = None) -> dict:
         """Handle feature exploration with comprehensive conversation continuity."""
         try:
             # Build enhanced conversation context with extended history
@@ -722,6 +737,10 @@ Project: {context.project_context.get('name', 'Unknown')} | Tech: {context.proje
 
 Your response should demonstrate deep understanding of the entire conversation, not just recent exchanges.
 """
+            
+            # Send progress update before AI call
+            if progress_callback:
+                await progress_callback("ai_call", "🤖 Calling AI service...", "Exploring feature ideas with AI")
             
             response = await self.gemini_service.chat_with_system_prompt(message, system_prompt)
             
@@ -1666,11 +1685,24 @@ Return JSON array with tasks that comprehensively capture the extended conversat
         for task_data in task_breakdown:
             try:
                 # Create task using tool registry
+                # Extract optional parameters
+                params = {
+                    "title": task_data["title"],
+                    "description": task_data["description"],
+                    "project_id": project_id
+                }
+                
+                # Add optional parameters if they exist
+                if "status" in task_data:
+                    params["status"] = task_data["status"]
+                if "priority" in task_data:
+                    params["priority"] = task_data["priority"]
+                if "due_date" in task_data:
+                    params["due_date"] = task_data["due_date"]
+                
                 result = self.tool_registry.execute_tool(
                     "create_task",
-                    title=task_data["title"],
-                    description=task_data["description"],
-                    project_id=project_id
+                    **params
                 )
                 results.append(result)
             except Exception as e:
