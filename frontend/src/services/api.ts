@@ -331,6 +331,41 @@ export async function endSessionWithConsolidation(
   })
 }
 
+// Task Context API functions
+export interface TaskContextResponse {
+  success: boolean
+  task_context?: Task
+  session_id: string
+}
+
+export async function setTaskContext(projectId: string, sessionId: string, taskId: string): Promise<TaskContextResponse> {
+  return apiRequest<TaskContextResponse>(`/projects/${projectId}/sessions/${sessionId}/set-task-context`, {
+    method: 'POST',
+    body: JSON.stringify({
+      task_id: taskId,
+      session_id: sessionId
+    })
+  })
+}
+
+export async function clearTaskContext(projectId: string, sessionId: string): Promise<{ message: string; session_id: string }> {
+  return apiRequest<{ message: string; session_id: string }>(`/projects/${projectId}/sessions/${sessionId}/task-context`, {
+    method: 'DELETE'
+  })
+}
+
+export async function getTaskContext(projectId: string, sessionId: string): Promise<{
+  session_id: string
+  task_context?: Task
+  has_context: boolean
+}> {
+  return apiRequest<{
+    session_id: string
+    task_context?: Task
+    has_context: boolean
+  }>(`/projects/${projectId}/sessions/${sessionId}/task-context`)
+}
+
 export const getSemanticHierarchy = async (
   projectId: string, 
   clusteringType: string = 'content', 

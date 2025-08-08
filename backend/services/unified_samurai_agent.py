@@ -98,7 +98,8 @@ class UnifiedSamuraiAgent:
         project_context: dict, 
         session_id: str = None, 
         conversation_history: List[ChatMessage] = None,
-        progress_callback: Optional[Callable[[str, str, str, Dict[str, Any]], None]] = None
+        progress_callback: Optional[Callable[[str, str, str, Dict[str, Any]], None]] = None,
+        task_context: Optional[Any] = None
     ) -> dict:
         """
         Process user message with unified architecture and smart memory management.
@@ -110,6 +111,7 @@ class UnifiedSamuraiAgent:
             session_id: Session identifier
             conversation_history: Conversation history
             progress_callback: Optional callback for progress updates
+            task_context: Optional task context to provide focused assistance
         """
         
         try:
@@ -130,7 +132,8 @@ class UnifiedSamuraiAgent:
                 )
             
             conversation_context = await self._load_comprehensive_context(
-                message, project_id, session_id, conversation_history, project_context
+                message, project_id, session_id, conversation_history, project_context,
+                task_context=task_context
             )
             
             if progress_callback:
@@ -147,7 +150,7 @@ class UnifiedSamuraiAgent:
                 )
             
             intent_analysis = await self._analyze_user_intent(
-                message, conversation_context
+                message, conversation_context, progress_callback=progress_callback
             )
             
             if progress_callback:
@@ -253,7 +256,8 @@ class UnifiedSamuraiAgent:
         project_id: str, 
         session_id: str, 
         conversation_history: List[ChatMessage], 
-        project_context: dict
+        project_context: dict,
+        task_context: Optional[Any] = None
     ) -> ConversationContext:
         """
         Load comprehensive context including conversation history, vector-similar tasks/memories, and project context.
@@ -269,7 +273,7 @@ class UnifiedSamuraiAgent:
             
             # Generate vector-enhanced context
             vector_context = await self._build_vector_enhanced_context(
-                message, project_id, session_messages, project_context
+                message, project_id, session_messages, project_context, task_context
             )
             
             # Create conversation summary
@@ -292,7 +296,12 @@ class UnifiedSamuraiAgent:
             logger.error(f"Error loading comprehensive context: {e}")
             return self._create_fallback_context(message, project_id, project_context)
     
-    async def _analyze_user_intent(self, message: str, context: ConversationContext) -> IntentAnalysis:
+    async def _analyze_user_intent(
+        self, 
+        message: str, 
+        context: ConversationContext,
+        progress_callback: Optional[Callable[[str, str, str, Dict[str, Any]], None]] = None
+    ) -> IntentAnalysis:
         """
         Analyze user intent with enhanced understanding using the Samurai Engine prompt.
         """
@@ -485,6 +494,10 @@ Return ONLY the category name: pure_discussion, feature_exploration, spec_clarif
 
 Use this framework to analyze the current message and provide the most accurate intent classification."""
 
+            # Send progress update before AI call
+            if progress_callback:
+                await progress_callback("ai_call", "🤖 Calling AI service...", "Analyzing your intent with AI")
+            
             response = await self.gemini_service.chat_with_system_prompt(message, system_prompt)
             
             # Clean and parse response
@@ -571,10 +584,10 @@ Use this framework to analyze the current message and provide the most accurate 
         """
         try:
             if intent_analysis.intent_type == "pure_discussion":
-                return await self._handle_pure_discussion(message, context)
+                return await self._handle_pure_discussion(message, context, progress_callback)
             
             elif intent_analysis.intent_type == "feature_exploration":
-                return await self._handle_feature_exploration(message, context, intent_analysis)
+                return await self._handle_feature_exploration(message, context, intent_analysis, progress_callback)
             
             elif intent_analysis.intent_type == "spec_clarification":
                 return await self._handle_spec_clarification(message, context, intent_analysis)
@@ -593,7 +606,7 @@ Use this framework to analyze the current message and provide the most accurate 
             logger.error(f"Error in response path execution: {e}")
             return await self._handle_pure_discussion(message, context)
     
-    async def _handle_pure_discussion(self, message: str, context: ConversationContext) -> dict:
+    async def _handle_pure_discussion(self, message: str, context: ConversationContext, progress_callback: Optional[Callable] = None) -> dict:
         """Handle pure discussion with comprehensive conversation context awareness."""
         try:
             # Build enhanced conversation context with 20 message history
@@ -645,6 +658,10 @@ Project: {context.project_context.get('name', 'Unknown')} | Tech: {context.proje
 Your response:
 """
             
+            # Send progress update before AI call
+            if progress_callback:
+                await progress_callback("ai_call", "🤖 Calling AI service...", "Generating response with conversation context")
+            
             response = await self.gemini_service.chat_with_system_prompt(message, system_prompt)
             
             return {
@@ -670,7 +687,7 @@ Your response:
                 "context_used": {}
             }
     
-    async def _handle_feature_exploration(self, message: str, context: ConversationContext, intent_analysis: IntentAnalysis) -> dict:
+    async def _handle_feature_exploration(self, message: str, context: ConversationContext, intent_analysis: IntentAnalysis, progress_callback: Optional[Callable] = None) -> dict:
         """Handle feature exploration with comprehensive conversation continuity."""
         try:
             # Build enhanced conversation context with extended history
@@ -720,6 +737,10 @@ Project: {context.project_context.get('name', 'Unknown')} | Tech: {context.proje
 
 Your response should demonstrate deep understanding of the entire conversation, not just recent exchanges.
 """
+            
+            # Send progress update before AI call
+            if progress_callback:
+                await progress_callback("ai_call", "🤖 Calling AI service...", "Exploring feature ideas with AI")
             
             response = await self.gemini_service.chat_with_system_prompt(message, system_prompt)
             
@@ -1017,7 +1038,7 @@ Show deep understanding of how the specification has evolved throughout the enti
             return {"status": "error", "error": str(e)}
     
     # Helper methods for context and processing
-    async def _build_vector_enhanced_context(self, message: str, project_id: str, session_messages: List[ChatMessage], project_context: dict) -> dict:
+    async def _build_vector_enhanced_context(self, message: str, project_id: str, session_messages: List[ChatMessage], project_context: dict, task_context: Optional[Any] = None) -> dict:
         """Build vector-enhanced context using existing vector context service."""
         try:
             # Generate conversation embedding
@@ -1026,7 +1047,7 @@ Show deep understanding of how the specification has evolved throughout the enti
             )
             
             if not conversation_embedding:
-                return self._create_fallback_vector_context(message, project_id, session_messages, project_context)
+                return self._create_fallback_vector_context(message, project_id, session_messages, project_context, task_context)
             
             # Get all tasks and memories
             all_tasks = self.file_service.load_tasks(project_id)
@@ -1037,13 +1058,34 @@ Show deep understanding of how the specification has evolved throughout the enti
                 conversation_embedding, all_tasks, project_id
             )
             
+            # If task context is provided, prioritize it
+            if task_context:
+                # Create high-priority task context entry
+                task_context_entry = {
+                    "task": task_context,
+                    "score": 1.0,  # Highest possible score
+                    "reason": "Active task context - primary focus for this conversation"
+                }
+                
+                # Filter out the task context from relevant_tasks if it's already there
+                relevant_tasks = [item for item in relevant_tasks if item.get("task", {}).get("id") != task_context.id]
+                
+                # Add task context at the beginning with highest priority
+                relevant_tasks.insert(0, task_context_entry)
+                
+                logger.info(f"Prioritized task context: {task_context.title}")
+            
             relevant_memories = vector_context_service.find_relevant_memories(
                 conversation_embedding, all_memories, project_id
             )
             
             # Assemble context
             assembled_context = vector_context_service.assemble_vector_context(
-                session_messages, relevant_tasks, relevant_memories, message
+                session_messages=session_messages,
+                relevant_tasks=relevant_tasks,
+                relevant_memories=relevant_memories,
+                new_user_message=message,
+                task_context=task_context
             )
             
             return {
@@ -1055,7 +1097,7 @@ Show deep understanding of how the specification has evolved throughout the enti
             
         except Exception as e:
             logger.error(f"Error building vector-enhanced context: {e}")
-            return self._create_fallback_vector_context(message, project_id, session_messages, project_context)
+            return self._create_fallback_vector_context(message, project_id, session_messages, project_context, task_context)
     
     def _create_conversation_summary(self, session_messages: List[ChatMessage], current_message: str) -> str:
         """Create enhanced conversation summary that emphasizes recent context with extended history."""
@@ -1204,11 +1246,23 @@ Show deep understanding of how the specification has evolved throughout the enti
             accumulated_specs={}
         )
     
-    def _create_fallback_vector_context(self, message: str, project_id: str, session_messages: List[ChatMessage], project_context: dict) -> dict:
+    def _create_fallback_vector_context(self, message: str, project_id: str, session_messages: List[ChatMessage], project_context: dict, task_context: Optional[Any] = None) -> dict:
         """Create fallback vector context."""
+        relevant_tasks = []
+        context_message = f"Current request: {message}"
+        
+        # Include task context even in fallback mode
+        if task_context:
+            relevant_tasks = [{
+                "task": task_context,
+                "score": 1.0,
+                "reason": "Active task context - primary focus for this conversation"
+            }]
+            context_message += f"\n\nFOCUSED TASK CONTEXT:\nTask: {task_context.title}\nDescription: {task_context.description}"
+        
         return {
-            "assembled_context": f"Current request: {message}",
-            "relevant_tasks_with_scores": [],
+            "assembled_context": context_message,
+            "relevant_tasks_with_scores": relevant_tasks,
             "relevant_memories_with_scores": [],
             "vector_embedding": None
         }
@@ -1631,11 +1685,24 @@ Return JSON array with tasks that comprehensively capture the extended conversat
         for task_data in task_breakdown:
             try:
                 # Create task using tool registry
-                result = self.tool_registry.execute_tool(
+                # Extract optional parameters
+                params = {
+                    "title": task_data["title"],
+                    "description": task_data["description"],
+                    "project_id": project_id
+                }
+                
+                # Add optional parameters if they exist
+                if "status" in task_data:
+                    params["status"] = task_data["status"]
+                if "priority" in task_data:
+                    params["priority"] = task_data["priority"]
+                if "due_date" in task_data:
+                    params["due_date"] = task_data["due_date"]
+                
+                result = await self.tool_registry.execute_tool(
                     "create_task",
-                    title=task_data["title"],
-                    description=task_data["description"],
-                    project_id=project_id
+                    **params
                 )
                 results.append(result)
             except Exception as e:
@@ -1970,7 +2037,7 @@ Return JSON with the detected action and context-specific parameters informed by
                 }
             
             # Execute completion
-            result = self.tool_registry.execute_tool(
+            result = await self.tool_registry.execute_tool(
                 "change_task_status",
                 task_identifier=matching_task.id,
                 new_status="completed",
@@ -2022,7 +2089,7 @@ Return JSON with the detected action and context-specific parameters informed by
                 }
             
             # Execute deletion
-            result = self.tool_registry.execute_tool(
+            result = await self.tool_registry.execute_tool(
                 "delete_task",
                 task_identifier=matching_task.id,
                 project_id=project_id
@@ -2090,7 +2157,7 @@ Return JSON with the detected action and context-specific parameters informed by
                 if tool_name in self.tool_registry.get_available_tools():
                     try:
                         # Actually execute the tool through the registry
-                        result = self.tool_registry.execute_tool(tool_name, **parameters)
+                        result = await self.tool_registry.execute_tool(tool_name, **parameters)
                         tool_results.append(result)
                         total_tool_calls += 1
                         
@@ -2149,7 +2216,7 @@ Return JSON with the detected action and context-specific parameters informed by
             return []
         
         try:
-            search_result = self.tool_registry.execute_tool(
+            search_result = await self.tool_registry.execute_tool(
                 search_tool,
                 query=search_query,
                 project_id=project_id
