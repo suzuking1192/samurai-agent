@@ -1,6 +1,7 @@
 import uuid
 import json
 import logging
+import asyncio
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from pydantic import BaseModel, Field
@@ -27,39 +28,38 @@ class CreateTaskTool(TaskTool):
     name: str = "create_task"
     description: str = "Create a new task in the project"
     
-    def execute(self, title: str, description: str, priority: str = "medium", 
+    async def execute(self, title: str, description: str, priority: str = "medium", 
                 due_date: Optional[str] = None, project_id: str = None, status: str = "pending") -> Dict[str, Any]:
         """
-        Create a new task
+        Create a new task with automatic analysis
         """
         try:
-            file_service = FileService()
+            from .task_service import TaskService
+            task_service = TaskService()
             
-            # Create task object
-            task = Task(
-                id=str(uuid.uuid4()),
-                project_id=project_id,
+            # Create task with analysis
+            task = await task_service.create_task(
                 title=title,
                 description=description,
+                project_id=project_id,
                 priority=priority,
-                status="pending",
-                completed=False,
-                order=0,  # Will be set by file service
-                created_at=datetime.now()
+                status=status
             )
             
-            # Load existing tasks and add new one
-            existing_tasks = file_service.load_tasks(project_id)
-            existing_tasks.append(task)
-            
-            # Save updated tasks
-            file_service.save_tasks(project_id, existing_tasks)
-            
-            return {
+            # Return success response
+            response = {
                 "success": True,
                 "task_id": task.id,
                 "message": f"✅ Created task: '{title}'"
             }
+            
+            # Add warning count if there are any
+            if task.review_warnings:
+                warning_count = len(task.review_warnings)
+                response["message"] += f" ({warning_count} warning{'s' if warning_count != 1 else ''} to review)"
+            
+            return response
+            
         except Exception as e:
             logger.error(f"Error creating task: {e}")
             return {
@@ -72,6 +72,50 @@ class CreateTaskTool(TaskTool):
 class UpdateTaskTool(TaskTool):
     name: str = "update_task"
     description: str = "Update an existing task's details"
+    
+    async def execute(self, task_id: str, project_id: str, updates: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Update a task with automatic re-analysis if description changes
+        """
+        try:
+            from .task_service import TaskService
+            task_service = TaskService()
+            
+            # Update task with re-analysis if needed
+            task = await task_service.update_task(
+                project_id=project_id,
+                task_id=task_id,
+                updates=updates
+            )
+            
+            if not task:
+                return {
+                    "success": False,
+                    "error": "Task not found",
+                    "message": f"❌ Task {task_id} not found"
+                }
+            
+            # Return success response
+            response = {
+                "success": True,
+                "task_id": task.id,
+                "message": f"✅ Updated task: '{task.title}'"
+            }
+            
+            # Add warning count if there are any
+            if task.review_warnings:
+                warning_count = len(task.review_warnings)
+                response["message"] += f" ({warning_count} warning{'s' if warning_count != 1 else ''} to review)"
+            
+            return response
+            
+        except Exception as e:
+            logger.error(f"Error updating task: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "message": f"❌ Failed to update task: {str(e)}"
+            }
     
     def execute(self, task_identifier: str, project_id: str, 
                 title: str = None, description: str = None, 
@@ -554,7 +598,7 @@ class AgentToolRegistry:
         
         return "\n".join(descriptions)
     
-    def execute_tool(self, tool_name: str, **kwargs) -> Dict[str, Any]:
+    async def execute_tool(self, tool_name: str, **kwargs) -> Dict[str, Any]:
         """
         Execute a tool with given parameters
         """
@@ -565,7 +609,11 @@ class AgentToolRegistry:
             }
         
         try:
-            return self.tools[tool_name].execute(**kwargs)
+            tool = self.tools[tool_name]
+            if hasattr(tool, 'execute') and asyncio.iscoroutinefunction(tool.execute):
+                return await tool.execute(**kwargs)
+            else:
+                return tool.execute(**kwargs)
         except Exception as e:
             logger.error(f"Tool execution failed for {tool_name}: {e}")
             return {

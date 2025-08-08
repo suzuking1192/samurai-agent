@@ -1700,7 +1700,7 @@ Return JSON array with tasks that comprehensively capture the extended conversat
                 if "due_date" in task_data:
                     params["due_date"] = task_data["due_date"]
                 
-                result = self.tool_registry.execute_tool(
+                result = await self.tool_registry.execute_tool(
                     "create_task",
                     **params
                 )
@@ -2037,7 +2037,7 @@ Return JSON with the detected action and context-specific parameters informed by
                 }
             
             # Execute completion
-            result = self.tool_registry.execute_tool(
+            result = await self.tool_registry.execute_tool(
                 "change_task_status",
                 task_identifier=matching_task.id,
                 new_status="completed",
@@ -2089,7 +2089,7 @@ Return JSON with the detected action and context-specific parameters informed by
                 }
             
             # Execute deletion
-            result = self.tool_registry.execute_tool(
+            result = await self.tool_registry.execute_tool(
                 "delete_task",
                 task_identifier=matching_task.id,
                 project_id=project_id
@@ -2157,7 +2157,7 @@ Return JSON with the detected action and context-specific parameters informed by
                 if tool_name in self.tool_registry.get_available_tools():
                     try:
                         # Actually execute the tool through the registry
-                        result = self.tool_registry.execute_tool(tool_name, **parameters)
+                        result = await self.tool_registry.execute_tool(tool_name, **parameters)
                         tool_results.append(result)
                         total_tool_calls += 1
                         
@@ -2216,7 +2216,7 @@ Return JSON with the detected action and context-specific parameters informed by
             return []
         
         try:
-            search_result = self.tool_registry.execute_tool(
+            search_result = await self.tool_registry.execute_tool(
                 search_tool,
                 query=search_query,
                 project_id=project_id

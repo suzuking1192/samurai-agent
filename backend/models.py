@@ -16,6 +16,17 @@ class TaskPriority(str, Enum):
     MEDIUM = "medium"
     HIGH = "high"
 
+class TaskWarning(BaseModel):
+    """
+    Model for task review warnings.
+    
+    Attributes:
+        message: The warning message to display
+        reasoning: Detailed reasoning for why this warning was generated
+    """
+    message: str = Field(..., description="Warning message")
+    reasoning: str = Field(..., description="Detailed reasoning for the warning")
+
 class MemoryCategory(str, Enum):
     """Software engineering-focused memory categories."""
     # Technical Categories
@@ -333,6 +344,7 @@ class Task(BaseModel):
         updated_at: Timestamp when the task was last updated
         embedding: Vector embedding for semantic search
         embedding_text: Text used to generate the embedding
+        review_warnings: List of warnings for task review
     """
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Unique task identifier")
     project_id: str = Field(..., description="Project identifier")
@@ -346,6 +358,7 @@ class Task(BaseModel):
     updated_at: datetime = Field(default_factory=datetime.utcnow, description="Last update timestamp")
     embedding: Optional[List[float]] = Field(None, description="Vector embedding for semantic search")
     embedding_text: Optional[str] = Field(None, description="Text used to generate the embedding")
+    review_warnings: Optional[List[TaskWarning]] = Field(default=[], description="List of warnings for task review")
 
     class Config:
         """Pydantic configuration for JSON serialization."""

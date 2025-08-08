@@ -611,31 +611,34 @@ async def get_project_tasks(project_id: str):
 
 @app.put("/projects/{project_id}/tasks/{task_id}")
 async def update_task(project_id: str, task_id: str, request: dict):
-    """Update task status"""
+    """Update task with automatic re-analysis"""
     try:
         logger.info(f"Updating task {task_id} in project {project_id}")
         
-        # Update task with new data
-        task = file_service.get_task_by_id(project_id, task_id)
+        # Use TaskService for automatic re-analysis
+        from services.task_service import TaskService
+        task_service = TaskService()
+        
+        # Prepare updates
+        updates = {}
+        if 'status' in request:
+            updates['status'] = request['status']
+        if 'priority' in request:
+            updates['priority'] = request['priority']
+        if 'title' in request:
+            updates['title'] = request['title']
+        if 'description' in request:
+            updates['description'] = request['description']
+        if 'completed' in request:
+            updates['completed'] = request['completed']
+        
+        # Update task with automatic re-analysis
+        task = await task_service.update_task(project_id, task_id, updates)
         if not task:
             logger.warning(f"Task not found: {task_id}")
             raise HTTPException(status_code=404, detail="Task not found")
         
-        # Update task fields
-        if 'status' in request:
-            task.status = request['status']
-        if 'priority' in request:
-            task.priority = request['priority']
-        if 'title' in request:
-            task.title = request['title']
-        if 'description' in request:
-            task.description = request['description']
-        if 'completed' in request:
-            task.completed = request['completed']
-        
-        task.updated_at = datetime.now()
-        file_service.save_task(project_id, task)
-        logger.info(f"Task updated successfully: {task_id}")
+        logger.info(f"Task updated successfully: {task_id} with {len(task.review_warnings or [])} warnings")
         return task
     except HTTPException:
         raise
@@ -663,23 +666,23 @@ async def delete_task(project_id: str, task_id: str):
 # Additional endpoints for completeness
 @app.post("/projects/{project_id}/tasks", response_model=Task)
 async def create_task(project_id: str, task_data: dict):
-    """Create a new task"""
+    """Create a new task with automatic analysis"""
     try:
         logger.info(f"Creating task in project {project_id}")
         
-        # Create task with project_id
-        task = Task(
-            project_id=project_id,
+        # Use TaskService for automatic analysis
+        from services.task_service import TaskService
+        task_service = TaskService()
+        
+        task = await task_service.create_task(
             title=task_data.get("title", ""),
             description=task_data.get("description", ""),
-            status=task_data.get("status", "pending"),
+            project_id=project_id,
             priority=task_data.get("priority", "medium"),
-            prompt=task_data.get("prompt", ""),
-            completed=task_data.get("completed", False),
-            order=task_data.get("order", 0)
+            status=task_data.get("status", "pending")
         )
-        file_service.save_task(project_id, task)
-        logger.info(f"Task created successfully: {task.id}")
+        
+        logger.info(f"Task created successfully: {task.id} with {len(task.review_warnings or [])} warnings")
         return task
     except Exception as e:
         logger.error(f"Error creating task: {e}")
