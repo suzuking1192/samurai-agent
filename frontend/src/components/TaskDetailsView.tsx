@@ -278,6 +278,27 @@ const TaskDetailsView: React.FC<TaskDetailsViewProps> = ({
 
         {/* Metadata Sidebar */}
         <div className="task-details-sidebar">
+          {/* Review Warnings Section - Show First */}
+          {task.review_warnings && task.review_warnings.length > 0 && (
+            <div className="warnings-section">
+              <h3>⚠️ Review Warnings ({task.review_warnings.length})</h3>
+              <div className="warnings-list">
+                {task.review_warnings.map((warning, index) => (
+                  <div key={index} className="warning-item">
+                    <div className="warning-message">
+                      <strong>Warning: </strong>
+                      <span>{warning.message}</span>
+                    </div>
+                    <div className="warning-reasoning">
+                      <strong>Reasoning: </strong>
+                      <span>{warning.reasoning}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="metadata-section">
             <h3>📊 Task Information</h3>
             <div className="metadata-list">

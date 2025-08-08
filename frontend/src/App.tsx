@@ -35,7 +35,7 @@ function App() {
       <header className="header">
         <div className="header-content">
           <h1 className="header-title">🥷 Samurai Agent</h1>
-          <span className="header-subtitle">Your AI Vibe Coding Partner With Endless Memory</span>
+          <span className="header-subtitle">Your vibe coding partner that turns ideas into AI-ready implementation specs</span>
         </div>
         <div className="header-actions">
           <ProjectSelector 

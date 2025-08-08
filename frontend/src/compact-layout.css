@@ -921,6 +921,47 @@
   font-size: 12px;
 }
 
+/* Warning styles */
+.warnings-section {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background-color: #fff7ed;
+  border-radius: 0.5rem;
+  border: 1px solid #fed7aa;
+}
+
+.warnings-section h3 {
+  margin: 0 0 0.75rem 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #92400e;
+}
+
+.warnings-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.warning-item {
+  padding: 0.75rem;
+  background-color: white;
+  border-radius: 0.375rem;
+  border: 1px solid #fed7aa;
+}
+
+.warning-message {
+  margin-bottom: 0.5rem;
+  font-size: 14px;
+  color: #92400e;
+}
+
+.warning-reasoning {
+  font-size: 0.875rem;
+  color: #666;
+  line-height: 1.4;
+}
+
 /* Mobile responsive for task details */
 @media (max-width: 768px) {
   .task-details-content {
