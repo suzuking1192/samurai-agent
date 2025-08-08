@@ -27,7 +27,6 @@ from services.file_service import FileService
 from services.unified_samurai_agent import unified_samurai_agent
 from services.context_service import context_service
 from services.response_service import handle_agent_response, handle_validation_error
-from services.semantic_service import SemanticService
 from services.intelligent_memory_consolidation import IntelligentMemoryConsolidationService
 
 
@@ -59,7 +58,6 @@ app.add_middleware(
 # Initialize services
 file_service = FileService()
 gemini_service = GeminiService()
-semantic_service = SemanticService()
 memory_consolidation_service = IntelligentMemoryConsolidationService()
 
 # Global exception handler
@@ -187,124 +185,6 @@ async def delete_project(project_id: str):
     except Exception as e:
         logger.error(f"Error deleting project {project_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to delete project: {str(e)}")
-
-# Chat endpoint
-@app.post("/projects/{project_id}/chat", response_model=ChatResponse)
-async def chat_with_project(project_id: str, request: ChatRequest):
-    """Chat about the project with intelligent task and memory generation"""
-    try:
-        logger.info(f"Chat request for project {project_id}: {request.message[:50]}...")
-        
-        # 1. Verify project exists
-        project = file_service.get_project_by_id(project_id)
-        if not project:
-            logger.warning(f"Project not found for chat: {project_id}")
-            raise HTTPException(status_code=404, detail="Project not found")
-        
-        # 2. Get or create current session
-        current_session = file_service.get_latest_session(project_id)
-        if not current_session:
-            # Create a new session if none exists
-            current_session = file_service.create_session(project_id)
-            logger.info(f"Created new session: {current_session.id}")
-        
-        # 3. Handle task context from request or session
-        task_context = None
-        if request.task_context_id:
-            # Task context provided in request - set it for the session
-            task_context = file_service.get_task_by_id(project_id, request.task_context_id)
-            if task_context:
-                current_session.task_context_id = request.task_context_id
-                current_session.last_activity = datetime.now()
-                file_service.save_session(project_id, current_session)
-                logger.info(f"Set task context from request: {request.task_context_id}")
-            else:
-                logger.warning(f"Task context ID not found: {request.task_context_id}")
-        elif current_session.task_context_id:
-            # Use existing task context from session
-            task_context = file_service.get_task_by_id(project_id, current_session.task_context_id)
-            if task_context:
-                logger.info(f"Using existing task context: {current_session.task_context_id}")
-            else:
-                # Task was deleted, clear the context
-                current_session.task_context_id = None
-                file_service.save_session(project_id, current_session)
-                logger.info(f"Cleared invalid task context: {current_session.task_context_id}")
-        
-        # 4. Load conversation history for context extraction
-        conversation_history = file_service.load_chat_messages_by_session(project_id, current_session.id)
-        logger.info(f"Loaded {len(conversation_history)} conversation messages for context extraction")
-        
-        # 5. Convert project to context dict for SamuraiAgent
-        project_context = {
-            "name": project.name,
-            "description": project.description,
-            "tech_stack": project.tech_stack
-        }
-        
-        logger.info(f"Project context: {project.name} - {project.tech_stack}")
-        if task_context:
-            logger.info(f"Task context: {task_context.title}")
-        
-        # 6. Use Unified Samurai Agent to process the message with conversation history and task context
-        logger.info("Processing message with Unified Samurai Agent...")
-        result = await unified_samurai_agent.process_message(
-            message=request.message,
-            project_id=project_id,
-            project_context=project_context,
-            session_id=current_session.id,
-            conversation_history=conversation_history,
-            task_context=task_context
-        )
-        
-        logger.info(f"Unified Samurai Agent response type: {result.get('type', 'unknown')}")
-        
-        # 5. Handle long responses seamlessly without user-facing error messages
-        final_response = result.get("response", "I'm sorry, I couldn't process that request.")
-        
-        # Apply seamless response handling
-        final_response = handle_agent_response(final_response)
-        
-        # 6. Create ChatMessage with processed response and session_id
-        chat_message = ChatMessage(
-            id=str(uuid.uuid4()),
-            project_id=project_id,
-            session_id=current_session.id,
-            message=request.message,
-            response=final_response,
-            created_at=datetime.now()
-        )
-        
-        # 7. Save chat message
-        file_service.save_chat_message(project_id, chat_message)
-        logger.info(f"Chat message saved: {chat_message.id}")
-        
-        # 8. Update session activity
-        file_service.update_session_activity(project_id, current_session.id)
-        
-        # 9. Load current tasks and memories for response
-        current_tasks = file_service.load_tasks(project_id)
-        current_memories = file_service.load_memories(project_id)
-        
-        logger.info(f"Current state: {len(current_tasks)} tasks, {len(current_memories)} memories")
-        
-        # 10. Return response with generated tasks and memories
-        return ChatResponse(
-            response=final_response,
-            tasks=result.get("tasks", []),  # Include any newly generated tasks
-            memories=current_memories,  # Include all memories for context
-            type=result.get("type", "chat"),
-            intent_analysis=result.get("intent_analysis"),  # Include intent analysis from unified agent
-            memory_updated=result.get("memory_updated", False),  # Include memory update status
-            task_context=task_context  # Include the active task context
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error in chat with project {project_id}: {e}")
-        logger.error(f"Traceback: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=f"Chat failed: {str(e)}")
-
 
 @app.post("/projects/{project_id}/chat-with-progress")
 async def chat_with_progress(project_id: str, request: ChatRequest):
@@ -1124,64 +1004,6 @@ async def get_task_context(project_id: str, session_id: str):
     except Exception as e:
         logger.error(f"Error getting task context: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get task context: {str(e)}")
-
-
-# Legacy chat endpoint (keeping for backward compatibility)
-@app.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
-    """Send a message to the AI agent"""
-    try:
-        logger.info(f"Legacy chat request: {request.message[:50]}...")
-        
-        # Simple chat without project context
-        ai_response = await gemini_service.chat(request.message)
-        logger.info("Legacy chat response generated successfully")
-        
-        return ChatResponse(
-            response=ai_response,
-            tasks=None,
-            type="chat"
-        )
-    except Exception as e:
-        logger.error(f"Error in legacy chat: {e}")
-        raise HTTPException(status_code=500, detail=f"Chat failed: {str(e)}")
-
-@app.route('/api/semantic-hierarchy', methods=['POST'])
-async def get_semantic_hierarchy(request: Request):
-    """Get semantic hierarchy for tasks and memories"""
-    try:
-        data = await request.json()
-        project_id = data.get('project_id')
-        clustering_type = data.get('clustering_type', 'content')
-        depth = data.get('depth', 2)
-        
-        if not project_id:
-            return JSONResponse(
-                status_code=400,
-                content={"error": "Project ID is required"}
-            )
-        
-        # Load tasks and memories for the project
-        tasks = file_service.load_tasks(project_id)
-        memories = file_service.load_memories(project_id)
-        
-        # Generate semantic hierarchy
-        hierarchy = semantic_service.create_advanced_hierarchy(
-            tasks, memories, clustering_type, depth
-        )
-        
-        return JSONResponse(
-            status_code=200,
-            content=hierarchy
-        )
-        
-    except Exception as e:
-        logger.error(f"Error generating semantic hierarchy: {e}")
-        return JSONResponse(
-            status_code=500,
-            content={"error": "Failed to generate semantic hierarchy"}
-        )
-
 
 
 if __name__ == "__main__":
