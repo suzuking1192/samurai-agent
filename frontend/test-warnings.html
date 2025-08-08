@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Task Warnings Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .task {
+            border: 1px solid #ddd;
+            margin: 20px 0;
+            padding: 20px;
+            border-radius: 8px;
+        }
+        .warnings-section {
+            margin-top: 15px;
+            padding: 15px;
+            background-color: #fff7ed;
+            border-radius: 5px;
+            border: 1px solid #fed7aa;
+        }
+        .warning-item {
+            padding: 10px;
+            background-color: white;
+            border-radius: 4px;
+            border: 1px solid #fed7aa;
+            margin: 10px 0;
+        }
+        .warning-message {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .warning-reasoning {
+            font-size: 0.9em;
+            color: #666;
+        }
+        .no-warnings {
+            color: #666;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <h1>Task Warnings Test</h1>
+    <p>Testing if task warnings are being displayed correctly from the API.</p>
+    
+    <div id="tasks-container">
+        <p>Loading tasks...</p>
+    </div>
+
+    <script>
+        async function loadTasks() {
+            try {
+                const projectId = '4f92aaad-a109-488d-b9e2-b01b1a9f2c5b'; // Vector Context Demo Project
+                console.log('Fetching tasks for project:', projectId);
+                const response = await fetch(`http://localhost:8000/projects/${projectId}/tasks`);
+                console.log('Response status:', response.status);
+                const tasks = await response.json();
+                console.log('Tasks received:', tasks);
+                
+                const container = document.getElementById('tasks-container');
+                container.innerHTML = '';
+                
+                tasks.forEach(task => {
+                    console.log('Processing task:', task.title, 'Warnings:', task.review_warnings);
+                    
+                    const taskDiv = document.createElement('div');
+                    taskDiv.className = 'task';
+                    
+                    const warningsCount = task.review_warnings ? task.review_warnings.length : 0;
+                    console.log(`Task "${task.title}" has ${warningsCount} warnings`);
+                    
+                    taskDiv.innerHTML = `
+                        <h3>${task.title}</h3>
+                        <p><strong>Description:</strong> ${task.description}</p>
+                        <p><strong>Status:</strong> ${task.status}</p>
+                        <p><strong>Priority:</strong> ${task.priority}</p>
+                        
+                        <div class="warnings-section">
+                            <h4>⚠️ Review Warnings (${warningsCount})</h4>
+                            ${task.review_warnings && task.review_warnings.length > 0 
+                                ? task.review_warnings.map(warning => `
+                                    <div class="warning-item">
+                                        <div class="warning-message">
+                                            <strong>Warning:</strong> ${warning.message}
+                                        </div>
+                                        <div class="warning-reasoning">
+                                            <strong>Reasoning:</strong> ${warning.reasoning}
+                                        </div>
+                                    </div>
+                                `).join('')
+                                : '<p class="no-warnings">No warnings found</p>'
+                            }
+                        </div>
+                    `;
+                    
+                    container.appendChild(taskDiv);
+                });
+                
+                console.log('Tasks loaded:', tasks);
+                
+            } catch (error) {
+                console.error('Error loading tasks:', error);
+                document.getElementById('tasks-container').innerHTML = `
+                    <p style="color: red;">Error loading tasks: ${error.message}</p>
+                `;
+            }
+        }
+        
+        // Load tasks when page loads
+        loadTasks();
+        
+        // Refresh every 30 seconds
+        setInterval(loadTasks, 30000);
+    </script>
+</body>
+</html>

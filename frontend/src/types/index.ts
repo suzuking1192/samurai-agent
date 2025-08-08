@@ -233,6 +233,11 @@ export interface Project {
   updated_at?: string
 }
 
+export interface TaskWarning {
+  message: string
+  reasoning: string
+}
+
 export interface Task {
   id: string
   project_id: string
@@ -242,6 +247,7 @@ export interface Task {
   priority: TaskPriority
   created_at: string
   updated_at: string
+  review_warnings?: TaskWarning[]
 }
 
 export interface Memory {
