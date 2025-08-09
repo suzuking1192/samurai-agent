@@ -393,7 +393,7 @@ class ChatMessage(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Unique message identifier")
     project_id: str = Field(..., description="Project identifier")
     session_id: str = Field(..., description="Session identifier for conversation grouping")
-    message: str = Field(..., max_length=5000, description="User message content")
+    message: str = Field(..., max_length=100000, description="User message content")
     response: str = Field(default="", max_length=15000, description="AI response content")
     created_at: datetime = Field(default_factory=datetime.utcnow, description="Message timestamp")
     embedding: Optional[List[float]] = Field(None, description="Vector embedding for semantic search")
@@ -453,7 +453,7 @@ class ChatRequest(BaseModel):
         message: User message content
         task_context_id: Optional task ID to use as context for this chat
     """
-    message: str = Field(..., min_length=1, max_length=2000, description="User message")
+    message: str = Field(..., min_length=1, max_length=100000, description="User message")
     task_context_id: Optional[str] = Field(default=None, description="Task ID to use as context for this chat")
 
     class Config:

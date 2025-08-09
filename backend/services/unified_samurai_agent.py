@@ -214,18 +214,18 @@ class UnifiedSamuraiAgent:
             return await self._handle_processing_error(message, e, project_context)
     
     async def _send_dynamic_progress_update(
-        self, 
+        self,
         progress_callback: Callable[[str, str, str, Dict[str, Any]], None],
-        stage: str, 
-        message: str, 
-        details: str, 
+        stage: str,
+        message: str,
+        details: str,
         project_context: dict
     ) -> None:
         """
-        Send dynamic progress updates using the ResponseGenerator.
+        Send immediate, non-blocking progress updates. Avoid LLM calls to preserve streaming responsiveness.
         """
+        # Build a lightweight, human-friendly progress message instantly
         try:
-            # Create response context for progress update
             response_context = ResponseContext(
                 project_name=project_context.get('name', 'Unknown'),
                 tech_stack=project_context.get('tech_stack', 'Unknown'),
@@ -236,18 +236,15 @@ class UnifiedSamuraiAgent:
                 intent_type="progress_update",
                 confidence=1.0
             )
-            
-            # Generate dynamic progress message
+
+            # Generate a quick, templated message (non-blocking)
             dynamic_message = await self.response_generator.generate_progress_update(
                 stage, message, details, response_context
             )
-            
-            # Send the dynamic progress update
+
             await progress_callback(stage, dynamic_message, details, {})
-            
         except Exception as e:
             logger.error(f"Error generating dynamic progress update: {e}")
-            # Fallback to original message
             await progress_callback(stage, message, details, {})
     
     async def _load_comprehensive_context(
