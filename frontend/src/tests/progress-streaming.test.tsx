@@ -184,3 +184,5 @@ describe('Progress Streaming', () => {
     expect(screen.queryByText('🤖 Calling AI service...')).not.toBeInTheDocument()
   })
 })
+
+
