@@ -401,6 +401,11 @@ When intent is unclear, use these tie-breakers:
 4. **Project Reference**: References to their specific project suggest action-oriented intent
 5. **Implementation Language**: Technical implementation details suggest ready_for_action
 
+        ### STRICT ACTION GATE
+        - Only classify as **ready_for_action** if the user explicitly requests task creation or an implementation prompt.
+        - Only classify as **direct_action** if the user explicitly issues a task management command (e.g., mark/complete/delete) referring to tasks.
+        - If the user shares comprehensive specifications or details without explicitly asking to create tasks or generate a prompt, classify as **spec_clarification**.
+
 ### Step 6: Confidence Assessment
 Rate your confidence (internal use):
 - High: Clear patterns match, context supports classification
@@ -434,18 +439,14 @@ Based on the chain of thought analysis above, classify into exactly ONE category
 - Part of ongoing specification gathering
 
 **ready_for_action**: 
-- Complete feature specifications
-- Clear implementation requirements
-- Explicit task creation requests
-- Detailed scope with acceptance criteria
-- Ready for task breakdown
+        - Requires an explicit request to create tasks or generate an implementation prompt
+        - Examples of explicit requests: "create tasks", "add this as tasks", "turn this into tasks", "break this down into tasks", "generate tasks", "make tasks", "please create a prompt", "give me the prompt", "draft the prompt"
+        - If the message only provides detailed specifications without an explicit request above → classify as spec_clarification
 
 **direct_action**: 
-- Task status updates
-- Explicit task management commands
-- Progress reports
-- Requests to modify existing tasks
-- Direct project management actions
+        - Requires explicit task management commands that reference tasks (e.g., "mark task X complete", "delete task Y", "update task Z")
+        - Pure progress statements without commands remain discussion unless they ask to update tasks
+        - Avoid inferring direct_action from generic verbs alone; prefer explicit "task" references
 
 ## REFLECTION CHECK
 
@@ -478,6 +479,11 @@ Return ONLY the category name: pure_discussion, feature_exploration, spec_clarif
 **Context**: Feature has been discussed and specified
 **Analysis**: Complete requirements, explicit task request, implementation-ready
 **Classification**: ready_for_action
+
+        **Message**: "Here's a complete spec for the new onboarding flow: steps A/B/C, validations, edge cases, and success criteria."
+        **Context**: Providing detailed specs but no explicit task/prompt request
+        **Analysis**: Comprehensive details for discussion/clarification; no explicit ask to create tasks
+        **Classification**: spec_clarification
 
 **Message**: "How does JWT authentication work?"
 **Context**: General question, no project implementation context
@@ -521,14 +527,22 @@ Use this framework to analyze the current message and provide the most accurate 
                 "ready_for_action": "ready_for_action",
                 "ready for action": "ready_for_action",
                 "create tasks": "ready_for_action",
-                "add": "ready_for_action",
-                "implement": "ready_for_action",
+                "turn this into tasks": "ready_for_action",
+                "add as tasks": "ready_for_action",
+                "add this as tasks": "ready_for_action",
+                "break this down into tasks": "ready_for_action",
+                "generate tasks": "ready_for_action",
+                "make tasks": "ready_for_action",
+                "create a prompt": "ready_for_action",
+                "generate a prompt": "ready_for_action",
+                "give me the prompt": "ready_for_action",
                 
                 "direct_action": "direct_action",
                 "direct action": "direct_action",
-                "mark": "direct_action",
-                "delete": "direct_action",
-                "complete": "direct_action"
+                "mark task": "direct_action",
+                "delete task": "direct_action",
+                "complete task": "direct_action",
+                "update task": "direct_action"
             }
             
             # Find matching intent
@@ -545,14 +559,26 @@ Use this framework to analyze the current message and provide the most accurate 
                 if any(keyword in message.lower() for keyword in exploration_keywords):
                     detected_intent = "feature_exploration"
                 
-                # Check for ready for action keywords
-                action_keywords = ["create tasks", "add", "implement", "build"]
-                if any(keyword in message.lower() for keyword in action_keywords):
+                # Check for ready for action explicit phrases
+                action_phrases = [
+                    "create tasks",
+                    "turn this into tasks",
+                    "add as tasks",
+                    "add this as tasks",
+                    "break this down into tasks",
+                    "generate tasks",
+                    "make tasks",
+                    "create a prompt",
+                    "generate a prompt",
+                    "give me the prompt"
+                ]
+                message_lower = message.lower()
+                if any(phrase in message_lower for phrase in action_phrases):
                     detected_intent = "ready_for_action"
                 
                 # Check for direct action keywords
-                direct_keywords = ["mark", "delete", "complete", "finish"]
-                if any(keyword in message.lower() for keyword in direct_keywords):
+                direct_keywords = ["mark", "delete", "complete", "finish", "update", "close"]
+                if any(keyword in message_lower for keyword in direct_keywords) and any(entity in message_lower for entity in ["task", "tasks", "issue", "ticket"]):
                     detected_intent = "direct_action"
             
             return IntentAnalysis(
