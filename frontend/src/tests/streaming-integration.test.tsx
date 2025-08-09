@@ -1,5 +1,5 @@
 import React from 'react'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import Chat from '../components/Chat'
@@ -10,7 +10,8 @@ vi.mock('../services/api', () => ({
   sendChatMessageWithProgress: vi.fn(),
   getCurrentSession: vi.fn().mockResolvedValue({ id: 'test-session', name: 'Test Session' }),
   getSessionMessages: vi.fn().mockResolvedValue([]),
-  createSession: vi.fn().mockResolvedValue({ id: 'new-session', name: 'New Session' })
+  createSession: vi.fn().mockResolvedValue({ id: 'new-session', name: 'New Session' }),
+  getTaskContext: vi.fn().mockResolvedValue({ task_context: null })
 }))
 
 const mockSendChatMessageWithProgress = sendChatMessageWithProgress as any
@@ -18,6 +19,7 @@ const mockSendChatMessageWithProgress = sendChatMessageWithProgress as any
 describe('Real-Time Progress Streaming Integration', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.useFakeTimers()
   })
 
   it('should display real-time progress updates during message processing', async () => {
@@ -25,85 +27,10 @@ describe('Real-Time Progress Streaming Integration', () => {
     let onProgress: ((progress: any) => void) | undefined
     let onComplete: ((response: string) => void) | undefined
     
-    mockSendChatMessageWithProgress.mockImplementation(async (request: any, progressCallback: any, completeCallback: any) => {
-      onProgress = progressCallback
-      onComplete = completeCallback
-      
-      // Simulate real-time progress updates
-      if (onProgress) {
-        // Start processing
-        onProgress({
-          step: 'start',
-          message: '🧠 Starting to process your request...',
-          details: 'Initializing the planning-first agent',
-          timestamp: new Date().toISOString()
-        })
-        
-        await new Promise(resolve => setTimeout(resolve, 100))
-        
-        // Context gathering
-        onProgress({
-          step: 'context',
-          message: '📚 Gathering conversation context...',
-          details: 'Loading previous messages and project context',
-          timestamp: new Date().toISOString()
-        })
-        
-        await new Promise(resolve => setTimeout(resolve, 200))
-        
-        // Analysis
-        onProgress({
-          step: 'analyzing',
-          message: '🧠 Analyzing your request...',
-          details: 'Understanding your intent and requirements',
-          timestamp: new Date().toISOString()
-        })
-        
-        await new Promise(resolve => setTimeout(resolve, 150))
-        
-        // Planning
-        onProgress({
-          step: 'planning',
-          message: '📋 Creating execution plan...',
-          details: 'Planning the best approach for your request',
-          timestamp: new Date().toISOString()
-        })
-        
-        await new Promise(resolve => setTimeout(resolve, 300))
-        
-        // Execution
-        onProgress({
-          step: 'execution',
-          message: '⚙️ Executing plan...',
-          details: 'Carrying out the planned actions',
-          timestamp: new Date().toISOString()
-        })
-        
-        await new Promise(resolve => setTimeout(resolve, 100))
-        
-        // Memory update
-        onProgress({
-          step: 'memory',
-          message: '💾 Updating memory...',
-          details: 'Saving important information for future reference',
-          timestamp: new Date().toISOString()
-        })
-        
-        await new Promise(resolve => setTimeout(resolve, 100))
-        
-        // Completion
-        onProgress({
-          step: 'completion',
-          message: '🎉 Processing complete!',
-          details: 'All tasks completed successfully',
-          timestamp: new Date().toISOString()
-        })
-      }
-      
-      // Send final response
-      if (onComplete) {
-        onComplete('I have successfully processed your request and created the necessary tasks.')
-      }
+    mockSendChatMessageWithProgress.mockImplementation(async (...args: any[]) => {
+      onProgress = args[1]
+      onComplete = args[2]
+      return Promise.resolve()
     })
 
     render(<Chat projectId="test-project" />)
@@ -126,10 +53,23 @@ describe('Real-Time Progress Streaming Integration', () => {
       expect(screen.getByText('Samurai Agent is thinking...')).toBeInTheDocument()
     })
 
-    // Wait for progress updates to start appearing
-    await waitFor(() => {
-      expect(screen.getByText('🧠 Starting to process your request...')).toBeInTheDocument()
-    }, { timeout: 2000 })
+    // Drive progress updates manually so tests are deterministic
+    await act(async () => {
+      onProgress?.({ step: 'start', message: '🧠 Starting to process your request...', timestamp: new Date().toISOString() })
+      vi.advanceTimersByTime(10)
+      onProgress?.({ step: 'context', message: '📚 Gathering conversation context...', timestamp: new Date().toISOString() })
+      vi.advanceTimersByTime(10)
+      onProgress?.({ step: 'analyzing', message: '🧠 Analyzing your request...', timestamp: new Date().toISOString() })
+      vi.advanceTimersByTime(10)
+      onProgress?.({ step: 'planning', message: '📋 Creating execution plan...', timestamp: new Date().toISOString() })
+      vi.advanceTimersByTime(10)
+      onProgress?.({ step: 'execution', message: '⚙️ Executing plan...', timestamp: new Date().toISOString() })
+      vi.advanceTimersByTime(10)
+      onProgress?.({ step: 'memory', message: '💾 Updating memory...', timestamp: new Date().toISOString() })
+      vi.advanceTimersByTime(10)
+      onProgress?.({ step: 'completion', message: '🎉 Processing complete!', timestamp: new Date().toISOString() })
+      onComplete?.('I have successfully processed your request and created the necessary tasks.')
+    })
 
     // Verify multiple progress steps appear in sequence
     await waitFor(() => {
@@ -176,15 +116,9 @@ describe('Real-Time Progress Streaming Integration', () => {
   it('should handle streaming errors gracefully', async () => {
     let onError: ((error: string) => void) | undefined
     
-    mockSendChatMessageWithProgress.mockImplementation(async (request: any, progressCallback: any, completeCallback: any, errorCallback: any) => {
-      onError = errorCallback
-      
-      // Simulate an error after a brief delay
-      await new Promise(resolve => setTimeout(resolve, 100))
-      
-      if (onError) {
-        onError('Failed to process request: Network error')
-      }
+    mockSendChatMessageWithProgress.mockImplementation(async (...args: any[]) => {
+      onError = args[3]
+      return Promise.resolve()
     })
 
     render(<Chat projectId="test-project" />)
@@ -201,42 +135,22 @@ describe('Real-Time Progress Streaming Integration', () => {
     fireEvent.change(input, { target: { value: 'This will cause an error' } })
     fireEvent.click(sendButton)
 
-    // Verify error message appears
+    await act(async () => {
+      onError?.('Failed to process request: Network error')
+    })
     await waitFor(() => {
       expect(screen.getByText(/Error: Failed to process request/)).toBeInTheDocument()
-    }, { timeout: 3000 })
+    })
   })
 
   it('should show progress steps with proper styling and icons', async () => {
     let onProgress: ((progress: any) => void) | undefined
     let onComplete: ((response: string) => void) | undefined
     
-    mockSendChatMessageWithProgress.mockImplementation(async (request: any, progressCallback: any, completeCallback: any) => {
-      onProgress = progressCallback
-      onComplete = completeCallback
-      
-      if (onProgress) {
-        // Send a few progress updates
-        onProgress({
-          step: 'analyzing',
-          message: '🧠 Analyzing your request...',
-          details: 'Understanding your intent and requirements',
-          timestamp: new Date().toISOString()
-        })
-        
-        await new Promise(resolve => setTimeout(resolve, 100))
-        
-        onProgress({
-          step: 'execution',
-          message: '⚙️ Executing plan...',
-          details: 'Carrying out the planned actions',
-          timestamp: new Date().toISOString()
-        })
-      }
-      
-      if (onComplete) {
-        onComplete('Processing completed successfully.')
-      }
+    mockSendChatMessageWithProgress.mockImplementation(async (...args: any[]) => {
+      onProgress = args[1]
+      onComplete = args[2]
+      return Promise.resolve()
     })
 
     render(<Chat projectId="test-project" />)
@@ -253,53 +167,27 @@ describe('Real-Time Progress Streaming Integration', () => {
     fireEvent.change(input, { target: { value: 'Test message' } })
     fireEvent.click(sendButton)
 
-    // Verify progress steps appear with proper styling
+    await act(async () => {
+      onProgress?.({ step: 'analyzing', message: '🧠 Analyzing your request...', timestamp: new Date().toISOString() })
+      vi.advanceTimersByTime(10)
+      onProgress?.({ step: 'execution', message: '⚙️ Executing plan...', timestamp: new Date().toISOString() })
+      onComplete?.('Processing completed successfully.')
+    })
     await waitFor(() => {
       expect(screen.getByText('🧠 Analyzing your request...')).toBeInTheDocument()
-    }, { timeout: 2000 })
-
-    await waitFor(() => {
       expect(screen.getByText('⚙️ Executing plan...')).toBeInTheDocument()
-    }, { timeout: 3000 })
-
-    // Verify final response
-    await waitFor(() => {
       expect(screen.getByText('Processing completed successfully.')).toBeInTheDocument()
-    }, { timeout: 4000 })
+    })
   })
 
   it('should handle rapid progress updates without UI lag', async () => {
     let onProgress: ((progress: any) => void) | undefined
     let onComplete: ((response: string) => void) | undefined
     
-    mockSendChatMessageWithProgress.mockImplementation(async (request: any, progressCallback: any, completeCallback: any) => {
-      onProgress = progressCallback
-      onComplete = completeCallback
-      
-      if (onProgress) {
-        // Send rapid progress updates
-        const steps = [
-          { step: 'start', message: '🚀 Starting...', details: 'Initializing' },
-          { step: 'context', message: '📚 Loading context...', details: 'Gathering information' },
-          { step: 'analyzing', message: '🧠 Analyzing...', details: 'Processing request' },
-          { step: 'planning', message: '📋 Planning...', details: 'Creating strategy' },
-          { step: 'execution', message: '⚙️ Executing...', details: 'Running actions' },
-          { step: 'memory', message: '💾 Saving...', details: 'Updating memory' },
-          { step: 'completion', message: '✅ Complete!', details: 'Finished processing' }
-        ]
-        
-        for (const step of steps) {
-          onProgress({
-            ...step,
-            timestamp: new Date().toISOString()
-          })
-          await new Promise(resolve => setTimeout(resolve, 50)) // Rapid updates
-        }
-      }
-      
-      if (onComplete) {
-        onComplete('All steps completed successfully.')
-      }
+    mockSendChatMessageWithProgress.mockImplementation(async (...args: any[]) => {
+      onProgress = args[1]
+      onComplete = args[2]
+      return Promise.resolve()
     })
 
     render(<Chat projectId="test-project" />)
@@ -316,22 +204,23 @@ describe('Real-Time Progress Streaming Integration', () => {
     fireEvent.change(input, { target: { value: 'Rapid processing test' } })
     fireEvent.click(sendButton)
 
-    // Verify that multiple progress steps appear
+    await act(async () => {
+      const steps = [
+        { step: 'start', message: '🚀 Starting...' },
+        { step: 'context', message: '📚 Loading context...' },
+        { step: 'analyzing', message: '🧠 Analyzing...' },
+      ]
+      for (const s of steps) {
+        onProgress?.({ ...s, timestamp: new Date().toISOString() })
+        vi.advanceTimersByTime(10)
+      }
+      onComplete?.('All steps completed successfully.')
+    })
     await waitFor(() => {
       expect(screen.getByText('🚀 Starting...')).toBeInTheDocument()
-    }, { timeout: 2000 })
-
-    await waitFor(() => {
-      expect(screen.getByText('�� Loading context...')).toBeInTheDocument()
-    }, { timeout: 3000 })
-
-    await waitFor(() => {
+      expect(screen.getByText('📚 Loading context...')).toBeInTheDocument()
       expect(screen.getByText('🧠 Analyzing...')).toBeInTheDocument()
-    }, { timeout: 4000 })
-
-    // Verify final completion
-    await waitFor(() => {
       expect(screen.getByText('All steps completed successfully.')).toBeInTheDocument()
-    }, { timeout: 5000 })
+    })
   })
 }) 

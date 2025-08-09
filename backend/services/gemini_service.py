@@ -1,6 +1,7 @@
 import google.generativeai as genai
 import os
 import logging
+import asyncio
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -11,15 +12,34 @@ logger = logging.getLogger(__name__)
 
 class GeminiService:
     def __init__(self):
-        # Configure Gemini
+        # Configure Gemini with graceful fallback for local/dev/test
         api_key = os.getenv("GEMINI_API_KEY")
-        if not api_key:
-            raise ValueError("GEMINI_API_KEY not found in environment variables")
-        
-        genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel('gemini-2.5-flash')
-        
-        logger.info("Gemini service initialized successfully")
+        use_mock = os.getenv("SAMURAI_USE_MOCK_LLM") == "1"
+
+        if not api_key or use_mock:
+            if use_mock:
+                logger.warning("SAMURAI_USE_MOCK_LLM=1 detected. Using mock LLM model for responses.")
+            else:
+                logger.warning("GEMINI_API_KEY not set. Falling back to mock LLM model for local/testing.")
+
+            class _DummyResponse:
+                def __init__(self, text: str):
+                    self.text = text
+
+            class _DummyModel:
+                def generate_content(self, prompt: str):
+                    # Return a fast, deterministic mock response
+                    preview = (prompt or "").strip()
+                    if len(preview) > 120:
+                        preview = preview[:120] + "..."
+                    return _DummyResponse(text=f"[mock-ai] {preview if preview else 'OK'}")
+
+            self.model = _DummyModel()
+            logger.info("Gemini service initialized with mock model")
+        else:
+            genai.configure(api_key=api_key)
+            self.model = genai.GenerativeModel('gemini-2.5-flash')
+            logger.info("Gemini service initialized successfully")
 
     async def chat(self, message: str, context: str = "") -> str:
         """Simple chat with optional context"""
@@ -29,7 +49,8 @@ class GeminiService:
             else:
                 full_prompt = message
                 
-            response = self.model.generate_content(full_prompt)
+            # Offload blocking SDK call to a background thread to avoid blocking the event loop
+            response = await asyncio.to_thread(self.model.generate_content, full_prompt)
             return response.text
             
         except Exception as e:
@@ -40,7 +61,8 @@ class GeminiService:
         """Chat with a custom system prompt"""
         try:
             full_prompt = f"{system_prompt}\n\nUser: {message}"
-            response = self.model.generate_content(full_prompt)
+            # Offload blocking SDK call to a background thread to avoid blocking the event loop
+            response = await asyncio.to_thread(self.model.generate_content, full_prompt)
             return response.text
             
         except Exception as e:

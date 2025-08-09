@@ -28,3 +28,14 @@ global.IntersectionObserver = vi.fn().mockImplementation(() => ({
   unobserve: vi.fn(),
   disconnect: vi.fn(),
 })) 
+
+// Mock scrollIntoView for jsdom
+// @ts-ignore
+if (!Element.prototype.scrollIntoView) {
+  // @ts-ignore
+  Element.prototype.scrollIntoView = vi.fn()
+}
+
+// Note: Do NOT polyfill a partial global `jest` object, since some libs will
+// branch on its presence and call methods we don't provide (e.g., advanceTimersByTime).
+// Tests should use `vi` timers directly.

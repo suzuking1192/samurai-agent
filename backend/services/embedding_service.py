@@ -8,7 +8,6 @@ and vector similarity search for tasks, memories, and chat messages.
 import logging
 import numpy as np
 from typing import List, Dict, Optional, Tuple, Any
-from sentence_transformers import SentenceTransformer
 import os
 from datetime import datetime
 import json
@@ -31,8 +30,16 @@ class EmbeddingService:
         self._load_model()
     
     def _load_model(self) -> None:
-        """Load the sentence transformer model."""
+        """Load the sentence transformer model with safe guards for tests/dev."""
         try:
+            if os.getenv("SAMURAI_DISABLE_EMBEDDINGS") == "1":
+                logger.warning("Embeddings disabled via SAMURAI_DISABLE_EMBEDDINGS=1")
+                self.model_loaded = False
+                return
+
+            # Lazy import to avoid import errors during tests when deps mismatch
+            from sentence_transformers import SentenceTransformer  # type: ignore
+
             logger.info(f"Loading embedding model: {self.model_name}")
             self.model = SentenceTransformer(self.model_name)
             self.model_loaded = True

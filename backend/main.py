@@ -169,6 +169,68 @@ async def get_project(project_id: str):
         logger.error(f"Error getting project {project_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get project: {str(e)}")
 
+@app.post("/projects/{project_id}/chat", response_model=ChatResponse)
+async def chat(project_id: str, request: ChatRequest):
+    """Non-streaming chat endpoint for integration compatibility."""
+    try:
+        project = file_service.get_project_by_id(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        project_context = {
+            "name": project.name,
+            "description": project.description,
+            "tech_stack": project.tech_stack
+        }
+
+        # Get or create current session
+        current_session = file_service.get_latest_session(project_id)
+        if not current_session:
+            current_session = file_service.create_session(project_id)
+
+        conversation_history = file_service.load_chat_messages_by_session(project_id, current_session.id)
+
+        # Process via unified agent (no progress callback)
+        result = await unified_samurai_agent.process_message(
+            message=request.message,
+            project_id=project_id,
+            project_context=project_context,
+            session_id=current_session.id,
+            conversation_history=conversation_history,
+            progress_callback=None,
+            task_context=None
+        )
+
+        final_response = handle_agent_response(result.get("response", ""))
+
+        # Persist chat
+        chat_message = ChatMessage(
+            id=str(uuid.uuid4()),
+            project_id=project_id,
+            session_id=current_session.id,
+            message=request.message,
+            response=final_response,
+            created_at=datetime.now()
+        )
+        file_service.save_chat_message(project_id, chat_message)
+        file_service.update_session_activity(project_id, current_session.id)
+
+        return ChatResponse(
+            response=final_response,
+            tasks=result.get("tool_results", []),
+            memories=None,
+            type=result.get("type", "chat"),
+            intent_analysis=result.get("intent_analysis"),
+            memory_updated=result.get("memory_updated", False),
+            task_context=None
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Chat endpoint error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to process chat request")
+
 @app.delete("/projects/{project_id}")
 async def delete_project(project_id: str):
     """Delete a project"""
@@ -723,15 +785,30 @@ async def create_memory(project_id: str, memory_data: dict):
     try:
         logger.info(f"Creating memory in project {project_id}")
         
-        # Create memory with project_id
+        # Verify project exists
+        project = file_service.get_project_by_id(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        # Accept both title+content+type and minimal content-only payloads
+        title = memory_data.get("title") or (memory_data.get("content", "").split(" ")[:6] and " ".join(memory_data.get("content", "").split(" ")[:6])) or "Memory"
+        content = memory_data.get("content", "")
+        mem_type = memory_data.get("type", "note")
+
+        if not content:
+            raise HTTPException(status_code=400, detail="content is required")
+        
         memory = Memory(
             project_id=project_id,
-            content=memory_data.get("content", ""),
-            type=memory_data.get("type", "note")
+            title=title,
+            content=content,
+            type=mem_type
         )
         file_service.save_memory(project_id, memory)
         logger.info(f"Memory created successfully: {memory.id}")
         return memory
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error creating memory: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to create memory: {str(e)}")
