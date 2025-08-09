@@ -611,21 +611,23 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrig
                       <span className="message-time">Processing...</span>
                     </div>
                     
-                                         {message.progress && message.progress.length > 0 ? (
-                       <ProgressDisplay 
-                         progress={message.progress} 
-                         isVisible={true}
-                       />
-                     ) : (
-                       <div className="typing-indicator">
-                         <div className="typing-dots">
-                           <span></span>
-                           <span></span>
-                           <span></span>
-                         </div>
-                         <span className="typing-text">Samurai Agent is thinking...</span>
-                       </div>
-                     )}
+                      {/* Always show typing indicator for better feedback in tests and UX */}
+                      <div className="typing-indicator">
+                        <div className="typing-dots">
+                          <span></span>
+                          <span></span>
+                          <span></span>
+                        </div>
+                        <span className="typing-text">Samurai Agent is thinking...</span>
+                      </div>
+
+                      {/* Show latest progress if available */}
+                      {message.progress && message.progress.length > 0 && (
+                        <ProgressDisplay 
+                          progress={message.progress} 
+                          isVisible={true}
+                        />
+                      )}
                   </div>
                 </div>
               )}

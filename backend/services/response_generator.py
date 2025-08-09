@@ -908,41 +908,14 @@ Remember: You're guiding them from idea to implementation with the perfect balan
     
     async def generate_progress_update(self, stage: str, message: str, details: str, context: ResponseContext) -> str:
         """
-        Generate contextual progress update messages.
+        Generate a brief, encouraging progress update without blocking the event loop.
+        To ensure real-time streaming, avoid LLM calls here and return a concise templated message immediately.
         """
-        try:
-            system_prompt = f"""
-            {self.agent_personality}
-            
-            Generate a brief, encouraging progress update message for the user.
-            
-            PROJECT: {context.project_name}
-            TECH STACK: {context.tech_stack}
-            
-            PROGRESS STAGE: {stage}
-            PROGRESS MESSAGE: {message}
-            PROGRESS DETAILS: {details}
-            
-            CONVERSATION CONTEXT:
-            {context.conversation_summary}
-            
-            Generate a brief, encouraging message that:
-            1. Acknowledges the current progress stage
-            2. Shows enthusiasm and support
-            3. Keeps the user engaged and informed
-            4. Maintains the "vibe coding partner" personality
-            5. Is concise but informative
-            
-            Keep it brief and encouraging.
-            """
-            
-            progress_summary = f"Progress: {stage} - {message}"
-            response = await self.gemini_service.chat_with_system_prompt(progress_summary, system_prompt)
-            return response.strip()
-            
-        except Exception as e:
-            logger.error(f"Error generating progress update: {e}")
-            return message  # Fallback to original message
+        # Keep it short and non-blocking
+        base = message.strip() if message else stage.capitalize()
+        # Include minimal context cues without external calls
+        details_suffix = f" — {details.strip()}" if details else ""
+        return f"{base}{details_suffix}"
     
     async def generate_welcome_back_response(self, context: ResponseContext, last_session_info: Optional[dict] = None) -> str:
         """
