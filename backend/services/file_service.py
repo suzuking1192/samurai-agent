@@ -1,7 +1,8 @@
+from __future__ import annotations
 import json
 import os
 import shutil
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, TYPE_CHECKING
 from datetime import datetime
 import uuid
 import logging
@@ -13,6 +14,8 @@ from contextlib import contextmanager
 try:
     from models import Project, Memory, Task, ChatMessage
     from .embedding_service import embedding_service
+    if TYPE_CHECKING:
+        from models import Session
 except ImportError:
     # Fallback for when running the file directly
     import sys
@@ -21,6 +24,8 @@ except ImportError:
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from models import Project, Memory, Task, ChatMessage
     from services.embedding_service import embedding_service
+    if TYPE_CHECKING:
+        from models import Session
 
 # Constants
 DATA_DIR = "data"
@@ -52,6 +57,10 @@ class FileService:
     def _get_project_file_path(self, project_id: str, file_type: str) -> Path:
         """Get project-specific file path."""
         return self.data_dir / f"project-{project_id}-{file_type}.json"
+
+    def _get_project_detail_path(self, project_id: str) -> Path:
+        """Get path for the long-form project detail/specification text file."""
+        return self.data_dir / f"project-{project_id}-project_detail.txt"
     
     @contextmanager
     def _atomic_write(self, file_path: Path):
@@ -113,6 +122,26 @@ class FileService:
                     logger.warning(f"Failed to remove old backup {backup}: {e}")
         except Exception as e:
             logger.warning(f"Failed to rotate backups: {e}")
+
+    # Plain text helpers
+    def _load_text(self, file_path: Path) -> str:
+        """Load raw text from a file with error handling."""
+        try:
+            if not file_path.exists():
+                return ""
+            return file_path.read_text(encoding='utf-8')
+        except Exception as e:
+            logger.error(f"Error loading text from {file_path}: {e}")
+            return ""
+
+    def _save_text(self, file_path: Path, content: str) -> None:
+        """Save raw text to a file using atomic write and backups."""
+        try:
+            with self._atomic_write(file_path) as temp_file:
+                temp_file.write(content or "")
+        except Exception as e:
+            logger.error(f"Error saving text to {file_path}: {e}")
+            raise
     
     def _load_json(self, file_path: Path) -> List[Dict[str, Any]]:
         """Load JSON data from file with error handling."""
@@ -318,7 +347,7 @@ class FileService:
     
     def _delete_project_files(self, project_id: str) -> None:
         """Delete all files associated with a project."""
-        file_types = ['memories', 'tasks', 'chat']
+        file_types = ['memories', 'tasks', 'chat', 'sessions']
         for file_type in file_types:
             file_path = self._get_project_file_path(project_id, file_type)
             if file_path.exists():
@@ -327,6 +356,14 @@ class FileService:
                     logger.debug(f"Deleted {file_path}")
                 except Exception as e:
                     logger.warning(f"Failed to delete {file_path}: {e}")
+        # Delete project detail text file
+        detail_path = self._get_project_detail_path(project_id)
+        if detail_path.exists():
+            try:
+                detail_path.unlink()
+                logger.debug(f"Deleted {detail_path}")
+            except Exception as e:
+                logger.warning(f"Failed to delete {detail_path}: {e}")
     
     # Memory operations
     def load_memories(self, project_id: str) -> List[Memory]:
@@ -579,7 +616,7 @@ class FileService:
         logger.info(f"Saved {len(messages)} chat messages for project {project_id}")
     
     # Session management methods
-    def load_sessions(self, project_id: str) -> List['Session']:
+    def load_sessions(self, project_id: str) -> List["Session"]:
         """Load sessions for a project."""
         self.ensure_data_dir()
         file_path = self._get_project_file_path(project_id, "sessions")
@@ -600,7 +637,7 @@ class FileService:
         logger.debug(f"Loaded {len(sessions)} sessions for project {project_id}")
         return sessions
     
-    def save_session(self, project_id: str, session: 'Session') -> None:
+    def save_session(self, project_id: str, session: "Session") -> None:
         """Save a single session."""
         sessions = self.load_sessions(project_id)
         
@@ -615,17 +652,17 @@ class FileService:
         self._save_json(file_path, [s.dict() for s in sessions])
         logger.debug(f"Saved session: {session.id}")
     
-    def get_session_by_id(self, project_id: str, session_id: str) -> Optional['Session']:
+    def get_session_by_id(self, project_id: str, session_id: str) -> Optional["Session"]:
         """Get a session by ID."""
         sessions = self.load_sessions(project_id)
         return next((s for s in sessions if s.id == session_id), None)
     
-    def get_latest_session(self, project_id: str) -> Optional['Session']:
+    def get_latest_session(self, project_id: str) -> Optional["Session"]:
         """Get the most recent session for a project."""
         sessions = self.load_sessions(project_id)
         return sessions[0] if sessions else None
     
-    def create_session(self, project_id: str, name: Optional[str] = None) -> 'Session':
+    def create_session(self, project_id: str, name: Optional[str] = None) -> "Session":
         """Create a new session for a project."""
         from models import Session
         
@@ -716,6 +753,22 @@ class FileService:
                         logger.warning(f"Failed to clean up {file_path}: {e}")
         
         return cleaned_count
+
+    # Project detail (long-form spec) operations
+    def load_project_detail(self, project_id: str) -> str:
+        """Load the long-form project detail/specification text for a project."""
+        self.ensure_data_dir()
+        path = self._get_project_detail_path(project_id)
+        content = self._load_text(path)
+        logger.debug(f"Loaded project detail for {project_id}: {len(content)} chars")
+        return content
+
+    def save_project_detail(self, project_id: str, content: str) -> None:
+        """Persist the long-form project detail/specification text for a project."""
+        self.ensure_data_dir()
+        path = self._get_project_detail_path(project_id)
+        self._save_text(path, content)
+        logger.info(f"Saved project detail for {project_id} ({len(content or '')} chars)")
 
 
 # Global file service instance

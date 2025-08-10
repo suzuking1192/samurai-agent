@@ -69,6 +69,8 @@ class GeminiService:
             logger.error(f"Gemini API error: {e}")
             return f"I'm having trouble processing that request. Please try again."
 
+    # Intentionally keep LLM surface minimal here; orchestration lives in dedicated services.
+
     def _safe_ai_call(self, prompt: str) -> str:
         """Make AI call with error handling (synchronous)"""
         try:
