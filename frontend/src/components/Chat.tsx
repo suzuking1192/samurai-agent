@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
-import { ChatMessage, ChatRequest, ChatResponse, Session, Task } from '../types'
-import { sendChatMessage, sendChatMessageWithProgress, getChatMessages, createSession, getCurrentSession, getSessionMessages, getConversationHistory, endSessionWithConsolidation, SessionEndResponse, getTaskContext, clearTaskContext } from '../services/api'
+import { ChatMessage, Session, Task } from '../types'
+import { sendChatMessageWithProgress, createSession, getCurrentSession, getSessionMessages, endSessionWithConsolidation, SessionEndResponse, getTaskContext, clearTaskContext, getSuggestionStatus, dismissSuggestion } from '../services/api'
 import ProgressDisplay from './ProgressDisplay'
+import ProactiveSuggestion from './ProactiveSuggestion'
 
 interface ChatProps {
   projectId?: string
@@ -23,26 +24,15 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrig
   const [isAtBottom, setIsAtBottom] = useState(true)
   const [agentActivity, setAgentActivity] = useState<string>('')
   const [notification, setNotification] = useState<{type: 'info' | 'warning' | 'error', message: string} | null>(null)
-  const [isProcessing, setIsProcessing] = useState(false)
+  
   const [isLoadingHistory, setIsLoadingHistory] = useState(false)
   const [currentSession, setCurrentSession] = useState<Session | null>(null)
   const [taskContext, setTaskContext] = useState<Task | null>(null)
+  const [showProactiveSuggestion, setShowProactiveSuggestion] = useState<boolean>(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const chatMessagesRef = useRef<HTMLDivElement>(null)
 
-  // Helper function to deduplicate progress updates
-  const deduplicateProgress = (progressArray: any[]): any[] => {
-    const seen = new Set()
-    return progressArray.filter(progress => {
-      // Create a unique key for each progress update (step + message only)
-      const key = `${progress.step}-${progress.message}`
-      if (seen.has(key)) {
-        return false
-      }
-      seen.add(key)
-      return true
-    })
-  }
+  
 
   useEffect(() => {
     if (projectId) {
@@ -50,6 +40,7 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrig
     } else {
       setMessages([])
       setCurrentSession(null)
+      setShowProactiveSuggestion(false)
     }
   }, [projectId])
 
@@ -58,6 +49,8 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrig
     if (currentSession && projectId) {
       loadConversationHistory(currentSession.id)
       loadTaskContext(currentSession.id)
+      // Fetch suggestion status for one-time tip
+      loadSuggestionStatus()
     }
   }, [currentSession?.id, projectId])
 
@@ -122,6 +115,26 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrig
     }
   }
 
+  const loadSuggestionStatus = async () => {
+    try {
+      const status = await getSuggestionStatus()
+      setShowProactiveSuggestion(status.should_show)
+    } catch (e) {
+      // Fail silent
+      setShowProactiveSuggestion(false)
+    }
+  }
+
+  const handleDismissSuggestion = async () => {
+    try {
+      await dismissSuggestion()
+    } catch (e) {
+      // ignore
+    } finally {
+      setShowProactiveSuggestion(false)
+    }
+  }
+
   const handleClearTaskContext = async () => {
     if (!projectId || !currentSession?.id) return
     
@@ -137,28 +150,7 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrig
     }
   }
 
-  const loadChatMessages = async (sessionId: string) => {
-    if (!projectId) return
-    
-    try {
-      console.log('Loading chat messages for session:', sessionId)
-      const chatMessages = await getSessionMessages(projectId, sessionId)
-      console.log('Loaded chat messages:', chatMessages.length)
-      
-      // Deduplicate messages
-      const uniqueMessages = chatMessages.filter((message, index, self) => 
-        index === self.findIndex(m => 
-          m.message === message.message && 
-          m.response === message.response &&
-          Math.abs(new Date(m.created_at).getTime() - new Date(message.created_at).getTime()) < 1000
-        )
-      )
-      setMessages(uniqueMessages)
-    } catch (error) {
-      console.error('Error loading chat messages:', error)
-      setMessages([])
-    }
-  }
+  
 
   const handleStartNewConversation = async () => {
     console.log('Starting new conversation with memory consolidation, projectId:', projectId)
@@ -308,7 +300,7 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrig
     // Clear input immediately
     setInputMessage('')
     setIsLoading(true)
-    setIsProcessing(true)
+    
     
     // Create optimistic message
     const optimisticMessage: OptimisticMessage = {
@@ -325,8 +317,6 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrig
     setMessages(prev => [...prev, optimisticMessage])
     
     try {
-      let response: ChatResponse
-      
       // Send message with progress tracking
       await sendChatMessageWithProgress(
         { message: userMessage, project_id: projectId },
@@ -369,7 +359,6 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrig
                 }
               : msg
           ))
-          setIsProcessing(false)
           setIsLoading(false)
           updateAgentActivity('')
           
@@ -390,7 +379,6 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrig
                 }
               : msg
           ))
-          setIsProcessing(false)
           setIsLoading(false)
           updateAgentActivity('')
         }
@@ -411,7 +399,6 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrig
             }
           : msg
       ))
-      setIsProcessing(false)
       setIsLoading(false)
       updateAgentActivity('')
     }
@@ -505,6 +492,7 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrig
         ref={chatMessagesRef}
         onScroll={handleScroll}
       >
+        {/* Proactive suggestion banner appears above the input but within chat container; render here above messages end */}
         {isLoadingHistory ? (
           <div className="empty-state">
             <div className="loading-indicator">
@@ -649,6 +637,9 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrig
         </button>
       )}
       
+      {/* Proactive Suggestion directly above the main chat text box */}
+      <ProactiveSuggestion isVisible={showProactiveSuggestion} onDismiss={handleDismissSuggestion} />
+
       <form onSubmit={handleSubmit} className="chat-input">
         <textarea
           value={inputMessage}

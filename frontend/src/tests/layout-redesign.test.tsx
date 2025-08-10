@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import App from '../App'
 
@@ -7,8 +7,15 @@ describe('Layout Redesign', () => {
     // Mock the API calls
     vi.mock('../services/api', () => ({
       getProjects: vi.fn().mockResolvedValue([]),
-      createProject: vi.fn(),
+      createProject: vi.fn().mockResolvedValue({
+        id: 'p1',
+        name: 'New Project',
+        description: '',
+        tech_stack: 'TS',
+        created_at: new Date().toISOString(),
+      }),
       deleteProject: vi.fn(),
+      getProjectDetail: vi.fn().mockResolvedValue({ content: '' }),
     }))
   })
 
@@ -22,6 +29,31 @@ describe('Layout Redesign', () => {
     // Check that main container has memory-hidden class
     const mainContainer = document.querySelector('.main-container')
     expect(mainContainer).toHaveClass('memory-hidden')
+  })
+
+  it('auto-opens Project Detail modal after creating a project and shows explainer text', async () => {
+    render(<App />)
+
+    // Open new project form
+    fireEvent.click(screen.getByText('+ New Project'))
+
+    // Fill in form
+    const nameInput = screen.getByPlaceholderText('Project name')
+    const descInput = screen.getByPlaceholderText('Project description')
+    const techInput = screen.getByPlaceholderText('Technology stack (e.g., React, Python, Node.js)')
+    fireEvent.change(nameInput, { target: { value: 'New Project' } })
+    fireEvent.change(descInput, { target: { value: '' } })
+    fireEvent.change(techInput, { target: { value: 'TS' } })
+
+    // Create project
+    fireEvent.click(screen.getByText('Create Project'))
+
+    // Modal should open with explainer text
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Add project knowledge here/i)
+      ).toBeInTheDocument()
+    })
   })
 
   it('should toggle memory panel when button is clicked', () => {

@@ -108,6 +108,12 @@ export async function updateTask(projectId: string, taskId: string, updates: Tas
   })
 }
 
+export async function completeTask(projectId: string, taskId: string): Promise<Task> {
+  return apiRequest<Task>(`/projects/${projectId}/tasks/${taskId}/complete`, {
+    method: 'POST'
+  })
+}
+
 export async function deleteTask(projectId: string, taskId: string): Promise<void> {
   return apiRequest<void>(`/projects/${projectId}/tasks/${taskId}`, {
     method: 'DELETE',
@@ -421,3 +427,17 @@ export async function healthCheck(): Promise<{ status: string }> {
 
 // Export the ApiError class for use in components
 export { ApiError } 
+
+// ---------------------------
+// User suggestion banner APIs
+// ---------------------------
+
+export async function getSuggestionStatus(): Promise<{ should_show: boolean }> {
+  return apiRequest<{ should_show: boolean }>(`/api/user/suggestion-status`)
+}
+
+export async function dismissSuggestion(): Promise<{ status: string }> {
+  return apiRequest<{ status: string }>(`/api/user/suggestion-dismiss`, {
+    method: 'POST'
+  })
+}

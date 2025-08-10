@@ -61,6 +61,10 @@ class FileService:
     def _get_project_detail_path(self, project_id: str) -> Path:
         """Get path for the long-form project detail/specification text file."""
         return self.data_dir / f"project-{project_id}-project_detail.txt"
+
+    def _get_user_preferences_path(self) -> Path:
+        """Get path for user preferences (single-user environment)."""
+        return self.data_dir / "user-preferences.json"
     
     @contextmanager
     def _atomic_write(self, file_path: Path):
@@ -166,6 +170,15 @@ class FileService:
     
     def _save_json(self, file_path: Path, data: List[Dict[str, Any]]) -> None:
         """Save JSON data to file with atomic write."""
+        try:
+            with self._atomic_write(file_path) as temp_file:
+                json.dump(data, temp_file, indent=2, ensure_ascii=False, default=str)
+        except Exception as e:
+            logger.error(f"Error saving {file_path}: {e}")
+            raise
+
+    def _save_dict_json(self, file_path: Path, data: Dict[str, Any]) -> None:
+        """Save dictionary JSON data to file with atomic write."""
         try:
             with self._atomic_write(file_path) as temp_file:
                 json.dump(data, temp_file, indent=2, ensure_ascii=False, default=str)
@@ -769,6 +782,43 @@ class FileService:
         path = self._get_project_detail_path(project_id)
         self._save_text(path, content)
         logger.info(f"Saved project detail for {project_id} ({len(content or '')} chars)")
+
+    # User preferences (single-user) operations
+    def load_user_preferences(self) -> Dict[str, Any]:
+        """Load user preferences. Defaults if not present."""
+        self.ensure_data_dir()
+        file_path = self._get_user_preferences_path()
+        try:
+            if not file_path.exists():
+                return {"has_seen_task_suggestion_prompt": False}
+            with open(file_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if not isinstance(data, dict):
+                    return {"has_seen_task_suggestion_prompt": False}
+                # Ensure default key exists
+                data.setdefault("has_seen_task_suggestion_prompt", False)
+                return data
+        except Exception as e:
+            logger.warning(f"Failed to load user preferences: {e}")
+            return {"has_seen_task_suggestion_prompt": False}
+
+    def save_user_preferences(self, preferences: Dict[str, Any]) -> None:
+        """Save user preferences to disk."""
+        self.ensure_data_dir()
+        file_path = self._get_user_preferences_path()
+        # Normalize preferences and ensure required keys
+        normalized = {
+            "has_seen_task_suggestion_prompt": bool(preferences.get("has_seen_task_suggestion_prompt", False))
+        }
+        self._save_dict_json(file_path, normalized)
+        logger.info("Saved user preferences")
+
+    def mark_task_suggestion_seen(self) -> None:
+        """Mark the proactive task suggestion banner as seen/dismissed."""
+        prefs = self.load_user_preferences()
+        if not prefs.get("has_seen_task_suggestion_prompt", False):
+            prefs["has_seen_task_suggestion_prompt"] = True
+            self.save_user_preferences(prefs)
 
 
 # Global file service instance

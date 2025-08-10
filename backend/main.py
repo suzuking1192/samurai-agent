@@ -128,6 +128,40 @@ async def health_check():
         logger.error(f"Health check failed: {e}")
         raise HTTPException(status_code=503, detail="Service unhealthy")
 
+# ---------------------------
+# User suggestion banner APIs
+# ---------------------------
+
+class SuggestionStatusResponse(BaseModel):
+    should_show: bool
+
+
+@app.get("/api/user/suggestion-status", response_model=SuggestionStatusResponse)
+async def get_user_suggestion_status():
+    """Return whether the proactive suggestion UI should be shown.
+    True when the user has never seen or dismissed the suggestion.
+    """
+    try:
+        prefs = file_service.load_user_preferences()
+        has_seen = bool(prefs.get("has_seen_task_suggestion_prompt", False))
+        # Show when not yet seen
+        return SuggestionStatusResponse(should_show=not has_seen)
+    except Exception as e:
+        logger.error(f"Error getting suggestion status: {e}")
+        # Fail-closed: don't show on error
+        return SuggestionStatusResponse(should_show=False)
+
+
+@app.post("/api/user/suggestion-dismiss")
+async def dismiss_user_suggestion():
+    """Mark the proactive suggestion as seen/dismissed for the current user."""
+    try:
+        file_service.mark_task_suggestion_seen()
+        return {"status": "ok"}
+    except Exception as e:
+        logger.error(f"Error dismissing suggestion: {e}")
+        raise HTTPException(status_code=500, detail="Failed to dismiss suggestion")
+
 # Project endpoints
 @app.get("/projects", response_model=List[Project])
 async def get_projects():
@@ -561,6 +595,33 @@ async def get_project_tasks(project_id: str):
     except Exception as e:
         logger.error(f"Error loading tasks for project {project_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to load tasks: {str(e)}")
+
+@app.post("/projects/{project_id}/tasks/{task_id}/complete")
+async def complete_task(project_id: str, task_id: str):
+    """
+    Mark a task as completed. This endpoint only updates the task status to 'completed'.
+    Downstream operations triggered by task updates are handled by existing services.
+    """
+    try:
+        logger.info(f"Completing task {task_id} in project {project_id}")
+
+        # Delegate to TaskService to ensure existing post-update logic runs
+        from services.task_service import TaskService
+        task_service = TaskService()
+
+        updates = {"status": "completed"}
+        task = await task_service.update_task(project_id, task_id, updates)
+        if not task:
+            logger.warning(f"Task not found: {task_id}")
+            raise HTTPException(status_code=404, detail="Task not found")
+
+        logger.info(f"Task marked completed successfully: {task_id}")
+        return task
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error completing task {task_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to complete task: {str(e)}")
 
 @app.put("/projects/{project_id}/tasks/{task_id}")
 async def update_task(project_id: str, task_id: str, request: dict):
