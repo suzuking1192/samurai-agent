@@ -24,6 +24,12 @@ function App() {
     setSelectedProject(project)
   }
 
+  const handleProjectCreated = (project: Project) => {
+    setSelectedProject(project)
+    // Open the Project Detail modal immediately after confirmed creation
+    openProjectDetailModal('ingest')
+  }
+
   const handleTaskRefresh = () => {
     setTaskRefreshTrigger(prev => prev + 1)
   }
@@ -83,7 +89,8 @@ function App() {
         <div className="header-actions">
           <ProjectSelector 
             selectedProject={selectedProject} 
-            onProjectSelect={handleProjectSelect} 
+            onProjectSelect={handleProjectSelect}
+            onProjectCreated={handleProjectCreated}
           />
           <button 
             onClick={() => openProjectDetailModal('ingest')}
@@ -131,6 +138,9 @@ function App() {
       </div>
       <FullScreenModal isOpen={showProjectDetailModal} onClose={() => setShowProjectDetailModal(false)}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ color: '#1d4ed8', background: 'rgba(29,78,216,0.08)', padding: '8px 10px', borderRadius: 6, fontSize: 14 }}>
+            you can add long text document like documentation or meeting minutes or note to samurai agent to consider it as context, this will be kept updating as our conversation goes and you can update by adding more information here anytime
+          </div>
           <h2 style={{ margin: 0 }}>{projectDetailMode === 'ingest' ? 'Add Project Detail' : 'Edit Project Detail Brain'}</h2>
           <div style={{ display: 'flex', gap: 8 }}>
             <button 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { Task, TaskCreate, TaskUpdate, TaskStatus } from '../types'
-import { getTasks, createTask, updateTask, deleteTask } from '../services/api'
+import { getTasks, createTask, updateTask, deleteTask, completeTask } from '../services/api'
 import TaskListView from './TaskListView'
 import TaskDetailsView from './TaskDetailsView'
 
@@ -105,6 +105,18 @@ const TaskPanel: React.FC<TaskPanelProps> = ({ projectId, refreshTrigger, onTask
     }
   }
 
+  const handleCompleteTask = async (taskId: string) => {
+    if (!projectId) return
+    try {
+      const updated = await completeTask(projectId, taskId)
+      setTasks(prev => prev.map(t => (t.id === taskId ? updated : t)))
+      setSelectedTask(prev => (prev && prev.id === taskId ? updated : prev))
+    } catch (error) {
+      console.error('Error completing task:', error)
+      showNotification('Failed to complete task', 'error')
+    }
+  }
+
   const handleTaskClick = (task: Task) => {
     setSelectedTask(task)
     setTaskPanelView('details')
@@ -175,6 +187,7 @@ const TaskPanel: React.FC<TaskPanelProps> = ({ projectId, refreshTrigger, onTask
             onDelete={handleDeleteTask}
             projectId={projectId}
             onTaskContextUpdate={onTaskContextUpdate}
+            onComplete={handleCompleteTask}
           />
         )}
       </div>

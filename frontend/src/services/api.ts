@@ -108,6 +108,12 @@ export async function updateTask(projectId: string, taskId: string, updates: Tas
   })
 }
 
+export async function completeTask(projectId: string, taskId: string): Promise<Task> {
+  return apiRequest<Task>(`/projects/${projectId}/tasks/${taskId}/complete`, {
+    method: 'POST'
+  })
+}
+
 export async function deleteTask(projectId: string, taskId: string): Promise<void> {
   return apiRequest<void>(`/projects/${projectId}/tasks/${taskId}`, {
     method: 'DELETE',

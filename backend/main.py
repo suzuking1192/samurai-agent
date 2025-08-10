@@ -562,6 +562,33 @@ async def get_project_tasks(project_id: str):
         logger.error(f"Error loading tasks for project {project_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to load tasks: {str(e)}")
 
+@app.post("/projects/{project_id}/tasks/{task_id}/complete")
+async def complete_task(project_id: str, task_id: str):
+    """
+    Mark a task as completed. This endpoint only updates the task status to 'completed'.
+    Downstream operations triggered by task updates are handled by existing services.
+    """
+    try:
+        logger.info(f"Completing task {task_id} in project {project_id}")
+
+        # Delegate to TaskService to ensure existing post-update logic runs
+        from services.task_service import TaskService
+        task_service = TaskService()
+
+        updates = {"status": "completed"}
+        task = await task_service.update_task(project_id, task_id, updates)
+        if not task:
+            logger.warning(f"Task not found: {task_id}")
+            raise HTTPException(status_code=404, detail="Task not found")
+
+        logger.info(f"Task marked completed successfully: {task_id}")
+        return task
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error completing task {task_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to complete task: {str(e)}")
+
 @app.put("/projects/{project_id}/tasks/{task_id}")
 async def update_task(project_id: str, task_id: str, request: dict):
     """Update task with automatic re-analysis"""
