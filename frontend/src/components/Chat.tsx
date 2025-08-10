@@ -645,7 +645,7 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrig
           value={inputMessage}
           onChange={(e) => setInputMessage(e.target.value)}
           onKeyPress={handleKeyPress}
-          placeholder={!projectId ? "Please select a project first..." : "Type your message here..."}
+          placeholder={!projectId ? "Please select a project first..." : "I want to implement user authentication..."}
           disabled={isLoading || !projectId}
           className="input"
           rows={3}

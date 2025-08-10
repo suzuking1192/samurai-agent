@@ -646,6 +646,8 @@ You are Samurai Engine, their vibe coding partner.
 
 ## PROJECT CONTEXT
 Project: {context.project_context.get('name', 'Unknown')} | Tech: {context.project_context.get('tech_stack', 'Unknown')}
+\nPROJECT DETAIL SPEC (if available):\n{context.project_context.get('project_detail', '')}
+
 
 ## RELEVANT PROJECT KNOWLEDGE
 {self._format_memories_for_context(context.relevant_memories)}
@@ -727,6 +729,8 @@ You are Samurai Engine, helping developers explore feature ideas with deep conve
 
 ## PROJECT CONTEXT
 Project: {context.project_context.get('name', 'Unknown')} | Tech: {context.project_context.get('tech_stack', 'Unknown')}
+\nPROJECT DETAIL SPEC (if available):\n{context.project_context.get('project_detail', '')}
+
 
 ## RELEVANT PROJECT KNOWLEDGE
 {self._format_memories_for_context(context.relevant_memories)}
@@ -806,7 +810,7 @@ You are Samurai Engine, gathering complete feature specifications through extend
 
 ## PROJECT CONTEXT
 Project: {context.project_context.get('name', 'Unknown')} | Tech: {context.project_context.get('tech_stack', 'Unknown')}
-\nPROJECT DETAIL SPEC (if available):\n{context.project_context.get('project_detail', '')[:1500] + ('...' if context.project_context.get('project_detail', '') and len(context.project_context.get('project_detail', '')) > 1500 else '')}
+\nPROJECT DETAIL SPEC (if available):\n{context.project_context.get('project_detail', '')}
 
 ## RELEVANT PROJECT KNOWLEDGE
 {self._format_memories_for_context(context.relevant_memories)}
@@ -1645,6 +1649,8 @@ Break down this feature request into implementable tasks, considering the compre
 ## PROJECT CONTEXT
 Project: {context.project_context.get('name', 'Unknown')}
 Tech Stack: {context.project_context.get('tech_stack', 'Unknown')}
+\nPROJECT DETAIL SPEC (if available):\n{context.project_context.get('project_detail', '')}
+
 
 ## RELEVANT PROJECT KNOWLEDGE
 {self._format_memories_for_context(context.relevant_memories)}
@@ -1959,6 +1965,11 @@ Analyze the user's direct action request considering the comprehensive conversat
 
 ## COMPREHENSIVE CONVERSATION CONTEXT (CRITICAL FOR ACCURATE ACTION DETECTION)
 {conversation_context}
+
+PROJECT CONTEXT:
+- Project: {context.project_context.get('name', 'Unknown')}
+- Tech Stack: {context.project_context.get('tech_stack', 'Unknown')}
+\nPROJECT DETAIL SPEC (if available):\n{context.project_context.get('project_detail', '')}
 
 ## CURRENT REQUEST
 "{message}"
