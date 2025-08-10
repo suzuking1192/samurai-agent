@@ -1023,6 +1023,49 @@ body {
   box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.05);
 }
 
+/* Proactive Suggestion Banner */
+.proactive-suggestion {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 20px 8px 20px;
+  padding: 10px 12px;
+  background: #ecfeff;
+  border: 1px solid #67e8f9;
+  color: #0e7490;
+  border-radius: 8px;
+  box-shadow: 0 2px 6px rgba(14, 116, 144, 0.1);
+}
+
+.proactive-suggestion-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.92rem;
+}
+
+.proactive-suggestion-icon {
+  font-size: 1.1rem;
+}
+
+.proactive-suggestion-text {
+  font-weight: 500;
+}
+
+.proactive-suggestion-close {
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+
+.proactive-suggestion-close:hover {
+  background: rgba(14, 116, 144, 0.1);
+}
+
 .chat-input textarea {
   width: 100%;
   padding: 14px 18px;

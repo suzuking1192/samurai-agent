@@ -128,6 +128,40 @@ async def health_check():
         logger.error(f"Health check failed: {e}")
         raise HTTPException(status_code=503, detail="Service unhealthy")
 
+# ---------------------------
+# User suggestion banner APIs
+# ---------------------------
+
+class SuggestionStatusResponse(BaseModel):
+    should_show: bool
+
+
+@app.get("/api/user/suggestion-status", response_model=SuggestionStatusResponse)
+async def get_user_suggestion_status():
+    """Return whether the proactive suggestion UI should be shown.
+    True when the user has never seen or dismissed the suggestion.
+    """
+    try:
+        prefs = file_service.load_user_preferences()
+        has_seen = bool(prefs.get("has_seen_task_suggestion_prompt", False))
+        # Show when not yet seen
+        return SuggestionStatusResponse(should_show=not has_seen)
+    except Exception as e:
+        logger.error(f"Error getting suggestion status: {e}")
+        # Fail-closed: don't show on error
+        return SuggestionStatusResponse(should_show=False)
+
+
+@app.post("/api/user/suggestion-dismiss")
+async def dismiss_user_suggestion():
+    """Mark the proactive suggestion as seen/dismissed for the current user."""
+    try:
+        file_service.mark_task_suggestion_seen()
+        return {"status": "ok"}
+    except Exception as e:
+        logger.error(f"Error dismissing suggestion: {e}")
+        raise HTTPException(status_code=500, detail="Failed to dismiss suggestion")
+
 # Project endpoints
 @app.get("/projects", response_model=List[Project])
 async def get_projects():
