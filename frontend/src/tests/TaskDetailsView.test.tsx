@@ -133,6 +133,23 @@ describe('TaskDetailsView', () => {
     mockConfirm.mockRestore()
   })
 
+  test('complete task button shows modal and calls onComplete on confirm', async () => {
+    const onComplete = vi.fn().mockResolvedValue(undefined)
+    render(<TaskDetailsView {...mockProps} onComplete={onComplete} />)
+    
+    // Open modal
+    const completeButton = screen.getByText('✅ Complete Task')
+    fireEvent.click(completeButton)
+
+    // Confirm action inside modal
+    const confirmButton = await screen.findByText('Yes, Complete')
+    fireEvent.click(confirmButton)
+
+    await waitFor(() => {
+      expect(onComplete).toHaveBeenCalledWith('1')
+    })
+  })
+
   test('copy button copies description to clipboard', async () => {
     // Mock navigator.clipboard
     const mockClipboard = {

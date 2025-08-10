@@ -5,11 +5,13 @@ import { getProjects, createProject, deleteProject } from '../services/api'
 interface ProjectSelectorProps {
   selectedProject: Project | null
   onProjectSelect: (project: Project) => void
+  onProjectCreated?: (project: Project) => void
 }
 
 const ProjectSelector: React.FC<ProjectSelectorProps> = ({ 
   selectedProject, 
-  onProjectSelect 
+  onProjectSelect,
+  onProjectCreated
 }) => {
   const [projects, setProjects] = useState<Project[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -63,7 +65,11 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
         tech_stack: ''
       })
       setShowCreateForm(false)
+      // Notify parent components
       onProjectSelect(createdProject)
+      if (onProjectCreated) {
+        onProjectCreated(createdProject)
+      }
     } catch (error) {
       console.error('Error creating project:', error)
       // Add user feedback for errors

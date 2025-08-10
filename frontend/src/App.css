@@ -1023,6 +1023,49 @@ body {
   box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.05);
 }
 
+/* Proactive Suggestion Banner */
+.proactive-suggestion {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 20px 8px 20px;
+  padding: 10px 12px;
+  background: #ecfeff;
+  border: 1px solid #67e8f9;
+  color: #0e7490;
+  border-radius: 8px;
+  box-shadow: 0 2px 6px rgba(14, 116, 144, 0.1);
+}
+
+.proactive-suggestion-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.92rem;
+}
+
+.proactive-suggestion-icon {
+  font-size: 1.1rem;
+}
+
+.proactive-suggestion-text {
+  font-weight: 500;
+}
+
+.proactive-suggestion-close {
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+
+.proactive-suggestion-close:hover {
+  background: rgba(14, 116, 144, 0.1);
+}
+
 .chat-input textarea {
   width: 100%;
   padding: 14px 18px;
@@ -1502,6 +1545,7 @@ body {
   justify-content: center;
   z-index: 9999 !important; /* Highest z-index */
   animation: modalFadeIn 0.2s ease-out;
+  backdrop-filter: blur(6px) saturate(120%);
 }
 
 .fullscreen-modal-content {
@@ -1540,6 +1584,154 @@ body {
   flex-direction: column;
   height: 100%;
   overflow: hidden;
+}
+
+/* Project Detail Modal - Modern Styling */
+.project-detail-modal {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 24px;
+  background: var(--surface);
+}
+
+.project-detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.project-detail-title {
+  margin: 0;
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+
+.project-detail-explainer {
+  color: #1d4ed8;
+  background: rgba(29, 78, 216, 0.08);
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  border: 1px solid rgba(29, 78, 216, 0.15);
+}
+
+.project-detail-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #f3f4f6;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 6px;
+}
+
+.pd-tab {
+  appearance: none;
+  background: transparent;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.pd-tab:hover {
+  color: var(--text-primary);
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.pd-tab.active {
+  background: white;
+  color: var(--text-primary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.project-detail-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 12px;
+  flex: 1;
+  min-height: 0;
+}
+
+.project-detail-textarea {
+  width: 100%;
+  flex: 1;
+  min-height: 50vh;
+  padding: 16px;
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  background: #f9fafb;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+}
+
+.project-detail-textarea:focus {
+  border-color: #3b82f6;
+  background: white;
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.12);
+}
+
+.project-detail-helper {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.project-detail-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 12px;
+  margin-top: auto;
+  border-top: 1px solid var(--border);
+  background: linear-gradient(to bottom, transparent, rgba(0,0,0,0.01));
+}
+
+/* Improve focus states */
+.pd-tab:focus-visible,
+.modal-button:focus-visible,
+.project-detail-textarea:focus-visible {
+  outline: 3px solid rgba(59, 130, 246, 0.35);
+  outline-offset: 2px;
+}
+
+/* Button micro-interactions */
+.modal-button {
+  will-change: transform;
+}
+
+.modal-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.modal-button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .project-detail-modal {
+    padding: 16px;
+  }
+  .project-detail-title {
+    font-size: 1.25rem;
+  }
+  .project-detail-tabs {
+    width: 100%;
+    justify-content: space-between;
+  }
 }
 
 /* Enhanced Modal Styles for Task/Memory Details */
