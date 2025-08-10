@@ -34,6 +34,7 @@ class ResponseContext:
     user_message: str
     intent_type: str
     confidence: float
+    project_detail: str = ""
 
 
 class ResponseGenerator:
@@ -66,6 +67,22 @@ class ResponseGenerator:
             "completion": "Great! I've completed that for you.",
             "deletion": "Done! I've removed that for you."
         }
+
+    def _project_context_block(self, context: ResponseContext) -> str:
+        """Format a unified project context block including long-form project detail if available."""
+        detail = (context.project_detail or "").strip()
+        # Keep detail concise to avoid exceeding token limits
+        if len(detail) > 1500:
+            detail = detail[:1500] + "..."
+        lines = [
+            f"**Project:** {context.project_name}",
+            f"**Tech Stack:** {context.tech_stack}",
+        ]
+        if detail:
+            lines.append("**Project Detail Spec:**\n" + detail)
+        else:
+            lines.append("**Project Detail Spec:** None provided")
+        return "\n".join(lines)
     
     async def generate_discussion_response(self, context: ResponseContext) -> str:
         """
@@ -86,8 +103,7 @@ class ResponseGenerator:
             - **Conversational and natural** - like talking to a senior developer friend
 
             ## PROJECT CONTEXT
-            **Project:** {context.project_name}
-            **Tech Stack:** {context.tech_stack}
+            {self._project_context_block(context)}
             **Project Stage:** Active Development
 
             ## CONVERSATION CONTEXT
@@ -261,9 +277,8 @@ You're the thoughtful coding partner who helps developers think through their id
 - **Maintain excitement** while adding clarity
 - **Reference their codebase** to make questions concrete and relevant
 
-## PROJECT CONTEXT
-**Project:** {context.project_name}
-**Tech Stack:** {context.tech_stack}
+            ## PROJECT CONTEXT
+            {self._project_context_block(context)}
 
 ## THEIR FEATURE EXPLORATION
 **User's Idea:** "{context.user_message}"
@@ -468,9 +483,8 @@ Remember: You're not just gathering requirements - you're helping them think thr
 
 You are Samurai Engine, the vibe coding partner who excels at guiding developers from feature ideas to implementation-ready specifications. Your role is to assess specification completeness and respond appropriately - either gathering more details or confidently moving to task creation.
 
-## PROJECT CONTEXT
-**Project:** {context.project_name}
-**Tech Stack:** {context.tech_stack}
+            ## PROJECT CONTEXT
+            {self._project_context_block(context)}
 
 
 ## CONVERSATION CONTEXT
@@ -724,8 +738,7 @@ Remember: You're guiding them from idea to implementation with the perfect balan
             
             You have successfully created tasks for the user. Generate an enthusiastic and helpful response.
             
-            PROJECT: {context.project_name}
-            TECH STACK: {context.tech_stack}
+            PROJECT CONTEXT:\n{self._project_context_block(context)}
             
             TASKS CREATED: {len(successful_results)}
             TASK BREAKDOWN: {json.dumps(task_breakdown, indent=2)}
@@ -763,8 +776,7 @@ Remember: You're guiding them from idea to implementation with the perfect balan
             
             The user has completed a task. Generate a congratulatory and encouraging response.
             
-            PROJECT: {context.project_name}
-            TECH STACK: {context.tech_stack}
+            PROJECT CONTEXT:\n{self._project_context_block(context)}
             
             COMPLETED TASK: {task.title}
             TASK DESCRIPTION: {task.description}
@@ -803,8 +815,7 @@ Remember: You're guiding them from idea to implementation with the perfect balan
             
             The user has deleted a task. Generate a supportive response.
             
-            PROJECT: {context.project_name}
-            TECH STACK: {context.tech_stack}
+            PROJECT CONTEXT:\n{self._project_context_block(context)}
             
             DELETED TASK: {task.title}
             TASK DESCRIPTION: {task.description}
@@ -840,8 +851,7 @@ Remember: You're guiding them from idea to implementation with the perfect balan
             
             An error occurred while processing the user's request. Generate a helpful, empathetic response.
             
-            PROJECT: {context.project_name}
-            TECH STACK: {context.tech_stack}
+            PROJECT CONTEXT:\n{self._project_context_block(context)}
             
             USER'S REQUEST: "{context.user_message}"
             ERROR: {str(error)}

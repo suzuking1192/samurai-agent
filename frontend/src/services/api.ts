@@ -132,6 +132,25 @@ export async function deleteMemory(projectId: string, memoryId: string): Promise
   })
 }
 
+// Project Detail (long-form spec) API
+export async function getProjectDetail(projectId: string): Promise<{ content: string }> {
+  return apiRequest<{ content: string }>(`/projects/${projectId}/project-detail`)
+}
+
+export async function ingestProjectDetail(projectId: string, rawText: string): Promise<{ status: string; chars: number }> {
+  return apiRequest<{ status: string; chars: number }>(`/projects/${projectId}/project-detail/ingest`, {
+    method: 'POST',
+    body: JSON.stringify({ raw_text: rawText })
+  })
+}
+
+export async function saveProjectDetail(projectId: string, content: string): Promise<{ status: string; chars: number }> {
+  return apiRequest<{ status: string; chars: number }>(`/projects/${projectId}/project-detail/save`, {
+    method: 'POST',
+    body: JSON.stringify({ content })
+  })
+}
+
 // Chat API functions
 export async function sendChatMessage(request: ChatRequest): Promise<ChatResponse> {
   return apiRequest<ChatResponse>(`/projects/${request.project_id}/chat`, {
