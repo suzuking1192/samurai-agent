@@ -7,10 +7,10 @@
     "created_at": "2025-08-03 09:41:11.790837"
   },
   {
-    "id": "8470b967-940e-4d9b-a839-5ba6f8cf7eb7",
+    "id": "1f3f4217-4e47-48fd-806b-176a1711850e",
     "name": "Japanese test management software",
     "description": "This is software for an enterprise company that wants to sell this SaaS to their clients that want to create Japanese tests and manage scores of their foreign employees in Japan.",
-    "tech_stack": "React, FastAPI",
-    "created_at": "2025-08-09 14:19:22.609405"
+    "tech_stack": "React and FastAPI",
+    "created_at": "2025-08-09 17:35:04.111618"
   }
 ]

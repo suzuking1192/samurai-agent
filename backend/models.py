@@ -729,3 +729,13 @@ class TaskContextResponse(BaseModel):
                 "session_id": "session456"
             }
         } 
+
+# Project Detail Models
+class ProjectDetailIngestRequest(BaseModel):
+    """Request model for ingesting long-form project detail to be digested by LLM."""
+    raw_text: str = Field(..., description="Raw long-form text to digest")
+    mode: Optional[str] = Field(default="merge", description="Ingest mode: merge | replace | append")
+
+class ProjectDetailDirectSaveRequest(BaseModel):
+    """Request model for directly saving project detail without LLM digestion."""
+    content: str = Field(..., description="Full project detail to save directly")

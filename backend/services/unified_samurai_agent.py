@@ -229,6 +229,7 @@ class UnifiedSamuraiAgent:
             response_context = ResponseContext(
                 project_name=project_context.get('name', 'Unknown'),
                 tech_stack=project_context.get('tech_stack', 'Unknown'),
+                project_detail=project_context.get('project_detail', ''),
                 conversation_summary=f"Progress update: {stage}",
                 relevant_tasks=[],
                 relevant_memories=[],
@@ -805,6 +806,7 @@ You are Samurai Engine, gathering complete feature specifications through extend
 
 ## PROJECT CONTEXT
 Project: {context.project_context.get('name', 'Unknown')} | Tech: {context.project_context.get('tech_stack', 'Unknown')}
+\nPROJECT DETAIL SPEC (if available):\n{context.project_context.get('project_detail', '')[:1500] + ('...' if context.project_context.get('project_detail', '') and len(context.project_context.get('project_detail', '')) > 1500 else '')}
 
 ## RELEVANT PROJECT KNOWLEDGE
 {self._format_memories_for_context(context.relevant_memories)}
@@ -1299,6 +1301,7 @@ Show deep understanding of how the specification has evolved throughout the enti
             response_context = ResponseContext(
                 project_name=project_context.get('name', 'Unknown'),
                 tech_stack=project_context.get('tech_stack', 'Unknown'),
+                project_detail=project_context.get('project_detail', ''),
                 conversation_summary=f"Error occurred while processing: {message}",
                 relevant_tasks=[],
                 relevant_memories=[],
@@ -1342,6 +1345,7 @@ You are Samurai Engine's task breakdown specialist. Your role is to analyze feat
 ## PROJECT CONTEXT
 **Project:** {context.project_context.get('name', 'Unknown')}
 **Tech Stack:** {context.project_context.get('tech_stack', 'Unknown')}
+**Project Detail Spec:**\n{context.project_context.get('project_detail', '')[:1500] + ('...' if context.project_context.get('project_detail', '') and len(context.project_context.get('project_detail', '')) > 1500 else '')}
 
 
 ## FEATURE REQUEST TO ANALYZE
