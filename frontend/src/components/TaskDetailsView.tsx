@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Task, TaskStatus, TaskPriority, TaskUpdate } from '../types'
 import { setTaskContext, getCurrentSession } from '../services/api'
+import ConfirmModal from './ConfirmModal'
 
 interface TaskDetailsViewProps {
   task: Task
@@ -9,6 +10,7 @@ interface TaskDetailsViewProps {
   onDelete: (taskId: string) => Promise<void>
   projectId: string
   onTaskContextUpdate?: () => void
+  onComplete?: (taskId: string) => Promise<void>
 }
 
 const TaskDetailsView: React.FC<TaskDetailsViewProps> = ({
@@ -17,9 +19,11 @@ const TaskDetailsView: React.FC<TaskDetailsViewProps> = ({
   onSave,
   onDelete,
   projectId,
-  onTaskContextUpdate
+  onTaskContextUpdate,
+  onComplete
 }) => {
   const [editMode, setEditMode] = useState(false)
+  const [isCompleteModalOpen, setIsCompleteModalOpen] = useState(false)
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -62,6 +66,18 @@ const TaskDetailsView: React.FC<TaskDetailsViewProps> = ({
       } catch (error) {
         showNotification('Failed to delete task', 'error')
       }
+    }
+  }
+
+  const handleConfirmComplete = async () => {
+    try {
+      if (onComplete) {
+        await onComplete(task.id)
+        setIsCompleteModalOpen(false)
+        showNotification('Task marked as completed', 'success')
+      }
+    } catch (error) {
+      showNotification('Failed to complete task', 'error')
     }
   }
 
@@ -181,6 +197,9 @@ const TaskDetailsView: React.FC<TaskDetailsViewProps> = ({
               </button>
               <button onClick={handleDelete} className="btn-delete">
                 🗑️ Delete
+              </button>
+              <button onClick={() => setIsCompleteModalOpen(true)} className="btn-complete">
+                ✅ Complete Task
               </button>
             </>
           )}
@@ -318,6 +337,15 @@ const TaskDetailsView: React.FC<TaskDetailsViewProps> = ({
           </div>
         </div>
       </div>
+      <ConfirmModal
+        isOpen={isCompleteModalOpen}
+        title="Mark task as completed?"
+        message={`Are you sure you want to mark "${task.title}" as completed?`}
+        confirmLabel="Yes, Complete"
+        cancelLabel="Cancel"
+        onConfirm={handleConfirmComplete}
+        onCancel={() => setIsCompleteModalOpen(false)}
+      />
     </div>
   )
 }
