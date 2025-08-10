@@ -51,9 +51,7 @@ describe('Layout Redesign', () => {
     // Modal should open with explainer text
     await waitFor(() => {
       expect(
-        screen.getByText(
-          'you can add long text document like documentation or meeting minutes or note to samurai agent to consider it as context, this will be kept updating as our conversation goes and you can update by adding more information here anytime'
-        )
+        screen.getByText(/Add project knowledge here/i)
       ).toBeInTheDocument()
     })
   })

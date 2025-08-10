@@ -137,46 +137,56 @@ function App() {
         </div>
       </div>
       <FullScreenModal isOpen={showProjectDetailModal} onClose={() => setShowProjectDetailModal(false)}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div style={{ color: '#1d4ed8', background: 'rgba(29,78,216,0.08)', padding: '8px 10px', borderRadius: 6, fontSize: 14 }}>
-            you can add long text document like documentation or meeting minutes or note to samurai agent to consider it as context, this will be kept updating as our conversation goes and you can update by adding more information here anytime
+        <section className="project-detail-modal" role="dialog" aria-modal="true" aria-labelledby="project-detail-title">
+          <header className="project-detail-header">
+            <h2 id="project-detail-title" className="project-detail-title">
+              {projectDetailMode === 'ingest' ? 'Add Project Detail' : 'Edit Project Detail Brain'}
+            </h2>
+            <nav className="project-detail-tabs" aria-label="Project Detail Mode">
+              <button
+                onClick={() => openProjectDetailModal('ingest')}
+                className={`pd-tab ${projectDetailMode === 'ingest' ? 'active' : ''}`}
+                aria-pressed={projectDetailMode === 'ingest'}
+              >
+                Add (AI Digest)
+              </button>
+              <button
+                onClick={() => openProjectDetailModal('edit')}
+                className={`pd-tab ${projectDetailMode === 'edit' ? 'active' : ''}`}
+                aria-pressed={projectDetailMode === 'edit'}
+              >
+                Edit Project Detail Brain
+              </button>
+            </nav>
+          </header>
+
+          <div className="project-detail-explainer">
+            Add project knowledge here — paste documentation, meeting notes, or any long text. Samurai Agent will use it as context and keep it evolving as our conversation continues. You can add or edit information anytime.
           </div>
-          <h2 style={{ margin: 0 }}>{projectDetailMode === 'ingest' ? 'Add Project Detail' : 'Edit Project Detail Brain'}</h2>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button 
-              onClick={() => openProjectDetailModal('ingest')} 
-              className={`modal-button ${projectDetailMode === 'ingest' ? 'primary' : 'secondary'}`}
-            >
-              Add (AI Digest)
-            </button>
-            <button 
-              onClick={() => openProjectDetailModal('edit')} 
-              className={`modal-button ${projectDetailMode === 'edit' ? 'primary' : 'secondary'}`}
-            >
-              Edit Project Detail Brain
-            </button>
+
+          <div className="project-detail-body">
+            <textarea
+              placeholder={projectDetailMode === 'ingest' ? 'Paste raw meeting minutes, specs, documents...' : 'Edit your current project detail...'}
+              value={projectDetailInput}
+              onChange={(e) => setProjectDetailInput(e.target.value)}
+              className="project-detail-textarea"
+            />
+            <div className="project-detail-helper">
+              {projectDetailMode === 'ingest'
+                ? 'The Samurai Agent will use AI to digest this text and save the most relevant project details as your permanent project specification for future reference.'
+                : 'Editing directly updates your permanent project specification. This bypasses AI digestion.'}
+            </div>
           </div>
-          <textarea 
-            placeholder={projectDetailMode === 'ingest' ? 'Paste raw meeting minutes, specs, documents...' : 'Edit your current project detail...'}
-            value={projectDetailInput}
-            onChange={(e) => setProjectDetailInput(e.target.value)}
-            className="description-textarea"
-            style={{ minHeight: '50vh' }}
-          />
-          <div style={{ fontSize: 13, color: '#666' }}>
-            {projectDetailMode === 'ingest'
-              ? 'The Samurai Agent will use AI to digest this text and save the most relevant project details as your permanent project specification for future reference.'
-              : 'Editing directly updates your permanent project specification. This bypasses AI digestion.'}
-          </div>
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+
+          <footer className="project-detail-footer">
             <button onClick={() => setShowProjectDetailModal(false)} disabled={savingProjectDetail} className="modal-button secondary">Cancel</button>
             <button onClick={handleSubmitProjectDetail} disabled={savingProjectDetail || loadingProjectDetail || !selectedProject} className="modal-button primary">
               {savingProjectDetail
                 ? (projectDetailMode === 'ingest' ? 'Digesting & Saving…' : 'Saving…')
                 : (projectDetailMode === 'ingest' ? 'Digest & Save Project Detail' : 'Save Project Detail')}
             </button>
-          </div>
-        </div>
+          </footer>
+        </section>
       </FullScreenModal>
     </div>
   )
