@@ -11,6 +11,12 @@ from datetime import datetime
 import logging
 import traceback
 import json
+import sys
+
+# Ensure backend directory is on sys.path for module imports
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+if CURRENT_DIR not in sys.path:
+    sys.path.append(CURRENT_DIR)
 
 # Import your models
 from models import (
@@ -18,7 +24,8 @@ from models import (
     ChatRequest, ChatResponse,
     TaskUpdateRequest, Task, Memory, ChatMessage,
     Session, SessionCreateRequest, SessionListResponse,
-    TaskContextRequest, TaskContextResponse
+    TaskContextRequest, TaskContextResponse,
+    ProjectDetailIngestRequest, ProjectDetailDirectSaveRequest,
 )
 
 # Import your services  
@@ -28,6 +35,7 @@ from services.unified_samurai_agent import unified_samurai_agent
 from services.context_service import context_service
 from services.response_service import handle_agent_response, handle_validation_error
 from services.intelligent_memory_consolidation import IntelligentMemoryConsolidationService
+from services.project_detail_service import project_detail_service
 
 
 # Load environment variables
@@ -180,7 +188,8 @@ async def chat(project_id: str, request: ChatRequest):
         project_context = {
             "name": project.name,
             "description": project.description,
-            "tech_stack": project.tech_stack
+            "tech_stack": project.tech_stack,
+            "project_detail": file_service.load_project_detail(project_id)
         }
 
         # Get or create current session
@@ -266,7 +275,8 @@ async def chat_with_progress(project_id: str, request: ChatRequest):
             project_context = {
                 "name": project.name,
                 "description": project.description,
-                "tech_stack": project.tech_stack
+                "tech_stack": project.tech_stack,
+                "project_detail": file_service.load_project_detail(project_id)
             }
             
             # 3. Get or create current session
@@ -410,7 +420,8 @@ async def chat_stream(project_id: str, request: ChatRequest):
             project_context = {
                 "name": project.name,
                 "description": project.description,
-                "tech_stack": project.tech_stack
+                "tech_stack": project.tech_stack,
+                "project_detail": file_service.load_project_detail(project_id)
             }
             
             current_session = file_service.get_latest_session(project_id)
@@ -830,6 +841,62 @@ async def delete_memory(project_id: str, memory_id: str):
         logger.error(f"Error deleting memory {memory_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to delete memory: {str(e)}")
 
+# Project Detail (long-form spec) endpoints
+
+@app.get("/projects/{project_id}/project-detail")
+async def get_project_detail(project_id: str):
+    try:
+        project = file_service.get_project_by_id(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        content = file_service.load_project_detail(project_id)
+        return {"content": content}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error loading project detail: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to load project detail: {str(e)}")
+
+@app.post("/projects/{project_id}/project-detail/ingest")
+async def ingest_project_detail(project_id: str, request: ProjectDetailIngestRequest):
+    """Ingest raw long-form text, digest via LLM for software-dev relevant details, and save to project_detail.txt"""
+    try:
+        project = file_service.get_project_by_id(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        raw_text = (request.raw_text or "").strip()
+        if not raw_text:
+            raise HTTPException(status_code=400, detail="raw_text is required")
+
+        final_text = await project_detail_service.ingest_project_detail(
+            project_id=project_id,
+            raw_text=raw_text,
+            mode=(request.mode or "merge")
+        )
+        return {"status": "saved", "chars": len(final_text), "mode": (request.mode or "merge").lower()}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error ingesting project detail: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to ingest project detail: {str(e)}")
+
+@app.post("/projects/{project_id}/project-detail/save")
+async def save_project_detail(project_id: str, request: ProjectDetailDirectSaveRequest):
+    """Directly save the provided content to project_detail.txt (bypass LLM)."""
+    try:
+        project = file_service.get_project_by_id(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        content = (request.content or "").strip()
+        file_service.save_project_detail(project_id, content)
+        return {"status": "saved", "chars": len(content)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error saving project detail: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to save project detail: {str(e)}")
+
 @app.post("/projects/{project_id}/sessions/{session_id}/complete")
 async def complete_session(project_id: str, session_id: str):
     """
@@ -853,7 +920,8 @@ async def complete_session(project_id: str, session_id: str):
         project_context = {
             "name": project.name,
             "description": project.description,
-            "tech_stack": project.tech_stack
+            "tech_stack": project.tech_stack,
+            "project_detail": file_service.load_project_detail(project_id)
         }
         
         # 4. Perform session completion with unified agent
@@ -909,7 +977,8 @@ async def end_session_with_consolidation(project_id: str, request: Request):
         project_context = {
             "name": project.name,
             "description": project.description,
-            "tech_stack": project.tech_stack
+            "tech_stack": project.tech_stack,
+            "project_detail": file_service.load_project_detail(project_id)
         }
         
         # 4. Perform intelligent memory consolidation
@@ -919,10 +988,29 @@ async def end_session_with_consolidation(project_id: str, request: Request):
             project_context=project_context
         )
         
-        # 5. Generate new session ID for clean restart
+        # 5. Update project detail spec using last session conversation (semantic merge)
+        try:
+            session_messages = file_service.load_chat_messages_by_session(project_id, session_id)
+            parts = []
+            for m in session_messages[-100:]:  # last 100 messages
+                if m.message:
+                    parts.append(f"User: {m.message}")
+                if m.response:
+                    parts.append(f"Agent: {m.response}")
+            raw_update_text = "\n".join(parts)
+            if raw_update_text:
+                await project_detail_service.ingest_project_detail(
+                    project_id=project_id,
+                    raw_text=raw_update_text,
+                    mode="merge"
+                )
+        except Exception as e:
+            logger.warning(f"Project detail update during session end failed: {e}")
+
+        # 6. Generate new session ID for clean restart
         new_session_id = str(uuid.uuid4())
         
-        # 6. Create new session
+        # 7. Create new session
         new_session = Session(
             id=new_session_id,
             project_id=project_id,
@@ -930,7 +1018,7 @@ async def end_session_with_consolidation(project_id: str, request: Request):
         )
         file_service.save_session(project_id, new_session)
         
-        # 7. Build comprehensive response
+        # 8. Build comprehensive response
         response_data = {
             "status": "session_ended",
             "memory_consolidation": {
