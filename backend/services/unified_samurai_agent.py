@@ -310,12 +310,28 @@ class UnifiedSamuraiAgent:
             active_task_header = ""
             if context.task_context:
                 active_task_header = (
-                    "ACTIVE TASK SELECTED BY USER (Primary Focus)\n"
-                    f"- Title: {getattr(context.task_context, 'title', 'Untitled')}\n"
-                    f"- Description: {getattr(context.task_context, 'description', '')}\n"
-                    f"- Status: {getattr(context.task_context, 'status', 'pending')}\n"
-                    f"- Priority: {getattr(context.task_context, 'priority', 'medium')}\n\n"
-                    "INTENT: The user is focusing on this task now and likely wants to ask questions, update details, or make progress on it. Prioritize actions and guidance about this task unless the user clearly asks otherwise.\n\n"
+                    "## ACTIVE TASK (MANDATORY FOCUS)\n"
+                    f"ID: {getattr(context.task_context, 'id', 'UNKNOWN')}\n"
+                    f"Title: {getattr(context.task_context, 'title', 'Untitled')}\n"
+                    f"Description: {getattr(context.task_context, 'description', '')}\n"
+                    f"Status: {getattr(context.task_context, 'status', 'pending')}\n"
+                    f"Priority: {getattr(context.task_context, 'priority', 'medium')}\n\n"
+                    "IMPORTANT NOTE: The user explicitly selected this active task. ALL generated tasks must strictly advance THIS task.\n"
+                    "- Create ONLY subtasks for this active task. Do NOT create a new root task.\n"
+                    "- Use conversation history only insofar as it informs or unblocks this active task.\n"
+                    "- Ignore unrelated conversation topics unless the user explicitly asked to expand scope.\n\n"
+                )
+            # Guidance when there is no active task: infer target task from latest conversation
+            no_active_task_inference = ""
+            if not context.task_context:
+                no_active_task_inference = (
+                    "## TARGET TASK INFERENCE (NO ACTIVE TASK)\n"
+                    "- Infer the single most relevant task to break down from the latest user message and the most recent portion of the conversation history.\n"
+                    "- Prioritize the latest user intent. If multiple features are mentioned, choose the one most recently requested or clarified.\n"
+                    "- Resolve pronouns like 'this'/'that'/'it' by linking them to the most recent concrete feature or change explicitly mentioned. If still ambiguous, include a final 'Clarify:' question and keep scope minimal.\n"
+                    "- The FIRST item must be a ROOT PARENT task (parent_task_id = null) that crisply summarizes this feature.\n"
+                    "- All subsequent items should be children of that root parent.\n"
+                    "- Do not blend unrelated topics; prefer a narrow, implementable scope.\n\n"
                 )
 
             system_prompt = f"""You are Samurai Engine's intent analysis expert. Your role is to deeply understand developer conversations and classify user intent to enable the perfect "vibe coding partner" response.
@@ -654,19 +670,37 @@ Use this framework to analyze the current message and provide the most accurate 
             active_task_header = ""
             if context.task_context:
                 active_task_header = (
-                    "ACTIVE TASK SELECTED BY USER (Primary Focus)\n"
-                    f"- Title: {getattr(context.task_context, 'title', 'Untitled')}\n"
-                    f"- Description: {getattr(context.task_context, 'description', '')}\n"
-                    f"- Status: {getattr(context.task_context, 'status', 'pending')}\n"
-                    f"- Priority: {getattr(context.task_context, 'priority', 'medium')}\n\n"
-                    "INTENT: The user is focusing on this task now and likely wants to ask questions, update details, or make progress on it. Prioritize actions and guidance about this task unless the user clearly asks otherwise.\n\n"
+                    "## ACTIVE TASK (MANDATORY FOCUS)\n"
+                    f"ID: {getattr(context.task_context, 'id', 'UNKNOWN')}\n"
+                    f"Title: {getattr(context.task_context, 'title', 'Untitled')}\n"
+                    f"Description: {getattr(context.task_context, 'description', '')}\n"
+                    f"Status: {getattr(context.task_context, 'status', 'pending')}\n"
+                    f"Priority: {getattr(context.task_context, 'priority', 'medium')}\n\n"
+                    "IMPORTANT NOTE: The user explicitly selected this active task. ALL generated tasks must strictly advance THIS task.\n"
+                    "- Create ONLY subtasks for this active task. Do NOT create a new root task.\n"
+                    "- Use conversation history only insofar as it informs or unblocks this active task.\n"
+                    "- Ignore unrelated conversation topics unless the user explicitly asked to expand scope.\n\n"
+                )
+
+            # Guidance when there is no active task: infer target task from latest conversation
+            no_active_task_inference = ""
+            if not context.task_context:
+                no_active_task_inference = (
+                    "## TARGET TASK INFERENCE (NO ACTIVE TASK)\n"
+                    "- Infer the single most relevant task to break down from the latest user message and the most recent portion of the conversation history.\n"
+                    "- Prioritize the latest user intent. If multiple features are mentioned, choose the one most recently requested or clarified.\n"
+                    "- The FIRST item must be a ROOT PARENT task (parent_task_id = null) that crisply summarizes this feature.\n"
+                    "- All subsequent items should be children of that root parent.\n"
+                    "- Do not blend unrelated topics; prefer a narrow, implementable scope.\n\n"
                 )
 
             system_prompt = f"""
 You are Samurai Engine, their vibe coding partner.
 
+{active_task_header}{no_active_task_inference}
+
 ## COMPREHENSIVE CONVERSATION CONTEXT (READ THIS FIRST - CRITICAL)
-{active_task_header}{conversation_context}
+{conversation_context}
 
 ## PROJECT CONTEXT
 Project: {context.project_context.get('name', 'Unknown')} | Tech: {context.project_context.get('tech_stack', 'Unknown')}
@@ -748,20 +782,38 @@ Your response:
             active_task_header = ""
             if context.task_context:
                 active_task_header = (
-                    "ACTIVE TASK SELECTED BY USER (Primary Focus)\n"
-                    f"- Title: {getattr(context.task_context, 'title', 'Untitled')}\n"
-                    f"- Description: {getattr(context.task_context, 'description', '')}\n"
-                    f"- Status: {getattr(context.task_context, 'status', 'pending')}\n"
-                    f"- Priority: {getattr(context.task_context, 'priority', 'medium')}\n\n"
-                    "INTENT: The user is focusing on this task now and likely wants to ask questions, update details, or make progress on it. Prioritize actions and guidance about this task unless the user clearly asks otherwise.\n\n"
+                    "## ACTIVE TASK (MANDATORY FOCUS)\n"
+                    f"ID: {getattr(context.task_context, 'id', 'UNKNOWN')}\n"
+                    f"Title: {getattr(context.task_context, 'title', 'Untitled')}\n"
+                    f"Description: {getattr(context.task_context, 'description', '')}\n"
+                    f"Status: {getattr(context.task_context, 'status', 'pending')}\n"
+                    f"Priority: {getattr(context.task_context, 'priority', 'medium')}\n\n"
+                    "IMPORTANT NOTE: The user explicitly selected this active task. ALL generated tasks must strictly advance THIS task.\n"
+                    "- Create ONLY subtasks for this active task. Do NOT create a new root task.\n"
+                    "- Use conversation history only insofar as it informs or unblocks this active task.\n"
+                    "- Ignore unrelated conversation topics unless the user explicitly asked to expand scope.\n\n"
+                )
+
+            # Guidance when there is no active task: infer target task from latest conversation
+            no_active_task_inference = ""
+            if not context.task_context:
+                no_active_task_inference = (
+                    "## TARGET TASK INFERENCE (NO ACTIVE TASK)\n"
+                    "- Infer the single most relevant task to break down from the latest user message and the most recent portion of the conversation history.\n"
+                    "- Prioritize the latest user intent. If multiple features are mentioned, choose the one most recently requested or clarified.\n"
+                    "- The FIRST item must be a ROOT PARENT task (parent_task_id = null) that crisply summarizes this feature.\n"
+                    "- All subsequent items should be children of that root parent.\n"
+                    "- Do not blend unrelated topics; prefer a narrow, implementable scope.\n\n"
                 )
 
             
             system_prompt = f"""
 You are Samurai Engine, helping developers explore feature ideas with deep conversation awareness.
 
+{active_task_header}{no_active_task_inference}
+
 ## COMPREHENSIVE CONVERSATION CONTEXT (ESSENTIAL - READ FIRST)
-{active_task_header}{conversation_context}
+{conversation_context}
 
 ## PROJECT CONTEXT
 Project: {context.project_context.get('name', 'Unknown')} | Tech: {context.project_context.get('tech_stack', 'Unknown')}
@@ -841,19 +893,37 @@ Your response should demonstrate deep understanding of the entire conversation, 
             active_task_header = ""
             if context.task_context:
                 active_task_header = (
-                    "ACTIVE TASK SELECTED BY USER (Primary Focus)\n"
-                    f"- Title: {getattr(context.task_context, 'title', 'Untitled')}\n"
-                    f"- Description: {getattr(context.task_context, 'description', '')}\n"
-                    f"- Status: {getattr(context.task_context, 'status', 'pending')}\n"
-                    f"- Priority: {getattr(context.task_context, 'priority', 'medium')}\n\n"
-                    "INTENT: The user is focusing on this task now and likely wants to ask questions, update details, or make progress on it. Prioritize actions and guidance about this task unless the user clearly asks otherwise.\n\n"
+                    "## ACTIVE TASK (MANDATORY FOCUS)\n"
+                    f"ID: {getattr(context.task_context, 'id', 'UNKNOWN')}\n"
+                    f"Title: {getattr(context.task_context, 'title', 'Untitled')}\n"
+                    f"Description: {getattr(context.task_context, 'description', '')}\n"
+                    f"Status: {getattr(context.task_context, 'status', 'pending')}\n"
+                    f"Priority: {getattr(context.task_context, 'priority', 'medium')}\n\n"
+                    "IMPORTANT NOTE: The user explicitly selected this active task. ALL generated tasks must strictly advance THIS task.\n"
+                    "- Create ONLY subtasks for this active task. Do NOT create a new root task.\n"
+                    "- Use conversation history only insofar as it informs or unblocks this active task.\n"
+                    "- Ignore unrelated conversation topics unless the user explicitly asked to expand scope.\n\n"
+                )
+
+            # Guidance when there is no active task: infer target task from latest conversation
+            no_active_task_inference = ""
+            if not context.task_context:
+                no_active_task_inference = (
+                    "## TARGET TASK INFERENCE (NO ACTIVE TASK)\n"
+                    "- Infer the single most relevant task to break down from the latest user message and the most recent portion of the conversation history.\n"
+                    "- Prioritize the latest user intent. If multiple features are mentioned, choose the one most recently requested or clarified.\n"
+                    "- The FIRST item must be a ROOT PARENT task (parent_task_id = null) that crisply summarizes this feature.\n"
+                    "- All subsequent items should be children of that root parent.\n"
+                    "- Do not blend unrelated topics; prefer a narrow, implementable scope.\n\n"
                 )
             
             system_prompt = f"""
 You are Samurai Engine, gathering complete feature specifications through extended conversation tracking.
 
+{active_task_header}{no_active_task_inference}
+
 ## COMPREHENSIVE CONVERSATION CONTEXT (CRITICAL FOR SPECIFICATION BUILDING)
-{active_task_header}{conversation_context}
+{conversation_context}
 
 ## PROJECT CONTEXT
 Project: {context.project_context.get('name', 'Unknown')} | Tech: {context.project_context.get('tech_stack', 'Unknown')}
@@ -1521,19 +1591,39 @@ Show deep understanding of how the specification has evolved throughout the enti
             active_task_header = ""
             if context.task_context:
                 active_task_header = (
-                    "ACTIVE TASK SELECTED BY USER (Primary Focus)\n"
-                    f"- Title: {getattr(context.task_context, 'title', 'Untitled')}\n"
-                    f"- Description: {getattr(context.task_context, 'description', '')}\n"
-                    f"- Status: {getattr(context.task_context, 'status', 'pending')}\n"
-                    f"- Priority: {getattr(context.task_context, 'priority', 'medium')}\n\n"
-                    "INTENT: The user is focusing on this task now and likely wants to ask questions, update details, or make progress on it. Prioritize actions and guidance about this task unless the user clearly asks otherwise.\n\n"
+                    "## ACTIVE TASK (MANDATORY FOCUS)\n"
+                    f"ID: {getattr(context.task_context, 'id', 'UNKNOWN')}\n"
+                    f"Title: {getattr(context.task_context, 'title', 'Untitled')}\n"
+                    f"Description: {getattr(context.task_context, 'description', '')}\n"
+                    f"Status: {getattr(context.task_context, 'status', 'pending')}\n"
+                    f"Priority: {getattr(context.task_context, 'priority', 'medium')}\n\n"
+                    "IMPORTANT NOTE: The user explicitly selected this active task. ALL generated tasks must strictly advance THIS task.\n"
+                    "- Create ONLY subtasks for this active task. Do NOT create a new root task.\n"
+                    "- Use conversation history only insofar as it informs or unblocks this active task.\n"
+                    "- Ignore unrelated conversation topics unless the user explicitly asked to expand scope.\n\n"
+                )
+            # When there is no active task, prepare guidance to infer a target task from the latest conversation
+            no_active_task_inference = ""
+            if not context.task_context:
+                no_active_task_inference = (
+                    "## TARGET TASK INFERENCE (NO ACTIVE TASK)\n"
+                    "- Infer the single most relevant task to break down from the latest user message and the most recent portion of the conversation history.\n"
+                    "- Prioritize the latest user intent. If multiple features are mentioned, choose the one most recently requested or clarified.\n"
+                    "- The FIRST item must be a ROOT PARENT task (parent_task_id = null) that crisply summarizes this feature.\n"
+                    "- All subsequent items should be children of that root parent.\n"
+                    "- Do not blend unrelated topics; prefer a narrow, implementable scope.\n\n"
                 )
 
             system_prompt = f"""
-Break down this feature request into implementable SOFTWARE ENGINEERING tasks only, using the comprehensive conversation history.
+Break down this feature request into implementable SOFTWARE ENGINEERING tasks only.
 
-## COMPREHENSIVE CONVERSATION CONTEXT (ESSENTIAL FOR COMPLETE TASK CREATION)
-{active_task_header}{conversation_context}
+## LATEST USER MESSAGE (most recent intent signal)
+{message}
+
+{active_task_header if context.task_context else ''}{no_active_task_inference}
+
+## COMPREHENSIVE CONVERSATION CONTEXT (review recent messages first)
+{conversation_context}
 
 ## PROJECT CONTEXT
 Project: {context.project_context.get('name', 'Unknown')}
@@ -1547,6 +1637,7 @@ Tech Stack: {context.project_context.get('tech_stack', 'Unknown')}
 ## SCOPE: SOFTWARE ENGINEERING TASKS ONLY
 - Include only tasks that produce concrete changes to: application code, tests, configuration, CI/CD pipelines, infrastructure-as-code, database schemas/migrations, APIs, security/hardening, performance tuning, or developer documentation inside the repository that is directly tied to code changes (e.g., updating `README.md` after implementing a feature).
 - Each task must be actionable within the repository and lead to a verifiable code change.
+- When an ACTIVE TASK exists, strictly scope all tasks to advancing that task; do NOT introduce unrelated tasks.
 
 ## OUT OF SCOPE (EXCLUDE COMPLETELY)
 - Workshops, meetings, trainings, demos, presentations, slide decks
@@ -1572,7 +1663,7 @@ If the request is not about software engineering implementation, return an empty
 ## DESCRIPTION CONTENT REQUIREMENTS
 - Make the description as detailed as possible while strictly grounded in the provided context. Do not make up details
 - Include within the single description string:
-  - Brief context summary tied to conversation details
+  - Brief context summary tied to conversation details (as they relate to the active task)
   - Implementation steps (2–6 concise bullets)
   - Affected areas/files/modules only if explicitly referenced; otherwise, describe the area generically
   - Tests to add or update (unit/integration/e2e) where applicable
@@ -1589,7 +1680,7 @@ Return a pure JSON array of tasks. Each task MUST include these fields:
 - parent_task_id: string | null
 
 Rules for parent_task_id assignment:
-- If there is an ACTIVE TASK (see header above), ALL returned tasks must set parent_task_id to this exact value: {getattr(context.task_context, 'id', 'UNKNOWN')}
+- If there is an ACTIVE TASK (see header above), ALL returned tasks must set parent_task_id to this exact value: {getattr(context.task_context, 'id', 'UNKNOWN')} and NONE may have parent_task_id = null.
 - If there is NO ACTIVE TASK, the FIRST item in the array must be a ROOT PARENT task (parent_task_id = null), summarizing the user's request at a high-level. For subsequent items, either set parent_task_id to the real ID of the root parent (if you have set one in your output), or omit parent_task_id and the system will attach them to the created root parent.
 
 IMPORTANT:
@@ -1720,10 +1811,37 @@ IMPORTANT:
     
     async def _execute_direct_action(self, message: str, context: ConversationContext, project_id: str) -> dict:
         """Execute direct actions using LLM detection and comprehensive tool access."""
-        
+        active_task_header = ""
+        if context.task_context:
+            active_task_header = (
+                "## ACTIVE TASK (MANDATORY FOCUS)\n"
+                f"ID: {getattr(context.task_context, 'id', 'UNKNOWN')}\n"
+                f"Title: {getattr(context.task_context, 'title', 'Untitled')}\n"
+                f"Description: {getattr(context.task_context, 'description', '')}\n"
+                f"Status: {getattr(context.task_context, 'status', 'pending')}\n"
+                f"Priority: {getattr(context.task_context, 'priority', 'medium')}\n\n"
+                "IMPORTANT NOTE: The user explicitly selected this active task. ALL generated tasks must strictly advance THIS task.\n"
+                "- Create ONLY subtasks for this active task. Do NOT create a new root task.\n"
+                "- Use conversation history only insofar as it informs or unblocks this active task.\n"
+                "- Ignore unrelated conversation topics unless the user explicitly asked to expand scope.\n\n"
+            )
+        # When there is no active task, prepare guidance to infer a target task from the latest conversation
+        no_active_task_inference = ""
+        if not context.task_context:
+            no_active_task_inference = (
+                "## TARGET TASK INFERENCE (NO ACTIVE TASK)\n"
+                "- Infer the single most relevant task to break down from the latest user message and the most recent portion of the conversation history.\n"
+                "- Prioritize the latest user intent. If multiple features are mentioned, choose the one most recently requested or clarified.\n"
+                "- The FIRST item must be a ROOT PARENT task (parent_task_id = null) that crisply summarizes this feature.\n"
+                "- All subsequent items should be children of that root parent.\n"
+                "- Do not blend unrelated topics; prefer a narrow, implementable scope.\n\n"
+            )
+
         # Step 1: Use LLM to detect actions
         action_analysis_prompt = f"""
 You are Samurai Engine's action detection expert. Analyze the user's message to identify specific actions they want to perform.
+
+{active_task_header}{no_active_task_inference}
 
 PROJECT CONTEXT:
 - Project: {context.project_context.get('name', 'Unknown')}
