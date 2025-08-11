@@ -276,6 +276,20 @@ class UnifiedSamuraiAgent:
             
             # Create conversation summary
             conversation_summary = self._create_conversation_summary(session_messages, message)
+
+            # If there is an explicit task context, foreground it at the very top of the summary
+            if task_context:
+                active_task_lines = [
+                    "ACTIVE TASK SELECTED BY USER (Primary Focus)",
+                    f"- Title: {getattr(task_context, 'title', 'Untitled')}",
+                    f"- Description: {getattr(task_context, 'description', '')}",
+                    f"- Status: {getattr(task_context, 'status', 'pending')}",
+                    f"- Priority: {getattr(task_context, 'priority', 'medium')}",
+                    "",
+                    "INTENT: The user is focusing on this task now and likely wants to ask questions, update details, or make progress on it. Prioritize actions and guidance about this task unless the user clearly asks otherwise.",
+                    ""
+                ]
+                conversation_summary = "\n".join(active_task_lines) + conversation_summary
             
             # Get relevant tasks and memories from vector context
             relevant_tasks = [task for task, _ in vector_context.get("relevant_tasks_with_scores", [])]

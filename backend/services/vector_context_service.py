@@ -203,18 +203,18 @@ class VectorContextService:
             # 0. Task Context (highest priority if provided)
             if task_context:
                 context_parts.append("# 🎯 FOCUSED TASK CONTEXT")
-                context_parts.append("**IMPORTANT**: The user has selected this specific task as the main context for our conversation.")
-                context_parts.append("Your primary goal is to help refine and polish this task description for use in Cursor.")
+                context_parts.append("The user explicitly selected this active task. Treat it as the primary objective for this conversation.")
+                context_parts.append("When choosing what to respond with or which tools to call, assume the user wants to ask about, update, or make progress on THIS task unless they clearly indicate otherwise.")
                 context_parts.append("")
                 status_icon = "✅" if getattr(task_context, 'completed', False) else "⏸️"
-                context_parts.append(f"**Active Task**: {status_icon} {task_context.title}")
-                context_parts.append(f"**Description**: {task_context.description}")
+                context_parts.append(f"**Active Task**: {status_icon} {getattr(task_context, 'title', 'Untitled')}")
+                context_parts.append(f"**Description**: {getattr(task_context, 'description', '')}")
                 context_parts.append(f"**Status**: {getattr(task_context, 'status', 'pending')}")
                 context_parts.append(f"**Priority**: {getattr(task_context, 'priority', 'medium')}")
-                if hasattr(task_context, 'prompt') and task_context.prompt:
-                    context_parts.append(f"**Current Prompt**: {task_context.prompt}")
+                if hasattr(task_context, 'prompt') and getattr(task_context, 'prompt'):
+                    context_parts.append(f"**Current Prompt**: {getattr(task_context, 'prompt')}")
                 context_parts.append("")
-                context_parts.append("**FOCUS**: Help the user create a refined, detailed task description that can be easily copied and pasted into Cursor.")
+                context_parts.append("ACTION BIAS: Prefer concrete next steps, clarifying questions that unblock progress, and task updates that move this task forward.")
                 context_parts.append("")
             
             # 1. Current Session Chat History (always included)
