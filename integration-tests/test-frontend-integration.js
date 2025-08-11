@@ -498,6 +498,11 @@ class FrontendTester {
   async cleanup() {
     this.logger.log('Cleaning up frontend test data...')
     
+    if (process.env.KEEP_TEST_PROJECT === '1' || process.env.KEEP_TEST_PROJECT === 'true') {
+      this.logger.log('KEEP_TEST_PROJECT flag set. Skipping frontend cleanup to preserve test project.')
+      return
+    }
+
     if (this.testProjectId) {
       try {
         await this.makeRequest(`/projects/${this.testProjectId}`, {

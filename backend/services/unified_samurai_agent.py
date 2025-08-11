@@ -1560,6 +1560,21 @@ Remember: The goal is creating the optimal number of AI-friendly tasks that enab
             
             # Enhanced JSON parsing with multiple fallback strategies
             parsed_response = self._parse_task_breakdown_response(response, message, context)
+            # Resolve placeholder parent references into explicit parent_task_id fields
+            # ACTIVE_TASK -> use context.task_context.id
+            # ROOT_PARENT -> first created task (we handle during creation by passing override)
+            if parsed_response and isinstance(parsed_response, list):
+                if context.task_context:
+                    for item in parsed_response:
+                        if item.get("parent_task_id") == "ACTIVE_TASK":
+                            item["parent_task_id"] = getattr(context.task_context, 'id', None)
+                else:
+                    # Normalize ROOT_PARENT placeholders to None; _execute_task_creation will attach children to the first task
+                    for item in parsed_response:
+                        if item.get("parent_task_id") == "ROOT_PARENT":
+                            # mark with special marker to handle in creation
+                            item["parent_task_id"] = "__ROOT_PARENT__"
+                
             return parsed_response
                 
         except Exception as e:
@@ -1762,12 +1777,18 @@ If the request is not about software engineering implementation, return an empty
 - Reference specific technical decisions made during the conversation
 - Include UX considerations, architectural choices, and non-functional requirements (performance, security) if relevant
 
-## OUTPUT FORMAT (STRICT)
-Return a pure JSON array of tasks. Each task must have exactly these fields:
-[
-    {{"title": "Imperative, code-focused title (6–12 words)", "description": "Context summary; Implementation Steps; Affected Areas (only if named in context); Tests; Acceptance Criteria; Clarify: <only if critical details are missing>. Use concise bullet points within the string. Do not invent details not in context."}},
-    ...
-]
+## OUTPUT FORMAT (STRICT HIERARCHY-AWARE)
+Return a pure JSON array of tasks. Each task MUST include these fields:
+- title: string
+- description: string (with context summary; steps; affected areas if named; tests; acceptance; optional Clarify bullet)
+- parent_task_id: string | null
+
+Rules for parent_task_id assignment:
+- If there is an ACTIVE TASK (see header above), ALL returned tasks must set parent_task_id to this exact value: {getattr(context.task_context, 'id', 'UNKNOWN')}
+- If there is NO ACTIVE TASK, the FIRST item in the array must be a ROOT PARENT task (parent_task_id = null), summarizing the user's request at a high-level. For subsequent items, either set parent_task_id to the real ID of the root parent (if you have set one in your output), or omit parent_task_id and the system will attach them to the created root parent.
+
+IMPORTANT:
+- Return JSON only. No markdown, code fences, or extra commentary.
 """
             
             response = await self.gemini_service.chat_with_system_prompt(message, system_prompt)
@@ -1797,11 +1818,12 @@ Return a pure JSON array of tasks. Each task must have exactly these fields:
         
         return "\n".join(response_parts)
     
-    async def _execute_task_creation(self, task_breakdown: List[dict], project_id: str) -> List[dict]:
+    async def _execute_task_creation(self, task_breakdown: List[dict], project_id: str, parent_task_id_override: Optional[str] = None) -> List[dict]:
         """Execute task creation using tool registry."""
         results = []
+        root_created_id: Optional[str] = None
         
-        for task_data in task_breakdown:
+        for index, task_data in enumerate(task_breakdown):
             try:
                 # Create task using tool registry
                 # Extract optional parameters
@@ -1818,14 +1840,34 @@ Return a pure JSON array of tasks. Each task must have exactly these fields:
                     params["priority"] = task_data["priority"]
                 if "due_date" in task_data:
                     params["due_date"] = task_data["due_date"]
-                if "parent_task_id" in task_data:
-                    params["parent_task_id"] = task_data["parent_task_id"]
+                # Parent assignment logic
+                if parent_task_id_override:
+                    # Force all tasks to be children of the active task
+                    params["parent_task_id"] = parent_task_id_override
+                else:
+                    ptid = task_data.get("parent_task_id")
+                    if ptid:
+                        params["parent_task_id"] = ptid
+                    else:
+                        # No explicit parent provided by LLM
+                        if index == 0:
+                            # First task is root; no parent
+                            pass
+                        else:
+                            # Attach to root if available
+                            if root_created_id:
+                                params["parent_task_id"] = root_created_id
                 
                 result = await self.tool_registry.execute_tool(
                     "create_task",
                     **params
                 )
                 results.append(result)
+
+                # Capture root id if this is the first created task and we are in the root-parent flow
+                if (parent_task_id_override is None) and (index == 0):
+                    if result.get("success") and result.get("task_id"):
+                        root_created_id = result["task_id"]
             except Exception as e:
                 logger.error(f"Error creating task: {e}")
                 results.append({
