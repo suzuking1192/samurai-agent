@@ -36,6 +36,7 @@ from services.context_service import context_service
 from services.response_service import handle_agent_response, handle_validation_error
 from services.intelligent_memory_consolidation import IntelligentMemoryConsolidationService
 from services.project_detail_service import project_detail_service
+from services.task_analysis_agent import TaskAnalysisAgent
 
 
 # Load environment variables
@@ -67,6 +68,7 @@ app.add_middleware(
 file_service = FileService()
 gemini_service = GeminiService()
 memory_consolidation_service = IntelligentMemoryConsolidationService()
+task_analysis_agent = TaskAnalysisAgent()
 
 # Global exception handler
 @app.exception_handler(Exception)
@@ -585,11 +587,17 @@ async def chat_stream(project_id: str, request: ChatRequest):
 
 # Task endpoints
 @app.get("/projects/{project_id}/tasks")
-async def get_project_tasks(project_id: str):
+async def get_project_tasks(project_id: str, parent_id: Optional[str] = None):
     """Get all tasks for a project"""
     try:
         logger.info(f"Loading tasks for project: {project_id}")
         tasks = file_service.load_tasks(project_id)
+        if parent_id is not None:
+            # When parent_id is empty string, treat as roots
+            if parent_id == "":
+                tasks = [t for t in tasks if not getattr(t, 'parent_task_id', None)]
+            else:
+                tasks = [t for t in tasks if getattr(t, 'parent_task_id', None) == parent_id]
         logger.info(f"Loaded {len(tasks)} tasks for project {project_id}")
         return tasks
     except Exception as e:
@@ -688,13 +696,18 @@ async def create_task(project_id: str, task_data: dict):
         from services.task_service import TaskService
         task_service = TaskService()
         
-        task = await task_service.create_task(
-            title=task_data.get("title", ""),
-            description=task_data.get("description", ""),
-            project_id=project_id,
-            priority=task_data.get("priority", "medium"),
-            status=task_data.get("status", "pending")
-        )
+        parent_task_id = task_data.get("parent_task_id")
+        try:
+            task = await task_service.create_task(
+                title=task_data.get("title", ""),
+                description=task_data.get("description", ""),
+                project_id=project_id,
+                priority=task_data.get("priority", "medium"),
+                status=task_data.get("status", "pending"),
+                parent_task_id=parent_task_id
+            )
+        except ValueError as ve:
+            raise HTTPException(status_code=400, detail=str(ve))
         
         logger.info(f"Task created successfully: {task.id} with {len(task.review_warnings or [])} warnings")
         return task
@@ -1230,6 +1243,40 @@ async def get_task_context(project_id: str, session_id: str):
     except Exception as e:
         logger.error(f"Error getting task context: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get task context: {str(e)}")
+
+
+# Proactive suggestion: should we break down the current task further?
+class BreakdownSuggestionResponse(BaseModel):
+    should_break_down: bool
+    suggestion_text: Optional[str] = None
+
+
+@app.get("/api/suggestions/should-breakdown", response_model=BreakdownSuggestionResponse)
+async def should_breakdown_task(project_id: Optional[str] = None, session_id: Optional[str] = None):
+    """Return whether the current context suggests breaking down the active task."""
+    try:
+        # Determine session
+        if project_id and not session_id:
+            session = file_service.get_latest_session(project_id)
+            session_id = session.id if session else None
+
+        active_task = None
+        if project_id and session_id:
+            session = file_service.get_session_by_id(project_id, session_id)
+            if session and session.task_context_id:
+                active_task = file_service.get_task_by_id(project_id, session.task_context_id)
+
+        # Simple heuristic using analysis agent: if description is broad or long, suggest breakdown
+        if active_task:
+            warnings = await task_analysis_agent.analyze_task(active_task.title, active_task.description)
+            should = len(warnings) > 0 or len(active_task.description.split()) > 120
+            text = f"Break down this task further? Consider sub-tasks for '{active_task.title}'."
+            return BreakdownSuggestionResponse(should_break_down=should, suggestion_text=text if should else None)
+
+        return BreakdownSuggestionResponse(should_break_down=False)
+    except Exception as e:
+        logger.error(f"Error computing breakdown suggestion: {e}")
+        return BreakdownSuggestionResponse(should_break_down=False)
 
 
 if __name__ == "__main__":

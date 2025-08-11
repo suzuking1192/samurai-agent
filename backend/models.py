@@ -358,6 +358,9 @@ class Task(BaseModel):
     updated_at: datetime = Field(default_factory=datetime.utcnow, description="Last update timestamp")
     embedding: Optional[List[float]] = Field(None, description="Vector embedding for semantic search")
     embedding_text: Optional[str] = Field(None, description="Text used to generate the embedding")
+    # Hierarchy fields
+    parent_task_id: Optional[str] = Field(default=None, description="Optional parent task ID for hierarchical tasks")
+    depth: int = Field(default=1, ge=1, le=4, description="Hierarchy depth (1=root, max 4)")
     review_warnings: Optional[List[TaskWarning]] = Field(default=[], description="List of warnings for task review")
 
     class Config:
