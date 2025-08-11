@@ -1241,6 +1241,12 @@ body {
   transform: translateY(0);
 }
 
+.see-details-btn.small {
+  padding: 4px 8px;
+  font-size: 0.72rem;
+  box-shadow: 0 1px 4px rgba(59, 130, 246, 0.25);
+}
+
 /* Subtle hover for task title row */
 .task-item:hover .task-title {
   text-decoration: underline;
