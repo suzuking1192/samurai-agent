@@ -59,6 +59,7 @@ class ConversationContext:
     relevant_memories: List[Memory]
     project_context: dict
     vector_embedding: Optional[List[float]] = None
+    task_context: Optional[Task] = None
 
 
 class UnifiedSamuraiAgent:
@@ -274,22 +275,8 @@ class UnifiedSamuraiAgent:
                 message, project_id, session_messages, project_context, task_context
             )
             
-            # Create conversation summary
+            # Create conversation summary (without task_context injection)
             conversation_summary = self._create_conversation_summary(session_messages, message)
-
-            # If there is an explicit task context, foreground it at the very top of the summary
-            if task_context:
-                active_task_lines = [
-                    "ACTIVE TASK SELECTED BY USER (Primary Focus)",
-                    f"- Title: {getattr(task_context, 'title', 'Untitled')}",
-                    f"- Description: {getattr(task_context, 'description', '')}",
-                    f"- Status: {getattr(task_context, 'status', 'pending')}",
-                    f"- Priority: {getattr(task_context, 'priority', 'medium')}",
-                    "",
-                    "INTENT: The user is focusing on this task now and likely wants to ask questions, update details, or make progress on it. Prioritize actions and guidance about this task unless the user clearly asks otherwise.",
-                    ""
-                ]
-                conversation_summary = "\n".join(active_task_lines) + conversation_summary
             
             # Get relevant tasks and memories from vector context
             relevant_tasks = [task for task, _ in vector_context.get("relevant_tasks_with_scores", [])]
@@ -301,7 +288,8 @@ class UnifiedSamuraiAgent:
                 relevant_tasks=relevant_tasks,
                 relevant_memories=relevant_memories,
                 project_context=project_context,
-                vector_embedding=vector_context.get("vector_embedding")
+                vector_embedding=vector_context.get("vector_embedding"),
+                task_context=task_context if task_context else None
             )
             
         except Exception as e:
@@ -319,10 +307,21 @@ class UnifiedSamuraiAgent:
         """
         try:
             # Build enhanced context-aware prompt
+            active_task_header = ""
+            if context.task_context:
+                active_task_header = (
+                    "ACTIVE TASK SELECTED BY USER (Primary Focus)\n"
+                    f"- Title: {getattr(context.task_context, 'title', 'Untitled')}\n"
+                    f"- Description: {getattr(context.task_context, 'description', '')}\n"
+                    f"- Status: {getattr(context.task_context, 'status', 'pending')}\n"
+                    f"- Priority: {getattr(context.task_context, 'priority', 'medium')}\n\n"
+                    "INTENT: The user is focusing on this task now and likely wants to ask questions, update details, or make progress on it. Prioritize actions and guidance about this task unless the user clearly asks otherwise.\n\n"
+                )
+
             system_prompt = f"""You are Samurai Engine's intent analysis expert. Your role is to deeply understand developer conversations and classify user intent to enable the perfect "vibe coding partner" response.
 
 CONVERSATION CONTEXT:
-{context.conversation_summary}
+{active_task_header}{context.conversation_summary}
 
 PROJECT CONTEXT:
 - Project: {context.project_context.get('name', 'Unknown')}
@@ -652,11 +651,22 @@ Use this framework to analyze the current message and provide the most accurate 
                 context.session_messages, message
             )
             
+            active_task_header = ""
+            if context.task_context:
+                active_task_header = (
+                    "ACTIVE TASK SELECTED BY USER (Primary Focus)\n"
+                    f"- Title: {getattr(context.task_context, 'title', 'Untitled')}\n"
+                    f"- Description: {getattr(context.task_context, 'description', '')}\n"
+                    f"- Status: {getattr(context.task_context, 'status', 'pending')}\n"
+                    f"- Priority: {getattr(context.task_context, 'priority', 'medium')}\n\n"
+                    "INTENT: The user is focusing on this task now and likely wants to ask questions, update details, or make progress on it. Prioritize actions and guidance about this task unless the user clearly asks otherwise.\n\n"
+                )
+
             system_prompt = f"""
 You are Samurai Engine, their vibe coding partner.
 
 ## COMPREHENSIVE CONVERSATION CONTEXT (READ THIS FIRST - CRITICAL)
-{conversation_context}
+{active_task_header}{conversation_context}
 
 ## PROJECT CONTEXT
 Project: {context.project_context.get('name', 'Unknown')} | Tech: {context.project_context.get('tech_stack', 'Unknown')}
@@ -735,11 +745,23 @@ Your response:
                 context.session_messages, message
             )
             
+            active_task_header = ""
+            if context.task_context:
+                active_task_header = (
+                    "ACTIVE TASK SELECTED BY USER (Primary Focus)\n"
+                    f"- Title: {getattr(context.task_context, 'title', 'Untitled')}\n"
+                    f"- Description: {getattr(context.task_context, 'description', '')}\n"
+                    f"- Status: {getattr(context.task_context, 'status', 'pending')}\n"
+                    f"- Priority: {getattr(context.task_context, 'priority', 'medium')}\n\n"
+                    "INTENT: The user is focusing on this task now and likely wants to ask questions, update details, or make progress on it. Prioritize actions and guidance about this task unless the user clearly asks otherwise.\n\n"
+                )
+
+            
             system_prompt = f"""
 You are Samurai Engine, helping developers explore feature ideas with deep conversation awareness.
 
 ## COMPREHENSIVE CONVERSATION CONTEXT (ESSENTIAL - READ FIRST)
-{conversation_context}
+{active_task_header}{conversation_context}
 
 ## PROJECT CONTEXT
 Project: {context.project_context.get('name', 'Unknown')} | Tech: {context.project_context.get('tech_stack', 'Unknown')}
@@ -816,11 +838,22 @@ Your response should demonstrate deep understanding of the entire conversation, 
                 context.session_messages, message
             )
             
+            active_task_header = ""
+            if context.task_context:
+                active_task_header = (
+                    "ACTIVE TASK SELECTED BY USER (Primary Focus)\n"
+                    f"- Title: {getattr(context.task_context, 'title', 'Untitled')}\n"
+                    f"- Description: {getattr(context.task_context, 'description', '')}\n"
+                    f"- Status: {getattr(context.task_context, 'status', 'pending')}\n"
+                    f"- Priority: {getattr(context.task_context, 'priority', 'medium')}\n\n"
+                    "INTENT: The user is focusing on this task now and likely wants to ask questions, update details, or make progress on it. Prioritize actions and guidance about this task unless the user clearly asks otherwise.\n\n"
+                )
+            
             system_prompt = f"""
 You are Samurai Engine, gathering complete feature specifications through extended conversation tracking.
 
 ## COMPREHENSIVE CONVERSATION CONTEXT (CRITICAL FOR SPECIFICATION BUILDING)
-{conversation_context}
+{active_task_header}{conversation_context}
 
 ## PROJECT CONTEXT
 Project: {context.project_context.get('name', 'Unknown')} | Tech: {context.project_context.get('tech_stack', 'Unknown')}
@@ -1355,6 +1388,17 @@ Show deep understanding of how the specification has evolved throughout the enti
     async def _generate_task_breakdown(self, message: str, context: ConversationContext) -> List[dict]:
         """Generate task breakdown from user request using enhanced AI-optimized prompt."""
         try:
+            active_task_header = ""
+            if context.task_context:
+                active_task_header = (
+                    "ACTIVE TASK SELECTED BY USER (Primary Focus)\n"
+                    f"- Title: {getattr(context.task_context, 'title', 'Untitled')}\n"
+                    f"- Description: {getattr(context.task_context, 'description', '')}\n"
+                    f"- Status: {getattr(context.task_context, 'status', 'pending')}\n"
+                    f"- Priority: {getattr(context.task_context, 'priority', 'medium')}\n\n"
+                    "INTENT: The user is focusing on this task now and likely wants to ask questions, update details, or make progress on it. Prioritize actions and guidance about this task unless the user clearly asks otherwise.\n\n"
+                )
+
             system_prompt = f"""
 # Enhanced AI-Optimized Task Breakdown Prompt for Samurai Engine
 
@@ -1371,7 +1415,7 @@ You are Samurai Engine's task breakdown specialist. Your role is to analyze feat
 
 ## CONVERSATION CONTEXT
 **Discussion History:**
-{context.conversation_summary}
+{active_task_header}{context.conversation_summary}
 
 **Relevant Project Knowledge:**
 {self._format_memories_for_context(context.relevant_memories)}
@@ -1654,11 +1698,22 @@ Remember: The goal is creating the optimal number of AI-friendly tasks that enab
     async def _generate_task_breakdown_with_extended_context(self, message: str, context: ConversationContext, conversation_context: str) -> List[dict]:
         """Generate task breakdown with comprehensive conversation context."""
         try:
+            active_task_header = ""
+            if context.task_context:
+                active_task_header = (
+                    "ACTIVE TASK SELECTED BY USER (Primary Focus)\n"
+                    f"- Title: {getattr(context.task_context, 'title', 'Untitled')}\n"
+                    f"- Description: {getattr(context.task_context, 'description', '')}\n"
+                    f"- Status: {getattr(context.task_context, 'status', 'pending')}\n"
+                    f"- Priority: {getattr(context.task_context, 'priority', 'medium')}\n\n"
+                    "INTENT: The user is focusing on this task now and likely wants to ask questions, update details, or make progress on it. Prioritize actions and guidance about this task unless the user clearly asks otherwise.\n\n"
+                )
+
             system_prompt = f"""
 Break down this feature request into implementable SOFTWARE ENGINEERING tasks only, using the comprehensive conversation history.
 
 ## COMPREHENSIVE CONVERSATION CONTEXT (ESSENTIAL FOR COMPLETE TASK CREATION)
-{conversation_context}
+{active_task_header}{conversation_context}
 
 ## PROJECT CONTEXT
 Project: {context.project_context.get('name', 'Unknown')}
@@ -1763,6 +1818,8 @@ Return a pure JSON array of tasks. Each task must have exactly these fields:
                     params["priority"] = task_data["priority"]
                 if "due_date" in task_data:
                     params["due_date"] = task_data["due_date"]
+                if "parent_task_id" in task_data:
+                    params["parent_task_id"] = task_data["parent_task_id"]
                 
                 result = await self.tool_registry.execute_tool(
                     "create_task",
@@ -1990,12 +2047,23 @@ Analyze the user's message and return the appropriate JSON structure for detecte
     async def _execute_direct_action_with_extended_context(self, message: str, context: ConversationContext, project_id: str, conversation_context: str) -> dict:
         """Execute direct action considering comprehensive conversation context."""
         try:
+            active_task_header = ""
+            if context.task_context:
+                active_task_header = (
+                    "ACTIVE TASK SELECTED BY USER (Primary Focus)\n"
+                    f"- Title: {getattr(context.task_context, 'title', 'Untitled')}\n"
+                    f"- Description: {getattr(context.task_context, 'description', '')}\n"
+                    f"- Status: {getattr(context.task_context, 'status', 'pending')}\n"
+                    f"- Priority: {getattr(context.task_context, 'priority', 'medium')}\n\n"
+                    "INTENT: The user is focusing on this task now and likely wants to ask questions, update details, or make progress on it. Prioritize actions and guidance about this task unless the user clearly asks otherwise.\n\n"
+                )
+
             # Use LLM to detect actions with comprehensive conversation context
             action_analysis_prompt = f"""
 Analyze the user's direct action request considering the comprehensive conversation history.
 
 ## COMPREHENSIVE CONVERSATION CONTEXT (CRITICAL FOR ACCURATE ACTION DETECTION)
-{conversation_context}
+{active_task_header}{conversation_context}
 
 PROJECT CONTEXT:
 - Project: {context.project_context.get('name', 'Unknown')}

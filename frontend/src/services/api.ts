@@ -391,6 +391,14 @@ export async function getTaskContext(projectId: string, sessionId: string): Prom
   }>(`/projects/${projectId}/sessions/${sessionId}/task-context`)
 }
 
+// Proactive breakdown suggestion API
+export async function getBreakdownSuggestion(projectId: string, sessionId: string): Promise<{ should_break_down: boolean; suggestion_text?: string }> {
+  const params = new URLSearchParams()
+  params.set('project_id', projectId)
+  params.set('session_id', sessionId)
+  return apiRequest<{ should_break_down: boolean; suggestion_text?: string }>(`/api/suggestions/should-breakdown?${params.toString()}`)
+}
+
 export const getSemanticHierarchy = async (
   projectId: string, 
   clusteringType: string = 'content', 

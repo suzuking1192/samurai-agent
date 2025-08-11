@@ -247,6 +247,61 @@ class ApiTester {
     }
   }
 
+  async testHierarchicalTasks() {
+    this.logger.log('Testing hierarchical task creation (depth limit 4)...')
+    if (!this.testProjectId) {
+      this.logger.error('No test project available for hierarchical task testing')
+      return false
+    }
+
+    const mkTask = async (title, parent) => {
+      const payload = {
+        title,
+        description: title,
+        priority: 'medium'
+      }
+      if (parent) payload.parent_task_id = parent
+      return this.makeRequest(`/projects/${this.testProjectId}/tasks`, {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      })
+    }
+
+    try {
+      // Depth 1 (root)
+      const r1 = await mkTask('root', null)
+      if (!r1.ok) return false
+      const rootId = r1.data.id
+
+      // Depth 2
+      const r2 = await mkTask('child-2', rootId)
+      if (!r2.ok) return false
+      const d2 = r2.data.id
+
+      // Depth 3
+      const r3 = await mkTask('child-3', d2)
+      if (!r3.ok) return false
+      const d3 = r3.data.id
+
+      // Depth 4
+      const r4 = await mkTask('child-4', d3)
+      if (!r4.ok) return false
+
+      // Depth 5 should fail
+      const r5 = await mkTask('child-5', r4.data.id)
+      if (r5.ok || r5.status !== 400) {
+        this.logger.error('Expected depth 5 task creation to fail with 400')
+        return false
+      }
+
+      this.logger.success('Hierarchical task depth validation works')
+      return true
+    } catch (e) {
+      this.logger.error(`Hierarchical task test failed: ${e.message}`)
+      return false
+    }
+  }
+
   async testTaskUpdates() {
     this.logger.log('Testing task updates...')
     
@@ -421,12 +476,13 @@ class ApiTester {
   async runAllTests() {
     this.logger.log('Starting comprehensive integration tests...')
     
-    const results = {
+      const results = {
       backendConnectivity: false,
       corsConfiguration: false,
       projectCreation: false,
       chatPersistence: false,
       taskCreation: false,
+        hierarchicalTaskCreation: false,
       taskUpdates: false,
       memoryCreation: false,
       dataPersistence: false,
@@ -456,17 +512,20 @@ class ApiTester {
         // Test 5: Task creation
         results.taskCreation = await this.testTaskCreation()
 
-        // Test 6: Task updates
+        // Test 6: Hierarchical tasks
+        results.hierarchicalTaskCreation = await this.testHierarchicalTasks()
+
+        // Test 7: Task updates
         results.taskUpdates = await this.testTaskUpdates()
 
-        // Test 7: Memory creation
+        // Test 8: Memory creation
         results.memoryCreation = await this.testMemoryCreation()
 
-        // Test 8: Data persistence
+        // Test 9: Data persistence
         results.dataPersistence = await this.testDataPersistence()
       }
 
-      // Test 9: Error handling
+      // Test 10: Error handling
       results.errorHandling = await this.testErrorHandling()
 
     } catch (error) {

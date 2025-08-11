@@ -1217,6 +1217,35 @@ body {
   box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
 }
 
+/* Modern See Details button for task items */
+.see-details-btn {
+  background: linear-gradient(135deg, #22d3ee 0%, #3b82f6 100%);
+  color: #fff;
+  border: none;
+  padding: 6px 10px;
+  border-radius: 9999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 6px rgba(59, 130, 246, 0.25);
+}
+
+.see-details-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.35);
+  filter: brightness(1.05);
+}
+
+.see-details-btn:active {
+  transform: translateY(0);
+}
+
+/* Subtle hover for task title row */
+.task-item:hover .task-title {
+  text-decoration: underline;
+}
+
 /* Memory items */
 .memory-item {
   background: linear-gradient(135deg, #fef7ff 0%, #faf5ff 100%);
