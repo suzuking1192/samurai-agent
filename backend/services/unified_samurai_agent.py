@@ -1641,7 +1641,7 @@ Remember: The goal is creating the optimal number of AI-friendly tasks that enab
         """Generate task breakdown with comprehensive conversation context."""
         try:
             system_prompt = f"""
-Break down this feature request into implementable tasks, considering the comprehensive conversation history.
+Break down this feature request into implementable SOFTWARE ENGINEERING tasks only, using the comprehensive conversation history.
 
 ## COMPREHENSIVE CONVERSATION CONTEXT (ESSENTIAL FOR COMPLETE TASK CREATION)
 {conversation_context}
@@ -1655,31 +1655,48 @@ Tech Stack: {context.project_context.get('tech_stack', 'Unknown')}
 ## RELEVANT PROJECT KNOWLEDGE
 {self._format_memories_for_context(context.relevant_memories)}
 
-## TASK BREAKDOWN WITH EXTENDED CONVERSATION CONTEXT
+## SCOPE: SOFTWARE ENGINEERING TASKS ONLY
+- Include only tasks that produce concrete changes to: application code, tests, configuration, CI/CD pipelines, infrastructure-as-code, database schemas/migrations, APIs, security/hardening, performance tuning, or developer documentation inside the repository that is directly tied to code changes (e.g., updating `README.md` after implementing a feature).
+- Each task must be actionable within the repository and lead to a verifiable code change.
 
-Based on the comprehensive conversation above:
-1. **Capture all requirements discussed** throughout the entire conversation
-2. **Include clarifications and decisions made** across multiple exchanges
-3. **Reference technical choices established** during the extended discussion
-4. **Incorporate user preferences expressed** at various points in the conversation
-5. **Consider integration points discussed** throughout the conversation arc
+## OUT OF SCOPE (EXCLUDE COMPLETELY)
+- Workshops, meetings, trainings, demos, presentations, slide decks
+- Interviews, surveys, user research without code changes
+- Planning/roadmapping, stakeholder communications, marketing or support tasks
+- Generic brainstorming or open-ended research with no concrete code deliverable
 
-## COMPREHENSIVE TASK CREATION GUIDELINES
-- Each task should reflect the full understanding gained from the extended conversation
-- Include implementation details and context discussed over multiple exchanges
-- Reference decisions, constraints, and preferences established throughout the discussion
-- Capture the evolution of requirements as discussed over time
-- Ensure tasks reflect the complete specification developed through the conversation
+If the request is not about software engineering implementation, return an empty JSON array [] without commentary.
+
+## TASK QUALITY BAR
+- Each task must reflect the full understanding gained from the extended conversation
+- Incorporate decisions, constraints, and preferences established throughout the discussion
+- Be small, actionable, and independently testable
+- Avoid vague items and placeholders like "TBD" or "discuss"; avoid duplicates
+- Reference specific components, files, modules, routes, endpoints, or database artifacts when and only when they are explicitly mentioned in the provided context
+
+## GROUNDING AND NO-ASSUMPTIONS
+- Use only information explicitly present in the conversation context, project context, and relevant project knowledge above
+- Do NOT fabricate or assume component names, file paths, database tables/columns, API endpoints, libraries, configuration keys, or external services
+- If a specific artifact is required but not named in the context, describe the change generically without inventing names (e.g., "update the existing API handler for <capability>")
+- If critical details are missing, include a final sub-bullet in the description that begins with "Clarify:" listing the precise questions needed to proceed; do not output separate non-engineering tasks
+
+## DESCRIPTION CONTENT REQUIREMENTS
+- Make the description as detailed as possible while strictly grounded in the provided context. Do not make up details
+- Include within the single description string:
+  - Brief context summary tied to conversation details
+  - Implementation steps (2–6 concise bullets)
+  - Affected areas/files/modules only if explicitly referenced; otherwise, describe the area generically
+  - Tests to add or update (unit/integration/e2e) where applicable
+  - Acceptance criteria as verifiable checks that confirm correctness
 
 ## TASK CONTEXT INTEGRATION
-- Tasks should reference specific technical decisions made during the conversation
-- Include user experience considerations discussed earlier
-- Reflect architectural choices established through the extended discussion
-- Incorporate performance, security, or other requirements mentioned throughout
+- Reference specific technical decisions made during the conversation
+- Include UX considerations, architectural choices, and non-functional requirements (performance, security) if relevant
 
-Return JSON array with tasks that comprehensively capture the extended conversation context:
+## OUTPUT FORMAT (STRICT)
+Return a pure JSON array of tasks. Each task must have exactly these fields:
 [
-    {{"title": "Task Title", "description": "Complete description including comprehensive conversation context, technical decisions, user preferences, and implementation details discussed throughout the conversation"}},
+    {{"title": "Imperative, code-focused title (6–12 words)", "description": "Context summary; Implementation Steps; Affected Areas (only if named in context); Tests; Acceptance Criteria; Clarify: <only if critical details are missing>. Use concise bullet points within the string. Do not invent details not in context."}},
     ...
 ]
 """
