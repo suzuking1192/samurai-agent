@@ -8,7 +8,7 @@ from pydantic import ValidationError
 
 logger = logging.getLogger(__name__)
 
-def handle_agent_response(response_text: str, max_length: int = 4500) -> str:
+def handle_agent_response(response_text: str, max_length: int = 10000) -> str:
     """
     Handle long responses gracefully without showing error messages to users.
     
@@ -29,7 +29,7 @@ def handle_agent_response(response_text: str, max_length: int = 4500) -> str:
     summarized = intelligently_summarize_response(response_text, max_length)
     return summarized
 
-def intelligently_summarize_response(full_response: str, target_length: int = 4500) -> str:
+def intelligently_summarize_response(full_response: str, target_length: int = 10000) -> str:
     """
     Summarize long response while preserving key information and actionable content.
     """
