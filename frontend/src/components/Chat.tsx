@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { ChatMessage, Session, Task } from '../types'
-import { sendChatMessageWithProgress, createSession, getCurrentSession, getSessionMessages, endSessionWithConsolidation, SessionEndResponse, getTaskContext, clearTaskContext, getSuggestionStatus, dismissSuggestion, getBreakdownSuggestion } from '../services/api'
+import { sendChatMessageWithProgress, createSession, getCurrentSession, getSessionMessages, endSessionWithConsolidation, SessionEndResponse, getTaskContext, clearTaskContext, getSuggestionStatus, dismissSuggestion } from '../services/api'
 import ProgressDisplay from './ProgressDisplay'
 import ProactiveSuggestion from './ProactiveSuggestion'
 
@@ -29,7 +29,6 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrig
   const [currentSession, setCurrentSession] = useState<Session | null>(null)
   const [taskContext, setTaskContext] = useState<Task | null>(null)
   const [showProactiveSuggestion, setShowProactiveSuggestion] = useState<boolean>(false)
-  const [proactiveText, setProactiveText] = useState<string | undefined>(undefined)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const chatMessagesRef = useRef<HTMLDivElement>(null)
 
@@ -52,8 +51,7 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrig
       loadTaskContext(currentSession.id)
       // Fetch suggestion status for one-time tip
       loadSuggestionStatus()
-      // Fetch breakdown suggestion for current task context
-      loadBreakdownSuggestion(currentSession.id)
+      // Removed breakdown suggestion API usage
     }
   }, [currentSession?.id, projectId])
 
@@ -61,7 +59,6 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrig
   useEffect(() => {
     if (currentSession?.id && projectId && taskContextTrigger) {
       loadTaskContext(currentSession.id)
-      loadBreakdownSuggestion(currentSession.id)
     }
   }, [taskContextTrigger, currentSession?.id, projectId])
 
@@ -119,18 +116,7 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrig
     }
   }
 
-  const loadBreakdownSuggestion = async (sessionId: string) => {
-    if (!projectId || !sessionId) return
-    try {
-      const s = await getBreakdownSuggestion(projectId, sessionId)
-      if (s.should_break_down) {
-        setProactiveText(s.suggestion_text)
-        setShowProactiveSuggestion(true)
-      }
-    } catch (e) {
-      // ignore
-    }
-  }
+  // Removed: breakdown suggestion loader
 
   const loadSuggestionStatus = async () => {
     try {
@@ -655,7 +641,7 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrig
       )}
       
       {/* Proactive Suggestion directly above the main chat text box */}
-      <ProactiveSuggestion isVisible={showProactiveSuggestion} onDismiss={handleDismissSuggestion} text={proactiveText} />
+      <ProactiveSuggestion isVisible={showProactiveSuggestion} onDismiss={handleDismissSuggestion} />
 
       <form onSubmit={handleSubmit} className="chat-input">
         <textarea
