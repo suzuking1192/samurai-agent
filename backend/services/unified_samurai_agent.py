@@ -55,7 +55,6 @@ class ConversationContext:
     """Represents the full conversation context."""
     session_messages: List[ChatMessage]
     conversation_summary: str
-    relevant_tasks: List[Task]
     relevant_memories: List[Memory]
     project_context: dict
     vector_embedding: Optional[List[float]] = None
@@ -232,7 +231,6 @@ class UnifiedSamuraiAgent:
                 tech_stack=project_context.get('tech_stack', 'Unknown'),
                 project_detail=project_context.get('project_detail', ''),
                 conversation_summary=f"Progress update: {stage}",
-                relevant_tasks=[],
                 relevant_memories=[],
                 user_message="Progress update",
                 intent_type="progress_update",
@@ -278,14 +276,12 @@ class UnifiedSamuraiAgent:
             # Create conversation summary (without task_context injection)
             conversation_summary = self._create_conversation_summary(session_messages, message)
             
-            # Get relevant tasks and memories from vector context
-            relevant_tasks = [task for task, _ in vector_context.get("relevant_tasks_with_scores", [])]
+            # Get relevant memories from vector context
             relevant_memories = [memory for memory, _ in vector_context.get("relevant_memories_with_scores", [])]
             
             return ConversationContext(
                 session_messages=session_messages,
                 conversation_summary=conversation_summary,
-                relevant_tasks=relevant_tasks,
                 relevant_memories=relevant_memories,
                 project_context=project_context,
                 vector_embedding=vector_context.get("vector_embedding"),
@@ -344,8 +340,8 @@ PROJECT CONTEXT:
 - Tech Stack: {context.project_context.get('tech_stack', 'Unknown')}
 - Project Stage: {context.project_context.get('stage', 'Development')}
 
-RELEVANT TASKS:
-{self._format_tasks_for_context(context.relevant_tasks)}
+ACTIVE TASK:
+{self._format_tasks_for_context([context.task_context] if context.task_context else [])}
 
 RELEVANT MEMORIES:
 {self._format_memories_for_context(context.relevant_memories)}
@@ -710,8 +706,8 @@ Project: {context.project_context.get('name', 'Unknown')} | Tech: {context.proje
 ## RELEVANT PROJECT KNOWLEDGE
 {self._format_memories_for_context(context.relevant_memories)}
 
-## CURRENT TASKS
-{self._format_tasks_for_context(context.relevant_tasks)}
+## CURRENT TASK
+{self._format_tasks_for_context([context.task_context] if context.task_context else [])}
 
 ## RESPONSE REQUIREMENTS
 
@@ -756,7 +752,7 @@ Your response:
                 "context_used": {
                     "conversation_summary": conversation_context,
                     "relevant_memories_count": len(context.relevant_memories),
-                    "relevant_tasks_count": len(context.relevant_tasks),
+                    "has_active_task": bool(context.task_context),
                     "conversation_depth": len(context.session_messages)
                 }
             }
@@ -823,8 +819,8 @@ Project: {context.project_context.get('name', 'Unknown')} | Tech: {context.proje
 ## RELEVANT PROJECT KNOWLEDGE
 {self._format_memories_for_context(context.relevant_memories)}
 
-## CURRENT TASKS
-{self._format_tasks_for_context(context.relevant_tasks)}
+## CURRENT TASK
+{self._format_tasks_for_context([context.task_context] if context.task_context else [])}
 
 ## YOUR RESPONSE APPROACH WITH EXTENDED CONTEXT
 
@@ -932,8 +928,8 @@ Project: {context.project_context.get('name', 'Unknown')} | Tech: {context.proje
 ## RELEVANT PROJECT KNOWLEDGE
 {self._format_memories_for_context(context.relevant_memories)}
 
-## CURRENT TASKS
-{self._format_tasks_for_context(context.relevant_tasks)}
+## CURRENT TASK
+{self._format_tasks_for_context([context.task_context] if context.task_context else [])}
 
 ## SPECIFICATION GATHERING WITH EXTENDED CONTEXT
 
@@ -1154,7 +1150,6 @@ Show deep understanding of how the specification has evolved throughout the enti
                     project_name=project_context.get('name', 'Unknown'),
                     tech_stack=project_context.get('tech_stack', 'Unknown'),
                     conversation_summary=self._build_session_text(session_messages),
-                    relevant_tasks=[],
                     relevant_memories=[],
                     user_message="Session completion",
                     intent_type="session_completion",
@@ -1204,47 +1199,23 @@ Show deep understanding of how the specification has evolved throughout the enti
             if not conversation_embedding:
                 return self._create_fallback_vector_context(message, project_id, session_messages, project_context, task_context)
             
-            # Get all tasks and memories
-            all_tasks = self.file_service.load_tasks(project_id)
+            # Load memories and compute relevant memories only
             all_memories = self.file_service.load_memories(project_id)
-            
-            # Find relevant items using vector similarity
-            relevant_tasks = vector_context_service.find_relevant_tasks(
-                conversation_embedding, all_tasks, project_id
-            )
-            
-            # If task context is provided, prioritize it
-            if task_context:
-                # Create high-priority task context entry
-                task_context_entry = {
-                    "task": task_context,
-                    "score": 1.0,  # Highest possible score
-                    "reason": "Active task context - primary focus for this conversation"
-                }
-                
-                # Filter out the task context from relevant_tasks if it's already there
-                relevant_tasks = [item for item in relevant_tasks if item.get("task", {}).get("id") != task_context.id]
-                
-                # Add task context at the beginning with highest priority
-                relevant_tasks.insert(0, task_context_entry)
-                
-                logger.info(f"Prioritized task context: {task_context.title}")
-            
             relevant_memories = vector_context_service.find_relevant_memories(
                 conversation_embedding, all_memories, project_id
             )
-            
-            # Assemble context
-            assembled_context = vector_context_service.assemble_vector_context(
-                session_messages=session_messages,
-                relevant_tasks=relevant_tasks,
-                relevant_memories=relevant_memories,
-                new_user_message=message,
-                task_context=task_context
-            )
-            
+
+            # Keep only the active task context as task context
+            relevant_tasks = []
+            if task_context:
+                relevant_tasks = [{
+                    "task": task_context,
+                    "score": 1.0,
+                    "reason": "Active task context - primary focus for this conversation"
+                }]
+                logger.info(f"Prioritized task context: {task_context.title}")
+
             return {
-                "assembled_context": assembled_context,
                 "relevant_tasks_with_scores": relevant_tasks,
                 "relevant_memories_with_scores": relevant_memories,
                 "vector_embedding": conversation_embedding
@@ -1385,7 +1356,6 @@ Show deep understanding of how the specification has evolved throughout the enti
         return ConversationContext(
             session_messages=[],
             conversation_summary=f"Current request: {message}",
-            relevant_tasks=[],
             relevant_memories=[],
             project_context=project_context
         )
@@ -1404,8 +1374,7 @@ Show deep understanding of how the specification has evolved throughout the enti
     def _create_fallback_vector_context(self, message: str, project_id: str, session_messages: List[ChatMessage], project_context: dict, task_context: Optional[Any] = None) -> dict:
         """Create fallback vector context."""
         relevant_tasks = []
-        context_message = f"Current request: {message}"
-        
+
         # Include task context even in fallback mode
         if task_context:
             relevant_tasks = [{
@@ -1413,10 +1382,8 @@ Show deep understanding of how the specification has evolved throughout the enti
                 "score": 1.0,
                 "reason": "Active task context - primary focus for this conversation"
             }]
-            context_message += f"\n\nFOCUSED TASK CONTEXT:\nTask: {task_context.title}\nDescription: {task_context.description}"
-        
+
         return {
-            "assembled_context": context_message,
             "relevant_tasks_with_scores": relevant_tasks,
             "relevant_memories_with_scores": [],
             "vector_embedding": None
@@ -1433,7 +1400,6 @@ Show deep understanding of how the specification has evolved throughout the enti
                 tech_stack=project_context.get('tech_stack', 'Unknown'),
                 project_detail=project_context.get('project_detail', ''),
                 conversation_summary=f"Error occurred while processing: {message}",
-                relevant_tasks=[],
                 relevant_memories=[],
                 user_message=message,
                 intent_type="error",
@@ -1696,7 +1662,7 @@ Return a pure JSON array of tasks. Each task MUST include these fields:
 
 Rules for parent_task_id assignment:
 - If there is an ACTIVE TASK (see header above), ALL returned tasks must set parent_task_id to this exact value: {getattr(context.task_context, 'id', 'UNKNOWN')} and NONE may have parent_task_id = null.
-- If there is NO ACTIVE TASK, the FIRST item in the array must be a ROOT PARENT task (parent_task_id = null), summarizing the user's request at a high-level. For subsequent items, either set parent_task_id to the real ID of the root parent (if you have set one in your output), or omit parent_task_id and the system will attach them to the created root parent.
+- If there is NO ACTIVE TASK: the FIRST item must be a ROOT PARENT task (parent_task_id = null). For ALL subsequent items, do NOT provide any non-null parent_task_id. Either omit the parent_task_id field entirely or set it explicitly to null. Do NOT invent or include any IDs.
 
 IMPORTANT:
 - Return JSON only. No markdown, code fences, or extra commentary.
@@ -1756,18 +1722,14 @@ IMPORTANT:
                     # Force all tasks to be children of the active task
                     params["parent_task_id"] = parent_task_id_override
                 else:
-                    ptid = task_data.get("parent_task_id")
-                    if ptid:
-                        params["parent_task_id"] = ptid
+                    # No active task; enforce root-first then attach children to created root
+                    if index == 0:
+                        # Ensure root is created without any parent assignment regardless of provided ptid
+                        pass
                     else:
-                        # No explicit parent provided by LLM
-                        if index == 0:
-                            # First task is root; no parent
-                            pass
-                        else:
-                            # Attach to root if available
-                            if root_created_id:
-                                params["parent_task_id"] = root_created_id
+                        # For subtasks, ignore any provided parent_task_id and attach to created root
+                        if root_created_id:
+                            params["parent_task_id"] = root_created_id
                 
                 result = await self.tool_registry.execute_tool(
                     "create_task",
@@ -1797,7 +1759,7 @@ IMPORTANT:
                 project_name=context.project_context.get('name', 'Unknown'),
                 tech_stack=context.project_context.get('tech_stack', 'Unknown'),
                 conversation_summary=context.conversation_summary,
-                relevant_tasks=context.relevant_tasks,
+                relevant_tasks=[context.task_context] if context.task_context else [],
                 relevant_memories=context.relevant_memories,
                 user_message="Task creation completed",
                 intent_type="ready_for_action",
@@ -1865,8 +1827,8 @@ PROJECT CONTEXT:
 CONVERSATION CONTEXT:
 {context.conversation_summary}
 
-CURRENT TASKS:
-{self._format_tasks_for_context(context.relevant_tasks)}
+CURRENT TASK:
+{self._format_tasks_for_context([context.task_context] if context.task_context else [])}
 
 RELEVANT MEMORIES:
 {self._format_memories_for_context(context.relevant_memories)}
@@ -2142,8 +2104,9 @@ Return JSON with the detected action and context-specific parameters informed by
     async def _execute_task_completion(self, message: str, context: ConversationContext, project_id: str) -> dict:
         """Execute task completion action."""
         try:
-            # Find matching task
-            matching_task = self._find_matching_task(message, context.relevant_tasks)
+            # Find matching task (prefer active task)
+            candidate_tasks = [context.task_context] if context.task_context else []
+            matching_task = self._find_matching_task(message, candidate_tasks)
             
             if not matching_task:
                 return {
@@ -2166,7 +2129,7 @@ Return JSON with the detected action and context-specific parameters informed by
                 project_name=context.project_context.get('name', 'Unknown'),
                 tech_stack=context.project_context.get('tech_stack', 'Unknown'),
                 conversation_summary=context.conversation_summary,
-                relevant_tasks=context.relevant_tasks,
+                relevant_tasks=[context.task_context] if context.task_context else [],
                 relevant_memories=context.relevant_memories,
                 user_message=message,
                 intent_type="direct_action",
@@ -2194,8 +2157,9 @@ Return JSON with the detected action and context-specific parameters informed by
     async def _execute_task_deletion(self, message: str, context: ConversationContext, project_id: str) -> dict:
         """Execute task deletion action."""
         try:
-            # Find matching task
-            matching_task = self._find_matching_task(message, context.relevant_tasks)
+            # Find matching task (prefer active task)
+            candidate_tasks = [context.task_context] if context.task_context else []
+            matching_task = self._find_matching_task(message, candidate_tasks)
             
             if not matching_task:
                 return {
@@ -2217,7 +2181,7 @@ Return JSON with the detected action and context-specific parameters informed by
                 project_name=context.project_context.get('name', 'Unknown'),
                 tech_stack=context.project_context.get('tech_stack', 'Unknown'),
                 conversation_summary=context.conversation_summary,
-                relevant_tasks=context.relevant_tasks,
+                relevant_tasks=[context.task_context] if context.task_context else [],
                 relevant_memories=context.relevant_memories,
                 user_message=message,
                 intent_type="direct_action",
