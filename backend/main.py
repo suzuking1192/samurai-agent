@@ -362,7 +362,7 @@ async def chat_with_progress(project_id: str, request: ChatRequest):
                     }
                 }
                 await progress_queue.put(progress_data)
-            
+            logger.info(f"Task context: {task_context}")
             # 6. Start unified agent processing in background
             processing_task = asyncio.create_task(
                 unified_samurai_agent.process_message(

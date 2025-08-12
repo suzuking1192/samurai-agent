@@ -113,7 +113,7 @@ class ResponseGenerator:
             **Previous Decisions & Patterns:**
             {self._format_memories_for_context(context.relevant_memories)}
 
-            **Current Work & Tasks:**
+            **Current Work & Active Task:**
             {self._format_tasks_for_context(context.relevant_tasks)}
 
             **Recent Technical Choices:**
@@ -291,7 +291,7 @@ You're the thoughtful coding partner who helps developers think through their id
 **Existing Architecture & Patterns:**
 {self._format_memories_for_context(context.relevant_memories)}
 
-**Current Work & Related Tasks:**
+**Current Work & Active Task:**
 {self._format_tasks_for_context(context.relevant_tasks)}
 
 ---
@@ -500,7 +500,7 @@ You are Samurai Engine, the vibe coding partner who excels at guiding developers
 **Existing Architecture & Patterns:**
 {self._format_memories_for_context(context.relevant_memories)}
 
-**Current Tasks & Related Work:**
+**Active Task:**
 {self._format_tasks_for_context(context.relevant_tasks)}
 
 ---
@@ -784,7 +784,7 @@ Remember: You're guiding them from idea to implementation with the perfect balan
             CONVERSATION CONTEXT:
             {context.conversation_summary}
             
-            RELEVANT TASKS:
+            ACTIVE TASK:
             {self._format_tasks_for_context(context.relevant_tasks)}
             
             Generate a response that:
@@ -940,7 +940,7 @@ Remember: You're guiding them from idea to implementation with the perfect balan
             PROJECT: {context.project_name}
             TECH STACK: {context.tech_stack}
             
-            RELEVANT TASKS:
+            ACTIVE TASK:
             {self._format_tasks_for_context(context.relevant_tasks)}
             
             RELEVANT PROJECT KNOWLEDGE:
