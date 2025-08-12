@@ -166,7 +166,7 @@ class UnifiedSamuraiAgent:
                     progress_callback, "processing", "🔄 Processing your request...", 
                     "Executing the appropriate response path", project_context
                 )
-            
+            logger.info(f"Conversation context: {conversation_context}")
             response_result = await self._select_and_execute_response_path(
                 message, intent_analysis, conversation_context, project_id, progress_callback
             )
@@ -1006,7 +1006,16 @@ Show deep understanding of how the specification has evolved throughout the enti
                 await progress_callback("execution", "⚙️ Creating tasks...", "Executing task creation with conversation insights")
             
             # Execute task creation
-            tool_results = await self._execute_task_creation(task_breakdown, project_id)
+            parent_override = None
+            if context.task_context and getattr(context.task_context, 'id', None):
+                # Force all created tasks to be children of the active task
+                parent_override = getattr(context.task_context, 'id')
+
+            tool_results = await self._execute_task_creation(
+                task_breakdown,
+                project_id,
+                parent_task_id_override=parent_override,
+            )
             
             if progress_callback:
                 await progress_callback("execution", "✅ Tasks created", f"Successfully created {len(tool_results)} tasks from comprehensive discussion")
@@ -1672,6 +1681,12 @@ If the request is not about software engineering implementation, return an empty
 ## TASK CONTEXT INTEGRATION
 - Reference specific technical decisions made during the conversation
 - Include UX considerations, architectural choices, and non-functional requirements (performance, security) if relevant
+
+## TASK COUNT AND GRANULARITY
+- Keep the breakdown compact so we can iteratively refine later as the user continues chatting.
+- If there is an ACTIVE TASK: return at most 5 items (all are subtasks of the active task).
+- If there is NO ACTIVE TASK: return exactly 1 root parent (parent_task_id = null) plus up to 5 child subtasks.
+- Prefer the most critical and unblocking subtasks first. Defer deeper decomposition to future iterations.
 
 ## OUTPUT FORMAT (STRICT HIERARCHY-AWARE)
 Return a pure JSON array of tasks. Each task MUST include these fields:
