@@ -53,8 +53,9 @@ class TaskService:
         Returns:
             The created Task object
         """
-        # Generate warnings using the analysis agent
-        warnings = await self.analysis_agent.analyze_task(title, description)
+        # Generate warnings using the analysis agent (disabled temporarily)
+        # warnings = await self.analysis_agent.analyze_task(title, description)
+        warnings = []
         
         # Determine hierarchy depth with validation (max depth 4)
         depth = 1
@@ -108,10 +109,10 @@ class TaskService:
             if hasattr(task, key):
                 setattr(task, key, value)
         
-        # Re-analyze if description was updated
+        # Re-analyze if description was updated (disabled temporarily)
         if "description" in updates or "title" in updates:
-            warnings = await self.analysis_agent.analyze_task(task.title, task.description)
-            task.review_warnings = warnings
+            # warnings = await self.analysis_agent.analyze_task(task.title, task.description)
+            task.review_warnings = []
         
         # Update timestamp
         task.updated_at = datetime.utcnow()
