@@ -75,25 +75,46 @@ class ProjectDetailService:
 
         if mode_for_prompt == "merge" and existing_detail:
             merge_system_prompt = (
-                "You are updating an existing software project specification. Perform a STRICT, FACTS-ONLY "
-                "SEMANTIC MERGE of the EXISTING SPEC with the NEW INSIGHTS.\n\n"
-                "Non-negotiable constraints:\n"
-                "- Do NOT infer, guess, or invent any details (APIs, endpoints, parameters, models, fields, services, "
-                "  libraries, versions, or architecture). Include ONLY items explicitly present in either the existing "
-                "  spec or the new insights text.\n"
-                "- If a section lacks explicit information, write 'Not specified'.\n"
-                "- If conflicts exist, prefer the most recent NEW insight only when it is explicitly more specific; "
-                "  otherwise, surface the conflict in 'Open Questions' without resolving by assumption.\n"
-                "- Normalize duplicates and keep the result concise and implementable.\n\n"
-                "Output a single concise 'Project Detail Specification' using these sections:\n"
-                "Project Overview, Features, Tech Stack, Architecture, Key APIs, Data Models, Workflows, Constraints, "
-                "Non-Functional Requirements, Open Questions.\n\n"
-                "Formatting rules:\n"
-                "- Use bullet points.\n"
-                "- Under 'Features', include ONLY features explicitly present in inputs. If none are present, write 'Not specified'.\n"
-                "- Under 'Key APIs' and 'Data Models', include ONLY items explicitly present in inputs. If none are "
-                "  present, write 'Not specified'.\n"
-                "- Put unknowns and needed clarifications in 'Open Questions' as questions."
+                """
+                You are updating an existing software project specification. Perform a STRICT, FACTS-ONLY, CONSERVATIVE
+                SEMANTIC MERGE of the EXISTING SPEC with the NEW INSIGHTS.
+
+                Preservation-first merge policy:
+                - Preserve existing content by default. Do not delete, weaken, rename, or downgrade existing items unless
+                  the NEW INSIGHTS explicitly deprecate, replace, or correct that exact item.
+                - When NEW INSIGHTS add detail to an existing item, augment the existing item with the additional detail.
+                - If NEW INSIGHTS conflict ambiguously with existing content, keep the original and add the conflicting
+                  statement under 'Open Questions' as a question to resolve; do not choose a side.
+                - Never infer, guess, or invent any details (APIs, endpoints, parameters, models, fields, services,
+                  libraries, versions, or architectural components). Include ONLY items explicitly present in either the
+                  existing spec or the new insights text.
+
+                Section rules:
+                - Project Overview: include only the primary goal and 3–5 main features/value propositions. Exclude
+                  implementation details, APIs, workflows, tech stack, constraints, or minor specifics.
+                - Features: include only user-visible capabilities that are explicitly and clearly described. If an item
+                  is vague or unclear, omit it from this section. Each item should be a short action/result statement
+                  (e.g., "Users can … to …").
+                - Tech Stack and Architecture: list exactly as explicitly stated; do not infer or rename.
+                - Key APIs: include only endpoints explicitly named (methods/paths if provided). Omit examples and
+                  payload minutiae unless explicitly present.
+                - Data Models: include only database schema elements (tables/collections, fields, types if provided,
+                  and relationships). Exclude runtime objects, DTOs, API payload shapes, and memory categories. If types
+                  are not stated, note "type: Not specified".
+                - Workflows: capture only main end-to-end flows at a high level (roughly 3–8 steps). Exclude UI micro-
+                  interactions, edge cases, error/status code details, and payload/response examples.
+                - Constraints and Non-Functional Requirements: include only what is explicitly stated.
+                - Open Questions: list gaps, ambiguities, and conflicts.
+
+                Formatting:
+                - Use bullet points.
+                - If a section lacks explicit information, write 'Not specified'.
+                - Normalize duplicates; prefer stable canonical names present in the existing spec when possible.
+
+                Output a single concise 'Project Detail Specification' with these exact sections:
+                Project Overview, Features, Tech Stack, Architecture, Key APIs, Data Models, Workflows, Constraints,
+                Non-Functional Requirements, Open Questions.
+                """
             )
             merge_input = f"EXISTING SPEC:\n{existing_detail}\n\nNEW INSIGHTS (summaries):\n{synthesis_input}"
             final_text = await self.gemini.chat_with_system_prompt(
