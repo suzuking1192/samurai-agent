@@ -1,6 +1,6 @@
 # Samurai Agent
 
-An AI-powered development assistant that breaks down complex features into actionable tasks with optimized prompts for Cursor.
+Samurai Agent helps you write crystal-clear specifications for AI, so you get the code you actually want on the first try with AI coding tools.
 
 ## Tech Stack
 
@@ -23,8 +23,20 @@ source samurai-agent/bin/activate  # Linux/macOS
 pip install -r requirements.txt
 cp .env.example .env
 # Add your GEMINI_API_KEY to .env
+# If .env.example is missing, create a new .env file manually
 uvicorn main:app --reload
 ```
+
+### Get a Gemini API key (brief)
+
+- Visit Google AI Studio: [Create API key](https://aistudio.google.com/app/apikey)
+- Sign in, click "Create API key", and copy the key
+- Add it to your `.env` as:
+
+```bash
+GEMINI_API_KEY=your_key_here
+```
+
 
 ### Frontend Setup
 ```bash
@@ -41,8 +53,6 @@ The backend will run on `http://localhost:8000` and the frontend on `http://loca
 samurai-agent/
 ├── frontend/          # React + Vite + TypeScript frontend
 ├── backend/           # FastAPI + Python backend
-├── docs/              # Documentation
-└── .github/           # GitHub workflows
 ```
 
 ## Features

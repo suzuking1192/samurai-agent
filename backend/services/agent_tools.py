@@ -29,7 +29,8 @@ class CreateTaskTool(TaskTool):
     description: str = "Create a new task in the project"
     
     async def execute(self, title: str, description: str, priority: str = "medium", 
-                due_date: Optional[str] = None, project_id: str = None, status: str = "pending") -> Dict[str, Any]:
+                due_date: Optional[str] = None, project_id: str = None, status: str = "pending",
+                parent_task_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Create a new task with automatic analysis
         """
@@ -43,7 +44,8 @@ class CreateTaskTool(TaskTool):
                 description=description,
                 project_id=project_id,
                 priority=priority,
-                status=status
+                status=status,
+                parent_task_id=parent_task_id
             )
             
             # Return success response

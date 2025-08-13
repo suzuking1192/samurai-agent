@@ -12,5 +12,40 @@
     "description": "This is software for an enterprise company that wants to sell this SaaS to their clients that want to create Japanese tests and manage scores of their foreign employees in Japan.",
     "tech_stack": "React and FastAPI",
     "created_at": "2025-08-09 17:35:04.111618"
+  },
+  {
+    "id": "4c9ccb58-3d76-489b-83d3-3b90ab9b74d0",
+    "name": "FinOps Cost Allocation",
+    "description": "A production grade FinOps Cost Allocation system for assigning cloud costs running on kubernetes to teams and services.",
+    "tech_stack": "Python",
+    "created_at": "2025-08-10 13:46:36.216487"
+  },
+  {
+    "id": "2e458608-eda7-40f3-b398-fdba3734d63f",
+    "name": "Test Project",
+    "description": "Test Description",
+    "tech_stack": "Test Stack",
+    "created_at": "2025-08-11 12:27:43.012637"
+  },
+  {
+    "id": "d7ac81cc-31e9-4b1a-94d5-aae256c55e7d",
+    "name": "Frontend Test Project 1754937191430",
+    "description": "Frontend integration test project",
+    "tech_stack": "React, TypeScript, FastAPI, Python",
+    "created_at": "2025-08-11 12:33:11.437173"
+  },
+  {
+    "id": "c766a959-2739-439a-8fdc-ba04df5dc917",
+    "name": "Test Project",
+    "description": "Test Description",
+    "tech_stack": "Test Stack",
+    "created_at": "2025-08-11 12:33:11.443187"
+  },
+  {
+    "id": "5efce81d-b35e-4900-ab6d-9387b7476170",
+    "name": "Frontend Test Project 1754937212080",
+    "description": "Frontend integration test project",
+    "tech_stack": "React, TypeScript, FastAPI, Python",
+    "created_at": "2025-08-11 12:33:32.086682"
   }
 ]

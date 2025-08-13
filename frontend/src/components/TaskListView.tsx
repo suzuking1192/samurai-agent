@@ -49,8 +49,93 @@ const TaskListView: React.FC<TaskListViewProps> = ({
     return date.toLocaleDateString()
   }
 
-  // Filter out completed tasks for display
+  // Filter out completed tasks for top-level display only
   const activeTasks = tasks.filter(task => task.status !== TaskStatus.COMPLETED)
+
+  // Build a hierarchy map: parent -> children
+  const childrenMap = React.useMemo(() => {
+    const map = new Map<string, Task[]>()
+    // Build children map from ALL tasks so completed subtasks still appear
+    for (const t of tasks) {
+      const parentId = (t.parent_task_id || '') as string
+      if (parentId) {
+        if (!map.has(parentId)) map.set(parentId, [])
+        map.get(parentId)!.push(t)
+      }
+    }
+    return map
+  }, [tasks])
+
+  // Root tasks are those without parent_task_id
+  const rootTasks = React.useMemo(() => activeTasks.filter(t => !t.parent_task_id), [activeTasks])
+
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
+  const toggle = (id: string) => setExpanded(prev => ({ ...prev, [id]: !prev[id] }))
+
+  const renderTaskNode = (task: Task, level: number = 0, trail: boolean[] = []) => {
+    const kids = childrenMap.get(task.id) || []
+    const isParent = kids.length > 0
+    const isExpanded = !!expanded[task.id]
+    const nodeIcon = isParent ? '📂' : '📄'
+    const buildAsciiPrefix = (trailFlags: boolean[], isLast: boolean) => {
+      const parts: string[] = []
+      for (let i = 0; i < trailFlags.length; i++) {
+        parts.push(trailFlags[i] ? '   ' : '│  ')
+      }
+      parts.push(isLast ? '└─ ' : '├─ ')
+      return parts.join('')
+    }
+
+    return (
+      <div key={task.id}>
+        <div 
+          className="task-item" 
+          data-task-id={task.id}
+          onClick={() => {
+            if (isParent) {
+              toggle(task.id)
+            } else if (level > 0) {
+              onTaskClick(task)
+            }
+          }}
+          style={{ marginLeft: `${level * 22}px`, paddingLeft: '10px', display: 'flex', alignItems: 'center', cursor: 'pointer' }}
+        >
+          {isParent && (
+            <span aria-label={isExpanded ? 'Collapse' : 'Expand'} style={{ marginRight: 6 }}>
+              {isExpanded ? '▾' : '▸'}
+            </span>
+          )}
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
+            {/* ASCII tree prefix for VSCode-like view */}
+            {level > 0 && (
+              <span aria-hidden="true" style={{ fontFamily: 'monospace', color: '#64748b' }}>
+                {buildAsciiPrefix(trail.slice(0, -1), trail[trail.length - 1] ?? false)}
+              </span>
+            )}
+            <span aria-hidden="true" style={{ opacity: 0.8 }}>{nodeIcon}</span>
+            <div className="task-title" title={task.title}>{task.title}</div>
+            <button 
+              className={`see-details-btn ${level > 0 ? 'small' : ''}`}
+              onClick={(e) => { e.stopPropagation(); onTaskClick(task) }}
+              aria-label={`See details for ${task.title}`}
+              style={{ marginLeft: 'auto' }}
+            >
+              See details
+            </button>
+          </div>
+        </div>
+        {/* Simplified nested display: do not show description/meta for file-tree clarity */}
+        {isParent && isExpanded && (
+          <div>
+            {kids.map((child, idx) => {
+              const isLast = idx === kids.length - 1
+              return renderTaskNode(child, level + 1, [...trail, isLast])
+            })}
+          </div>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className="task-list-view">
@@ -120,31 +205,7 @@ const TaskListView: React.FC<TaskListViewProps> = ({
         </div>
       ) : (
         <div className="task-list">
-          {activeTasks.map(task => (
-            <div 
-              key={task.id} 
-              className="task-item" 
-              data-task-id={task.id}
-              onClick={() => onTaskClick(task)}
-            >
-              <div className="task-header">
-                <div className="task-title">{task.title}</div>
-                <div className="task-status">
-                  <span className={`status-dot ${task.status}`}></span>
-                </div>
-              </div>
-              {task.description && (
-                <div className="task-description">
-                  {task.description.length > 60 
-                    ? `${task.description.substring(0, 60)}...` 
-                    : task.description}
-                </div>
-              )}
-              <div className="task-meta">
-                <span className="task-date">{formatDate(task.created_at)}</span>
-              </div>
-            </div>
-          ))}
+          {rootTasks.map(task => renderTaskNode(task, 0))}
         </div>
       )}
     </div>

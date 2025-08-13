@@ -248,6 +248,8 @@ export interface Task {
   created_at: string
   updated_at: string
   review_warnings?: TaskWarning[]
+  parent_task_id?: string | null
+  depth?: number
 }
 
 export interface Memory {
@@ -299,6 +301,7 @@ export interface TaskCreate {
   title: string
   description: string
   priority: TaskPriority
+  parent_task_id?: string | null
 }
 
 export interface TaskUpdate {
@@ -306,6 +309,7 @@ export interface TaskUpdate {
   description?: string
   status?: TaskStatus
   priority?: TaskPriority
+  parent_task_id?: string | null
 }
 
 export interface MemoryCreate {

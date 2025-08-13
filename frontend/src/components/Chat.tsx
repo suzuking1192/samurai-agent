@@ -51,6 +51,7 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrig
       loadTaskContext(currentSession.id)
       // Fetch suggestion status for one-time tip
       loadSuggestionStatus()
+      // Removed breakdown suggestion API usage
     }
   }, [currentSession?.id, projectId])
 
@@ -114,6 +115,8 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrig
       setTaskContext(null)
     }
   }
+
+  // Removed: breakdown suggestion loader
 
   const loadSuggestionStatus = async () => {
     try {

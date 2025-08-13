@@ -55,10 +55,10 @@ class ConversationContext:
     """Represents the full conversation context."""
     session_messages: List[ChatMessage]
     conversation_summary: str
-    relevant_tasks: List[Task]
     relevant_memories: List[Memory]
     project_context: dict
     vector_embedding: Optional[List[float]] = None
+    task_context: Optional[Task] = None
 
 
 class UnifiedSamuraiAgent:
@@ -165,7 +165,7 @@ class UnifiedSamuraiAgent:
                     progress_callback, "processing", "🔄 Processing your request...", 
                     "Executing the appropriate response path", project_context
                 )
-            
+            logger.info(f"Conversation context: {conversation_context}")
             response_result = await self._select_and_execute_response_path(
                 message, intent_analysis, conversation_context, project_id, progress_callback
             )
@@ -274,20 +274,19 @@ class UnifiedSamuraiAgent:
                 message, project_id, session_messages, project_context, task_context
             )
             
-            # Create conversation summary
+            # Create conversation summary (without task_context injection)
             conversation_summary = self._create_conversation_summary(session_messages, message)
             
-            # Get relevant tasks and memories from vector context
-            relevant_tasks = [task for task, _ in vector_context.get("relevant_tasks_with_scores", [])]
+            # Get relevant memories from vector context
             relevant_memories = [memory for memory, _ in vector_context.get("relevant_memories_with_scores", [])]
             
             return ConversationContext(
                 session_messages=session_messages,
                 conversation_summary=conversation_summary,
-                relevant_tasks=relevant_tasks,
                 relevant_memories=relevant_memories,
                 project_context=project_context,
-                vector_embedding=vector_context.get("vector_embedding")
+                vector_embedding=vector_context.get("vector_embedding"),
+                task_context=task_context if task_context else None
             )
             
         except Exception as e:
@@ -305,18 +304,45 @@ class UnifiedSamuraiAgent:
         """
         try:
             # Build enhanced context-aware prompt
+            active_task_header = ""
+            if context.task_context:
+                active_task_header = (
+                    "## ACTIVE TASK (MANDATORY FOCUS)\n"
+                    f"ID: {getattr(context.task_context, 'id', 'UNKNOWN')}\n"
+                    f"Title: {getattr(context.task_context, 'title', 'Untitled')}\n"
+                    f"Description: {getattr(context.task_context, 'description', '')}\n"
+                    f"Status: {getattr(context.task_context, 'status', 'pending')}\n"
+                    f"Priority: {getattr(context.task_context, 'priority', 'medium')}\n\n"
+                    "IMPORTANT NOTE: The user explicitly selected this active task. ALL generated tasks must strictly advance THIS task.\n"
+                    "- Create ONLY subtasks for this active task. Do NOT create a new root task.\n"
+                    "- Use conversation history only insofar as it informs or unblocks this active task.\n"
+                    "- Ignore unrelated conversation topics unless the user explicitly asked to expand scope.\n\n"
+                )
+            # Guidance when there is no active task: infer target task from latest conversation
+            no_active_task_inference = ""
+            if not context.task_context:
+                no_active_task_inference = (
+                    "## TARGET TASK INFERENCE (NO ACTIVE TASK)\n"
+                    "- Infer the single most relevant task to break down from the latest user message and the most recent portion of the conversation history.\n"
+                    "- Prioritize the latest user intent. If multiple features are mentioned, choose the one most recently requested or clarified.\n"
+                    "- Resolve pronouns like 'this'/'that'/'it' by linking them to the most recent concrete feature or change explicitly mentioned. If still ambiguous, include a final 'Clarify:' question and keep scope minimal.\n"
+                    "- The FIRST item must be a ROOT PARENT task (parent_task_id = null) that crisply summarizes this feature.\n"
+                    "- All subsequent items should be children of that root parent.\n"
+                    "- Do not blend unrelated topics; prefer a narrow, implementable scope.\n\n"
+                )
+
             system_prompt = f"""You are Samurai Engine's intent analysis expert. Your role is to deeply understand developer conversations and classify user intent to enable the perfect "vibe coding partner" response.
 
 CONVERSATION CONTEXT:
-{context.conversation_summary}
+{active_task_header}{context.conversation_summary}
 
 PROJECT CONTEXT:
 - Project: {context.project_context.get('name', 'Unknown')}
 - Tech Stack: {context.project_context.get('tech_stack', 'Unknown')}
 - Project Stage: {context.project_context.get('stage', 'Development')}
 
-RELEVANT TASKS:
-{self._format_tasks_for_context(context.relevant_tasks)}
+ACTIVE TASK:
+{self._format_tasks_for_context([context.task_context] if context.task_context else [])}
 
 RELEVANT MEMORIES:
 {self._format_memories_for_context(context.relevant_memories)}
@@ -638,8 +664,37 @@ Use this framework to analyze the current message and provide the most accurate 
                 context.session_messages, message
             )
             
+            active_task_header = ""
+            if context.task_context:
+                active_task_header = (
+                    "## ACTIVE TASK (MANDATORY FOCUS)\n"
+                    f"ID: {getattr(context.task_context, 'id', 'UNKNOWN')}\n"
+                    f"Title: {getattr(context.task_context, 'title', 'Untitled')}\n"
+                    f"Description: {getattr(context.task_context, 'description', '')}\n"
+                    f"Status: {getattr(context.task_context, 'status', 'pending')}\n"
+                    f"Priority: {getattr(context.task_context, 'priority', 'medium')}\n\n"
+                    "IMPORTANT NOTE: The user explicitly selected this active task. ALL generated tasks must strictly advance THIS task.\n"
+                    "- Create ONLY subtasks for this active task. Do NOT create a new root task.\n"
+                    "- Use conversation history only insofar as it informs or unblocks this active task.\n"
+                    "- Ignore unrelated conversation topics unless the user explicitly asked to expand scope.\n\n"
+                )
+
+            # Guidance when there is no active task: infer target task from latest conversation
+            no_active_task_inference = ""
+            if not context.task_context:
+                no_active_task_inference = (
+                    "## TARGET TASK INFERENCE (NO ACTIVE TASK)\n"
+                    "- Infer the single most relevant task to break down from the latest user message and the most recent portion of the conversation history.\n"
+                    "- Prioritize the latest user intent. If multiple features are mentioned, choose the one most recently requested or clarified.\n"
+                    "- The FIRST item must be a ROOT PARENT task (parent_task_id = null) that crisply summarizes this feature.\n"
+                    "- All subsequent items should be children of that root parent.\n"
+                    "- Do not blend unrelated topics; prefer a narrow, implementable scope.\n\n"
+                )
+
             system_prompt = f"""
 You are Samurai Engine, their vibe coding partner.
+
+{active_task_header}{no_active_task_inference}
 
 ## COMPREHENSIVE CONVERSATION CONTEXT (READ THIS FIRST - CRITICAL)
 {conversation_context}
@@ -652,8 +707,8 @@ Project: {context.project_context.get('name', 'Unknown')} | Tech: {context.proje
 ## RELEVANT PROJECT KNOWLEDGE
 {self._format_memories_for_context(context.relevant_memories)}
 
-## CURRENT TASKS
-{self._format_tasks_for_context(context.relevant_tasks)}
+## CURRENT TASK
+{self._format_tasks_for_context([context.task_context] if context.task_context else [])}
 
 ## RESPONSE REQUIREMENTS
 
@@ -698,7 +753,7 @@ Your response:
                 "context_used": {
                     "conversation_summary": conversation_context,
                     "relevant_memories_count": len(context.relevant_memories),
-                    "relevant_tasks_count": len(context.relevant_tasks),
+                    "has_active_task": bool(context.task_context),
                     "conversation_depth": len(context.session_messages)
                 }
             }
@@ -721,8 +776,38 @@ Your response:
                 context.session_messages, message
             )
             
+            active_task_header = ""
+            if context.task_context:
+                active_task_header = (
+                    "## ACTIVE TASK (MANDATORY FOCUS)\n"
+                    f"ID: {getattr(context.task_context, 'id', 'UNKNOWN')}\n"
+                    f"Title: {getattr(context.task_context, 'title', 'Untitled')}\n"
+                    f"Description: {getattr(context.task_context, 'description', '')}\n"
+                    f"Status: {getattr(context.task_context, 'status', 'pending')}\n"
+                    f"Priority: {getattr(context.task_context, 'priority', 'medium')}\n\n"
+                    "IMPORTANT NOTE: The user explicitly selected this active task. ALL generated tasks must strictly advance THIS task.\n"
+                    "- Create ONLY subtasks for this active task. Do NOT create a new root task.\n"
+                    "- Use conversation history only insofar as it informs or unblocks this active task.\n"
+                    "- Ignore unrelated conversation topics unless the user explicitly asked to expand scope.\n\n"
+                )
+
+            # Guidance when there is no active task: infer target task from latest conversation
+            no_active_task_inference = ""
+            if not context.task_context:
+                no_active_task_inference = (
+                    "## TARGET TASK INFERENCE (NO ACTIVE TASK)\n"
+                    "- Infer the single most relevant task to break down from the latest user message and the most recent portion of the conversation history.\n"
+                    "- Prioritize the latest user intent. If multiple features are mentioned, choose the one most recently requested or clarified.\n"
+                    "- The FIRST item must be a ROOT PARENT task (parent_task_id = null) that crisply summarizes this feature.\n"
+                    "- All subsequent items should be children of that root parent.\n"
+                    "- Do not blend unrelated topics; prefer a narrow, implementable scope.\n\n"
+                )
+
+            
             system_prompt = f"""
 You are Samurai Engine, helping developers explore feature ideas with deep conversation awareness.
+
+{active_task_header}{no_active_task_inference}
 
 ## COMPREHENSIVE CONVERSATION CONTEXT (ESSENTIAL - READ FIRST)
 {conversation_context}
@@ -735,8 +820,8 @@ Project: {context.project_context.get('name', 'Unknown')} | Tech: {context.proje
 ## RELEVANT PROJECT KNOWLEDGE
 {self._format_memories_for_context(context.relevant_memories)}
 
-## CURRENT TASKS
-{self._format_tasks_for_context(context.relevant_tasks)}
+## CURRENT TASK
+{self._format_tasks_for_context([context.task_context] if context.task_context else [])}
 
 ## YOUR RESPONSE APPROACH WITH EXTENDED CONTEXT
 
@@ -802,8 +887,37 @@ Your response should demonstrate deep understanding of the entire conversation, 
                 context.session_messages, message
             )
             
+            active_task_header = ""
+            if context.task_context:
+                active_task_header = (
+                    "## ACTIVE TASK (MANDATORY FOCUS)\n"
+                    f"ID: {getattr(context.task_context, 'id', 'UNKNOWN')}\n"
+                    f"Title: {getattr(context.task_context, 'title', 'Untitled')}\n"
+                    f"Description: {getattr(context.task_context, 'description', '')}\n"
+                    f"Status: {getattr(context.task_context, 'status', 'pending')}\n"
+                    f"Priority: {getattr(context.task_context, 'priority', 'medium')}\n\n"
+                    "IMPORTANT NOTE: The user explicitly selected this active task. ALL generated tasks must strictly advance THIS task.\n"
+                    "- Create ONLY subtasks for this active task. Do NOT create a new root task.\n"
+                    "- Use conversation history only insofar as it informs or unblocks this active task.\n"
+                    "- Ignore unrelated conversation topics unless the user explicitly asked to expand scope.\n\n"
+                )
+
+            # Guidance when there is no active task: infer target task from latest conversation
+            no_active_task_inference = ""
+            if not context.task_context:
+                no_active_task_inference = (
+                    "## TARGET TASK INFERENCE (NO ACTIVE TASK)\n"
+                    "- Infer the single most relevant task to break down from the latest user message and the most recent portion of the conversation history.\n"
+                    "- Prioritize the latest user intent. If multiple features are mentioned, choose the one most recently requested or clarified.\n"
+                    "- The FIRST item must be a ROOT PARENT task (parent_task_id = null) that crisply summarizes this feature.\n"
+                    "- All subsequent items should be children of that root parent.\n"
+                    "- Do not blend unrelated topics; prefer a narrow, implementable scope.\n\n"
+                )
+            
             system_prompt = f"""
 You are Samurai Engine, gathering complete feature specifications through extended conversation tracking.
+
+{active_task_header}{no_active_task_inference}
 
 ## COMPREHENSIVE CONVERSATION CONTEXT (CRITICAL FOR SPECIFICATION BUILDING)
 {conversation_context}
@@ -815,8 +929,8 @@ Project: {context.project_context.get('name', 'Unknown')} | Tech: {context.proje
 ## RELEVANT PROJECT KNOWLEDGE
 {self._format_memories_for_context(context.relevant_memories)}
 
-## CURRENT TASKS
-{self._format_tasks_for_context(context.relevant_tasks)}
+## CURRENT TASK
+{self._format_tasks_for_context([context.task_context] if context.task_context else [])}
 
 ## SPECIFICATION GATHERING WITH EXTENDED CONTEXT
 
@@ -826,6 +940,16 @@ Project: {context.project_context.get('name', 'Unknown')} | Tech: {context.proje
 4. **Connect current clarification** to broader specification context
 5. **Assess completeness** based on entire conversation history
 
+## CRITICAL SCOPE CHECK AND NARROWING
+- Before diving into details, evaluate whether the user's ask is too broad to specify precisely now.
+- If the scope is broad (e.g., "I want to build test management software"), recommend choosing a smaller, actionable focus first.
+- Offer 2–4 concrete narrower-scope options tailored to the conversation, such as:
+  - Backend MVP: one core entity and CRUD with one non-trivial business rule
+  - One core workflow end-to-end (happy path only)
+  - Single page/screen UI skeleton with primary interactions
+  - One API endpoint with request/response schema and validations
+- Ask the user to choose one option or propose an alternative narrow scope before proceeding with deeper spec questions.
+
 ## SPECIFICATION ASSESSMENT WITH CONVERSATION DEPTH
 Based on the comprehensive conversation history above:
 - What aspects have been clarified across multiple exchanges?
@@ -833,10 +957,40 @@ Based on the comprehensive conversation history above:
 - What patterns or themes emerge from the extended conversation?
 - Which specifications are now complete vs. still need clarification?
 
+## PRECISION CLARIFICATION CHECKLIST (ASK TARGETED QUESTIONS)
+- Code change type
+  - Is this a NEW function/method, or an UPDATE to an existing one?
+  - If updating: which file/module, class, and exact function/method name?
+  - If adding: which file/module and class should it live in?
+  - Inputs and outputs (names, types), return values, and side effects
+  - Error cases, validations, and expected exceptions
+- Database schema
+  - Create vs modify vs delete schema elements
+  - Exact table/collection name(s); fields with types, nullability, defaults
+  - Indexes, constraints, FKs, and migration/backfill plan
+- API surface (if applicable)
+  - Endpoint path, method, authentication/authorization
+  - Request/response schema, status codes, idempotency
+- Frontend scope (if applicable)
+  - Which page/route/screen and component(s) are affected? Provide names/paths
+  - Data flow and state management; which API endpoints are used
+  - Empty/loading/error states; accessibility and responsiveness
+- Tests and acceptance
+  - Unit/integration/e2e tests to write or update; key scenarios
+  - Clear acceptance criteria in Given/When/Then form
+- Non-functional constraints
+  - Performance, security, compatibility, rollout/feature flag, and out-of-scope areas
+
 ## RESPONSE STYLE WITH EXTENDED CONTEXT
 - "Excellent! This clarifies [specific aspect]. Combined with what we established earlier about [previous topic] and the [decisions made] throughout our conversation..."
 - "Perfect! Now I have a comprehensive picture: [summary of multiple conversation elements]..."
 - "That completes the picture nicely. From our entire discussion, I understand [comprehensive summary]..."
+
+## QUESTION FORMAT AND NEXT STEPS
+- If scope is broad: first present 2–4 narrower-scope options and ask the user to choose.
+- Otherwise, ask a concise, numbered list of targeted questions from the Precision Checklist above.
+- Keep questions specific and answerable; prefer yes/no or enumerated options when possible.
+- Do not proceed to task creation or implementation details until scope is narrowed and required details are confirmed.
 
 ## SPECIFICATION COMPLETENESS CHECK
 Consider the full conversation arc:
@@ -889,7 +1043,16 @@ Show deep understanding of how the specification has evolved throughout the enti
                 await progress_callback("execution", "⚙️ Creating tasks...", "Executing task creation with conversation insights")
             
             # Execute task creation
-            tool_results = await self._execute_task_creation(task_breakdown, project_id)
+            parent_override = None
+            if context.task_context and getattr(context.task_context, 'id', None):
+                # Force all created tasks to be children of the active task
+                parent_override = getattr(context.task_context, 'id')
+
+            tool_results = await self._execute_task_creation(
+                task_breakdown,
+                project_id,
+                parent_task_id_override=parent_override,
+            )
             
             if progress_callback:
                 await progress_callback("execution", "✅ Tasks created", f"Successfully created {len(tool_results)} tasks from comprehensive discussion")
@@ -1078,47 +1241,23 @@ Show deep understanding of how the specification has evolved throughout the enti
             if not conversation_embedding:
                 return self._create_fallback_vector_context(message, project_id, session_messages, project_context, task_context)
             
-            # Get all tasks and memories
-            all_tasks = self.file_service.load_tasks(project_id)
+            # Load memories and compute relevant memories only
             all_memories = self.file_service.load_memories(project_id)
-            
-            # Find relevant items using vector similarity
-            relevant_tasks = vector_context_service.find_relevant_tasks(
-                conversation_embedding, all_tasks, project_id
-            )
-            
-            # If task context is provided, prioritize it
-            if task_context:
-                # Create high-priority task context entry
-                task_context_entry = {
-                    "task": task_context,
-                    "score": 1.0,  # Highest possible score
-                    "reason": "Active task context - primary focus for this conversation"
-                }
-                
-                # Filter out the task context from relevant_tasks if it's already there
-                relevant_tasks = [item for item in relevant_tasks if item.get("task", {}).get("id") != task_context.id]
-                
-                # Add task context at the beginning with highest priority
-                relevant_tasks.insert(0, task_context_entry)
-                
-                logger.info(f"Prioritized task context: {task_context.title}")
-            
             relevant_memories = vector_context_service.find_relevant_memories(
                 conversation_embedding, all_memories, project_id
             )
-            
-            # Assemble context
-            assembled_context = vector_context_service.assemble_vector_context(
-                session_messages=session_messages,
-                relevant_tasks=relevant_tasks,
-                relevant_memories=relevant_memories,
-                new_user_message=message,
-                task_context=task_context
-            )
-            
+
+            # Keep only the active task context as task context
+            relevant_tasks = []
+            if task_context:
+                relevant_tasks = [{
+                    "task": task_context,
+                    "score": 1.0,
+                    "reason": "Active task context - primary focus for this conversation"
+                }]
+                logger.info(f"Prioritized task context: {task_context.title}")
+
             return {
-                "assembled_context": assembled_context,
                 "relevant_tasks_with_scores": relevant_tasks,
                 "relevant_memories_with_scores": relevant_memories,
                 "vector_embedding": conversation_embedding
@@ -1259,7 +1398,6 @@ Show deep understanding of how the specification has evolved throughout the enti
         return ConversationContext(
             session_messages=[],
             conversation_summary=f"Current request: {message}",
-            relevant_tasks=[],
             relevant_memories=[],
             project_context=project_context
         )
@@ -1278,8 +1416,7 @@ Show deep understanding of how the specification has evolved throughout the enti
     def _create_fallback_vector_context(self, message: str, project_id: str, session_messages: List[ChatMessage], project_context: dict, task_context: Optional[Any] = None) -> dict:
         """Create fallback vector context."""
         relevant_tasks = []
-        context_message = f"Current request: {message}"
-        
+
         # Include task context even in fallback mode
         if task_context:
             relevant_tasks = [{
@@ -1287,10 +1424,8 @@ Show deep understanding of how the specification has evolved throughout the enti
                 "score": 1.0,
                 "reason": "Active task context - primary focus for this conversation"
             }]
-            context_message += f"\n\nFOCUSED TASK CONTEXT:\nTask: {task_context.title}\nDescription: {task_context.description}"
-        
+
         return {
-            "assembled_context": context_message,
             "relevant_tasks_with_scores": relevant_tasks,
             "relevant_memories_with_scores": [],
             "vector_embedding": None
@@ -1307,7 +1442,7 @@ Show deep understanding of how the specification has evolved throughout the enti
                 tech_stack=project_context.get('tech_stack', 'Unknown'),
                 project_detail=project_context.get('project_detail', ''),
                 conversation_summary=f"Error occurred while processing: {message}",
-                relevant_tasks=[],
+                    relevant_tasks=[],
                 relevant_memories=[],
                 user_message=message,
                 intent_type="error",
@@ -1338,175 +1473,6 @@ Show deep understanding of how the specification has evolved throughout the enti
             }
     
     # Task creation and execution methods
-    async def _generate_task_breakdown(self, message: str, context: ConversationContext) -> List[dict]:
-        """Generate task breakdown from user request using enhanced AI-optimized prompt."""
-        try:
-            system_prompt = f"""
-# Enhanced AI-Optimized Task Breakdown Prompt for Samurai Engine
-
-You are Samurai Engine's task breakdown specialist. Your role is to analyze feature requests and create the optimal number of AI-friendly implementation tasks that can be effectively handled by coding agents like Cursor.
-
-## PROJECT CONTEXT
-**Project:** {context.project_context.get('name', 'Unknown')}
-**Tech Stack:** {context.project_context.get('tech_stack', 'Unknown')}
-**Project Detail Spec:**\n{context.project_context.get('project_detail', '')[:1500] + ('...' if context.project_context.get('project_detail', '') and len(context.project_context.get('project_detail', '')) > 1500 else '')}
-
-
-## FEATURE REQUEST TO ANALYZE
-**User Request:** "{message}"
-
-## CONVERSATION CONTEXT
-**Discussion History:**
-{context.conversation_summary}
-
-**Relevant Project Knowledge:**
-{self._format_memories_for_context(context.relevant_memories)}
-
-**Related Existing Tasks:**
-{self._format_tasks_for_context(context.relevant_tasks)}
-
----
-
-## CHAIN OF THOUGHT TASK BREAKDOWN ANALYSIS
-
-### Step 1: Feature Complexity Assessment
-
-**Analyze the feature request across these dimensions:**
-
-**A. Technical Complexity Score (1-10):**
-- Database schema changes needed?
-- API endpoints required?
-- Frontend components complexity?
-- Integration with existing systems?
-- Third-party service dependencies?
-
-**B. Feature Scope Score (1-10):**
-- Single component vs multi-component feature?
-- Affects one user flow vs multiple flows?
-- Standalone vs deeply integrated feature?
-- Number of distinct functionalities involved?
-
-**C. AI Implementation Difficulty (1-10):**
-- Are tasks clearly definable with specific inputs/outputs?
-- Can each piece be implemented independently?
-- Are requirements concrete enough for AI coding agents?
-- How much existing code context is needed?
-
-**Calculate Overall Complexity:** (A + B + C) / 3
-
-### Step 2: Task Granularity Strategy Selection
-
-**Based on complexity analysis, select task breakdown strategy:**
-
-**MICRO TASKS (Complexity 1-3):**
-- Feature is already appropriately sized for AI agents
-- Single, focused functionality
-- **Strategy:** Create 1-2 tasks maximum, or recommend no breakdown
-- **AI Agent Focus:** Complete small features in single implementations
-
-**BALANCED TASKS (Complexity 4-6):**
-- Feature needs moderate breakdown
-- Multiple related components
-- **Strategy:** Create 2-5 tasks based on logical separation
-- **AI Agent Focus:** Each task = one complete, testable functionality
-
-**STRUCTURED BREAKDOWN (Complexity 7-10):**
-- Complex feature requiring systematic breakdown
-- Multiple systems, components, or workflows
-- **Strategy:** Create 4-8 tasks with clear dependencies
-- **AI Agent Focus:** Each task = one architectural layer or component
-
-### Step 3: AI Agent Task Optimization
-
-**For each potential task, ensure it meets AI coding agent requirements:**
-
-**AI-Friendly Task Characteristics:**
-- **Single, clear objective** - one main thing to build/modify
-- **Concrete inputs/outputs** - specific files, functions, or components
-- **Minimal context switching** - focuses on one part of the codebase
-- **Testable outcome** - can verify completion independently
-- **Self-contained scope** - doesn't require understanding entire system
-
-**Task Sizing Principles:**
-- **Not time-based** (ignore 30-60 minute guideline)
-- **Functionality-based** - complete one logical piece
-- **AI-completion-sized** - what an AI can handle in one focused session
-- **Dependency-aware** - clear prerequisites and follow-ups
-
-### Step 4: Logical Development Sequence Analysis
-
-**Determine optimal task order based on:**
-
-**Technical Dependencies:**
-- Database schema before API endpoints
-- Backend APIs before frontend components
-- Core functionality before enhancements
-- Infrastructure before application logic
-
-**User Experience Flow:**
-- Essential user flows first
-- Core functionality before nice-to-have features
-- MVP features before advanced capabilities
-
-**Risk Mitigation:**
-- High-risk components early for validation
-- Critical path items prioritized
-- Dependencies clearly identified
-
-### Step 5: Task Specification Format
-
-**CRITICAL: Return ONLY a valid JSON array with no additional text, markdown, or explanations.**
-
-**Required JSON Format:**
-```json
-[
-    {{
-        "title": "Task Title",
-        "description": "Complete task description with implementation details, file paths, and acceptance criteria",
-        "priority": "high|medium|low",
-        "order": 0
-    }},
-    ...
-]
-```
-
-**Task Description Template:**
-```
-PROJECT: [Project Name] | TECH: [Tech Stack]
-
-TASK: [Specific task objective]
-
-FILES: [List of files to create/modify]
-
-REQUIREMENTS:
-- [Specific requirement 1]
-- [Specific requirement 2]
-- [Specific requirement 3]
-
-ACCEPTANCE: [How to verify task completion]
-```
-
-**IMPORTANT:**
-- Return ONLY the JSON array, no markdown formatting
-- No explanations, no additional text
-- Ensure valid JSON syntax
-- Each task must have title, description, priority, and order fields
-- Optimize for AI agent implementation success
-- Maintain project consistency and quality
-- Enable progressive development and testing
-
-Remember: The goal is creating the optimal number of AI-friendly tasks that enable successful feature implementation, not adhering to arbitrary task count limits.
-"""
-            
-            response = await self.gemini_service.chat_with_system_prompt(message, system_prompt)
-            
-            # Enhanced JSON parsing with multiple fallback strategies
-            parsed_response = self._parse_task_breakdown_response(response, message, context)
-            return parsed_response
-                
-        except Exception as e:
-            logger.error(f"Error generating task breakdown: {e}")
-            return [{"title": "Implement feature", "description": message}]
 
     def _parse_task_breakdown_response(self, response: str, original_message: str, context: ConversationContext) -> List[dict]:
         """Enhanced JSON parsing with multiple fallback strategies."""
@@ -1640,10 +1606,41 @@ Remember: The goal is creating the optimal number of AI-friendly tasks that enab
     async def _generate_task_breakdown_with_extended_context(self, message: str, context: ConversationContext, conversation_context: str) -> List[dict]:
         """Generate task breakdown with comprehensive conversation context."""
         try:
-            system_prompt = f"""
-Break down this feature request into implementable tasks, considering the comprehensive conversation history.
+            active_task_header = ""
+            if context.task_context:
+                active_task_header = (
+                    "## ACTIVE TASK (MANDATORY FOCUS)\n"
+                    f"ID: {getattr(context.task_context, 'id', 'UNKNOWN')}\n"
+                    f"Title: {getattr(context.task_context, 'title', 'Untitled')}\n"
+                    f"Description: {getattr(context.task_context, 'description', '')}\n"
+                    f"Status: {getattr(context.task_context, 'status', 'pending')}\n"
+                    f"Priority: {getattr(context.task_context, 'priority', 'medium')}\n\n"
+                    "IMPORTANT NOTE: The user explicitly selected this active task. ALL generated tasks must strictly advance THIS task.\n"
+                    "- Create ONLY subtasks for this active task. Do NOT create a new root task.\n"
+                    "- Use conversation history only insofar as it informs or unblocks this active task.\n"
+                    "- Ignore unrelated conversation topics unless the user explicitly asked to expand scope.\n\n"
+                )
+            # When there is no active task, prepare guidance to infer a target task from the latest conversation
+            no_active_task_inference = ""
+            if not context.task_context:
+                no_active_task_inference = (
+                    "## TARGET TASK INFERENCE (NO ACTIVE TASK)\n"
+                    "- Infer the single most relevant task to break down from the latest user message and the most recent portion of the conversation history.\n"
+                    "- Prioritize the latest user intent. If multiple features are mentioned, choose the one most recently requested or clarified.\n"
+                    "- The FIRST item must be a ROOT PARENT task (parent_task_id = null) that crisply summarizes this feature.\n"
+                    "- All subsequent items should be children of that root parent.\n"
+                    "- Do not blend unrelated topics; prefer a narrow, implementable scope.\n\n"
+                )
 
-## COMPREHENSIVE CONVERSATION CONTEXT (ESSENTIAL FOR COMPLETE TASK CREATION)
+            system_prompt = f"""
+Break down this feature request into implementable SOFTWARE ENGINEERING tasks only.
+
+## LATEST USER MESSAGE (most recent intent signal)
+{message}
+
+{active_task_header if context.task_context else ''}{no_active_task_inference}
+
+## COMPREHENSIVE CONVERSATION CONTEXT (prioritize recency)
 {conversation_context}
 
 ## PROJECT CONTEXT
@@ -1655,33 +1652,84 @@ Tech Stack: {context.project_context.get('tech_stack', 'Unknown')}
 ## RELEVANT PROJECT KNOWLEDGE
 {self._format_memories_for_context(context.relevant_memories)}
 
-## TASK BREAKDOWN WITH EXTENDED CONVERSATION CONTEXT
+## SCOPE: SOFTWARE ENGINEERING TASKS ONLY
+- Include only tasks that produce concrete changes to: application code, tests, configuration, CI/CD pipelines, infrastructure-as-code, database schemas/migrations, APIs, security/hardening, performance tuning, or developer documentation inside the repository that is directly tied to code changes (e.g., updating `README.md` after implementing a feature).
+- Each task must be actionable within the repository and lead to a verifiable code change.
+- When an ACTIVE TASK exists, strictly scope all tasks to advancing that task; do NOT introduce unrelated tasks.
 
-Based on the comprehensive conversation above:
-1. **Capture all requirements discussed** throughout the entire conversation
-2. **Include clarifications and decisions made** across multiple exchanges
-3. **Reference technical choices established** during the extended discussion
-4. **Incorporate user preferences expressed** at various points in the conversation
-5. **Consider integration points discussed** throughout the conversation arc
+## OUT OF SCOPE (EXCLUDE COMPLETELY)
+- Workshops, meetings, trainings, demos, presentations, slide decks
+- Interviews, surveys, user research without code changes
+- Planning/roadmapping, stakeholder communications, marketing or support tasks
+- Generic brainstorming or open-ended research with no concrete code deliverable
 
-## COMPREHENSIVE TASK CREATION GUIDELINES
-- Each task should reflect the full understanding gained from the extended conversation
-- Include implementation details and context discussed over multiple exchanges
-- Reference decisions, constraints, and preferences established throughout the discussion
-- Capture the evolution of requirements as discussed over time
-- Ensure tasks reflect the complete specification developed through the conversation
+If the request is not about software engineering implementation, return an empty JSON array [] without commentary.
+
+## RECENCY AND DEDUPLICATION RULES
+- Treat the most recent conversation segment as authoritative. If the topic shifts mid-thread, IGNORE earlier topics unless the user explicitly ties them to the current request.
+- Focus only on new work not already implied as completed or previously created. If a subtask appears to duplicate a previously discussed/created item, SKIP it.
+- Avoid repeating tasks from older context. Prefer the newest interpretation of the user's intent.
+
+## STRICT GROUNDEDNESS (NO ASSUMPTIONS)
+- Use only information explicitly present in the latest user message and the recent portion of the conversation context above. Do NOT invent component names, file paths, database tables/columns, API endpoints, libraries, configuration keys, or external services.
+- If a specific artifact is required but not named, use clear placeholders wrapped in braces to mark missing details, e.g., {{method_name}}, {{ClassName}}, {{package_name}}, {{schema}}.{{table}}, {{column_name}}, {{route_path}}, {{component_name}}.
+- If critical details are missing, include at the end of the description a "Clarify:" section that lists precise, concrete questions needed to proceed. Do not output separate non-engineering tasks.
+
+## DESCRIPTION FORMAT (STRUCTURED, PRECISE, AND COMPREHENSIVE)
+Each task's description MUST be a single string that follows this structure and uses placeholders {{like_this}} for any unknown specifics. Be precise and detailed while remaining strictly grounded in the recent conversation (no assumptions):
+- Context: one sentence tying the task to the latest conversation and, if present, the active task.
+- Implementation Steps:
+  - Step 1: ...
+  - Step 2: ...
+  - Step 3: ... (2–6 steps total)
+- Backend Feature Spec (if applicable):
+  - Feature/Behavior: concise definition of what capability is implemented and when it triggers.
+  - Inputs: {{input_sources}} and parameters with types and validation rules.
+  - Processing/Algorithms: describe calculations/transformations/flows; include formulas, branching, retries, idempotency as applicable.
+  - Outputs/Side Effects: returned values, persisted records, emitted events, external calls.
+  - Error Handling: validation failures, exceptions, fallbacks, retry/backoff.
+  - Performance: complexity/latency/throughput constraints if stated; memory limits.
+  - Security: authn/authz constraints, PII handling, logging/redaction.
+  - Edge Cases: enumerate known edge conditions from the conversation.
+- Frontend UI Spec (if applicable):
+  - Screens/Components: exact names if stated, otherwise placeholders e.g., {{component_name}}.
+  - States & Data: loading/empty/error/success; data fields and bindings.
+  - User Flows & Interactions: clicks, keyboard, gestures; navigation and modals.
+  - Layout & Responsive: breakpoints, alignment, spacing, scroll behavior.
+  - Visual Spec: labels, copy, icons, colors, sizes; reference design tokens if stated.
+  - Accessibility: roles, labels, focus order, keyboard support, contrast.
+  - Error/Empty/Edge: messaging and recovery per state.
+- Code Changes:
+  - Backend: specify exact methods/classes/modules when explicitly stated; otherwise use placeholders e.g., {{method_name}} in {{ClassName}} within {{module_path}}
+  - Database: specify schema/migration details when known; otherwise placeholders e.g., {{schema}}.{{table}} add column {{column_name}} {{type}}
+  - API: specify endpoints/handlers only if named; otherwise placeholders e.g., {{HTTP_method}} {{route_path}}
+  - Frontend: specify pages/components/files if named; otherwise placeholders e.g., {{component_name}} in {{path}}
+- Tests: specify unit/integration/e2e to add or update tied to the above changes.
+- Acceptance Criteria: bullet list of verifiable checks.
+- Clarify: only if needed, list missing names/paths/schemas that must be confirmed.
 
 ## TASK CONTEXT INTEGRATION
-- Tasks should reference specific technical decisions made during the conversation
-- Include user experience considerations discussed earlier
-- Reflect architectural choices established through the extended discussion
-- Incorporate performance, security, or other requirements mentioned throughout
+- Reference specific technical decisions made during the conversation where applicable.
+- Include UX considerations, architectural choices, and non-functional requirements (performance, security) if relevant and explicitly stated.
 
-Return JSON array with tasks that comprehensively capture the extended conversation context:
-[
-    {{"title": "Task Title", "description": "Complete description including comprehensive conversation context, technical decisions, user preferences, and implementation details discussed throughout the conversation"}},
-    ...
-]
+## TASK COUNT AND GRANULARITY
+- Keep the breakdown compact so we can iteratively refine later as the user continues chatting.
+- If there is an ACTIVE TASK: return at most 5 items (all are subtasks of the active task), and only if they strictly advance the active task.
+- If there is NO ACTIVE TASK: return exactly 1 root parent (parent_task_id = null) plus up to 5 child subtasks.
+- Prefer the most critical and unblocking subtasks first. Defer deeper decomposition to future iterations.
+
+## OUTPUT FORMAT (STRICT HIERARCHY-AWARE)
+Return a pure JSON array of tasks. Each task MUST include these fields:
+- title: string
+- description: string (following the Description Format above; include placeholders for missing specifics; include optional Clarify section when needed)
+- parent_task_id: string | null
+
+Rules for parent_task_id assignment:
+- If there is an ACTIVE TASK (see header above), ALL returned tasks must set parent_task_id to this exact value: {getattr(context.task_context, 'id', 'UNKNOWN')} and NONE may have parent_task_id = null.
+- If there is NO ACTIVE TASK: the FIRST item must be a ROOT PARENT task (parent_task_id = null). For ALL subsequent items, do NOT provide any non-null parent_task_id. Either omit the parent_task_id field entirely or set it explicitly to null. Do NOT invent or include any IDs.
+
+IMPORTANT:
+- Return JSON only. No markdown, code fences, or extra commentary.
 """
             
             response = await self.gemini_service.chat_with_system_prompt(message, system_prompt)
@@ -1711,11 +1759,12 @@ Return JSON array with tasks that comprehensively capture the extended conversat
         
         return "\n".join(response_parts)
     
-    async def _execute_task_creation(self, task_breakdown: List[dict], project_id: str) -> List[dict]:
+    async def _execute_task_creation(self, task_breakdown: List[dict], project_id: str, parent_task_id_override: Optional[str] = None) -> List[dict]:
         """Execute task creation using tool registry."""
         results = []
+        root_created_id: Optional[str] = None
         
-        for task_data in task_breakdown:
+        for index, task_data in enumerate(task_breakdown):
             try:
                 # Create task using tool registry
                 # Extract optional parameters
@@ -1732,12 +1781,30 @@ Return JSON array with tasks that comprehensively capture the extended conversat
                     params["priority"] = task_data["priority"]
                 if "due_date" in task_data:
                     params["due_date"] = task_data["due_date"]
+                # Parent assignment logic
+                if parent_task_id_override:
+                    # Force all tasks to be children of the active task
+                    params["parent_task_id"] = parent_task_id_override
+                else:
+                    # No active task; enforce root-first then attach children to created root
+                    if index == 0:
+                        # Ensure root is created without any parent assignment regardless of provided ptid
+                        pass
+                    else:
+                        # For subtasks, ignore any provided parent_task_id and attach to created root
+                        if root_created_id:
+                            params["parent_task_id"] = root_created_id
                 
                 result = await self.tool_registry.execute_tool(
                     "create_task",
                     **params
                 )
                 results.append(result)
+
+                # Capture root id if this is the first created task and we are in the root-parent flow
+                if (parent_task_id_override is None) and (index == 0):
+                    if result.get("success") and result.get("task_id"):
+                        root_created_id = result["task_id"]
             except Exception as e:
                 logger.error(f"Error creating task: {e}")
                 results.append({
@@ -1756,7 +1823,7 @@ Return JSON array with tasks that comprehensively capture the extended conversat
                 project_name=context.project_context.get('name', 'Unknown'),
                 tech_stack=context.project_context.get('tech_stack', 'Unknown'),
                 conversation_summary=context.conversation_summary,
-                relevant_tasks=context.relevant_tasks,
+                relevant_tasks=[context.task_context] if context.task_context else [],
                 relevant_memories=context.relevant_memories,
                 user_message="Task creation completed",
                 intent_type="ready_for_action",
@@ -1785,10 +1852,37 @@ Return JSON array with tasks that comprehensively capture the extended conversat
     
     async def _execute_direct_action(self, message: str, context: ConversationContext, project_id: str) -> dict:
         """Execute direct actions using LLM detection and comprehensive tool access."""
-        
+        active_task_header = ""
+        if context.task_context:
+            active_task_header = (
+                "## ACTIVE TASK (MANDATORY FOCUS)\n"
+                f"ID: {getattr(context.task_context, 'id', 'UNKNOWN')}\n"
+                f"Title: {getattr(context.task_context, 'title', 'Untitled')}\n"
+                f"Description: {getattr(context.task_context, 'description', '')}\n"
+                f"Status: {getattr(context.task_context, 'status', 'pending')}\n"
+                f"Priority: {getattr(context.task_context, 'priority', 'medium')}\n\n"
+                "IMPORTANT NOTE: The user explicitly selected this active task. ALL generated tasks must strictly advance THIS task.\n"
+                "- Create ONLY subtasks for this active task. Do NOT create a new root task.\n"
+                "- Use conversation history only insofar as it informs or unblocks this active task.\n"
+                "- Ignore unrelated conversation topics unless the user explicitly asked to expand scope.\n\n"
+            )
+        # When there is no active task, prepare guidance to infer a target task from the latest conversation
+        no_active_task_inference = ""
+        if not context.task_context:
+            no_active_task_inference = (
+                "## TARGET TASK INFERENCE (NO ACTIVE TASK)\n"
+                "- Infer the single most relevant task to break down from the latest user message and the most recent portion of the conversation history.\n"
+                "- Prioritize the latest user intent. If multiple features are mentioned, choose the one most recently requested or clarified.\n"
+                "- The FIRST item must be a ROOT PARENT task (parent_task_id = null) that crisply summarizes this feature.\n"
+                "- All subsequent items should be children of that root parent.\n"
+                "- Do not blend unrelated topics; prefer a narrow, implementable scope.\n\n"
+            )
+
         # Step 1: Use LLM to detect actions
         action_analysis_prompt = f"""
 You are Samurai Engine's action detection expert. Analyze the user's message to identify specific actions they want to perform.
+
+{active_task_header}{no_active_task_inference}
 
 PROJECT CONTEXT:
 - Project: {context.project_context.get('name', 'Unknown')}
@@ -1797,8 +1891,8 @@ PROJECT CONTEXT:
 CONVERSATION CONTEXT:
 {context.conversation_summary}
 
-CURRENT TASKS:
-{self._format_tasks_for_context(context.relevant_tasks)}
+CURRENT TASK:
+{self._format_tasks_for_context([context.task_context] if context.task_context else [])}
 
 RELEVANT MEMORIES:
 {self._format_memories_for_context(context.relevant_memories)}
@@ -1959,12 +2053,23 @@ Analyze the user's message and return the appropriate JSON structure for detecte
     async def _execute_direct_action_with_extended_context(self, message: str, context: ConversationContext, project_id: str, conversation_context: str) -> dict:
         """Execute direct action considering comprehensive conversation context."""
         try:
+            active_task_header = ""
+            if context.task_context:
+                active_task_header = (
+                    "ACTIVE TASK SELECTED BY USER (Primary Focus)\n"
+                    f"- Title: {getattr(context.task_context, 'title', 'Untitled')}\n"
+                    f"- Description: {getattr(context.task_context, 'description', '')}\n"
+                    f"- Status: {getattr(context.task_context, 'status', 'pending')}\n"
+                    f"- Priority: {getattr(context.task_context, 'priority', 'medium')}\n\n"
+                    "INTENT: The user is focusing on this task now and likely wants to ask questions, update details, or make progress on it. Prioritize actions and guidance about this task unless the user clearly asks otherwise.\n\n"
+                )
+
             # Use LLM to detect actions with comprehensive conversation context
             action_analysis_prompt = f"""
 Analyze the user's direct action request considering the comprehensive conversation history.
 
 ## COMPREHENSIVE CONVERSATION CONTEXT (CRITICAL FOR ACCURATE ACTION DETECTION)
-{conversation_context}
+{active_task_header}{conversation_context}
 
 PROJECT CONTEXT:
 - Project: {context.project_context.get('name', 'Unknown')}
@@ -2063,8 +2168,9 @@ Return JSON with the detected action and context-specific parameters informed by
     async def _execute_task_completion(self, message: str, context: ConversationContext, project_id: str) -> dict:
         """Execute task completion action."""
         try:
-            # Find matching task
-            matching_task = self._find_matching_task(message, context.relevant_tasks)
+            # Find matching task (prefer active task)
+            candidate_tasks = [context.task_context] if context.task_context else []
+            matching_task = self._find_matching_task(message, candidate_tasks)
             
             if not matching_task:
                 return {
@@ -2087,7 +2193,7 @@ Return JSON with the detected action and context-specific parameters informed by
                 project_name=context.project_context.get('name', 'Unknown'),
                 tech_stack=context.project_context.get('tech_stack', 'Unknown'),
                 conversation_summary=context.conversation_summary,
-                relevant_tasks=context.relevant_tasks,
+                relevant_tasks=[context.task_context] if context.task_context else [],
                 relevant_memories=context.relevant_memories,
                 user_message=message,
                 intent_type="direct_action",
@@ -2115,8 +2221,9 @@ Return JSON with the detected action and context-specific parameters informed by
     async def _execute_task_deletion(self, message: str, context: ConversationContext, project_id: str) -> dict:
         """Execute task deletion action."""
         try:
-            # Find matching task
-            matching_task = self._find_matching_task(message, context.relevant_tasks)
+            # Find matching task (prefer active task)
+            candidate_tasks = [context.task_context] if context.task_context else []
+            matching_task = self._find_matching_task(message, candidate_tasks)
             
             if not matching_task:
                 return {
@@ -2138,7 +2245,7 @@ Return JSON with the detected action and context-specific parameters informed by
                 project_name=context.project_context.get('name', 'Unknown'),
                 tech_stack=context.project_context.get('tech_stack', 'Unknown'),
                 conversation_summary=context.conversation_summary,
-                relevant_tasks=context.relevant_tasks,
+                relevant_tasks=[context.task_context] if context.task_context else [],
                 relevant_memories=context.relevant_memories,
                 user_message=message,
                 intent_type="direct_action",

@@ -3,16 +3,17 @@ import React from 'react'
 interface ProactiveSuggestionProps {
   isVisible: boolean
   onDismiss: () => void
+  text?: string
 }
 
-const ProactiveSuggestion: React.FC<ProactiveSuggestionProps> = ({ isVisible, onDismiss }) => {
+const ProactiveSuggestion: React.FC<ProactiveSuggestionProps> = ({ isVisible, onDismiss, text }) => {
   if (!isVisible) return null
 
   return (
     <div className="proactive-suggestion" role="note" aria-live="polite">
       <div className="proactive-suggestion-content">
         <span className="proactive-suggestion-text">
-          💡 Tip: Just ask me to "add this as a task" or "create a task for this" and I'll add it to your task bar automatically!
+          {text || '💡 Tip: Just ask me to "add this as a task" or "create a task for this" and I\'ll add it to your task bar automatically!'}
         </span>
       </div>
       <button

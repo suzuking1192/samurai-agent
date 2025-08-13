@@ -199,7 +199,12 @@ class FileService:
     def _validate_task_data(self, data: Dict[str, Any]) -> bool:
         """Validate task data structure."""
         required_fields = ['id', 'project_id', 'title', 'description']
-        return all(field in data for field in required_fields)
+        if not all(field in data for field in required_fields):
+            return False
+        # Backfill defaults for new hierarchical fields for legacy data
+        data.setdefault('parent_task_id', None)
+        data.setdefault('depth', 1)
+        return True
     
     def _validate_chat_message_data(self, data: Dict[str, Any]) -> bool:
         """Validate chat message data structure."""
@@ -528,8 +533,18 @@ class FileService:
         """Delete a specific task."""
         tasks = self.load_tasks(project_id)
         
+        # Also delete children recursively
+        to_delete = {task_id}
+        changed = True
+        while changed:
+            changed = False
+            for t in list(tasks):
+                if getattr(t, 'parent_task_id', None) in to_delete:
+                    to_delete.add(t.id)
+                    changed = True
+        
         original_count = len(tasks)
-        tasks = [t for t in tasks if t.id != task_id]
+        tasks = [t for t in tasks if t.id not in to_delete]
         
         if len(tasks) == original_count:
             logger.warning(f"Task not found for deletion: {task_id}")

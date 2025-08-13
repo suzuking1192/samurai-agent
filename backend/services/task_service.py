@@ -38,7 +38,8 @@ class TaskService:
         self.analysis_agent = TaskAnalysisAgent()
 
     async def create_task(self, title: str, description: str, project_id: str,
-                         priority: str = "medium", status: str = "pending") -> Task:
+                         priority: str = "medium", status: str = "pending",
+                         parent_task_id: Optional[str] = None) -> Task:
         """
         Create a new task with automatic analysis.
         
@@ -52,16 +53,29 @@ class TaskService:
         Returns:
             The created Task object
         """
-        # Generate warnings using the analysis agent
-        warnings = await self.analysis_agent.analyze_task(title, description)
+        # Generate warnings using the analysis agent (disabled temporarily)
+        # warnings = await self.analysis_agent.analyze_task(title, description)
+        warnings = []
         
-        # Create task object with warnings
+        # Determine hierarchy depth with validation (max depth 4)
+        depth = 1
+        if parent_task_id:
+            parent = self.file_service.get_task_by_id(project_id, parent_task_id)
+            if not parent:
+                raise ValueError("Parent task not found")
+            if parent.depth >= 4:
+                raise ValueError("Maximum task nesting depth of 4 exceeded")
+            depth = parent.depth + 1
+
+        # Create task object with warnings and hierarchy
         task = Task(
             title=title,
             description=description,
             project_id=project_id,
             priority=priority,
             status=status,
+            parent_task_id=parent_task_id,
+            depth=depth,
             review_warnings=warnings,
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow()
@@ -95,10 +109,10 @@ class TaskService:
             if hasattr(task, key):
                 setattr(task, key, value)
         
-        # Re-analyze if description was updated
+        # Re-analyze if description was updated (disabled temporarily)
         if "description" in updates or "title" in updates:
-            warnings = await self.analysis_agent.analyze_task(task.title, task.description)
-            task.review_warnings = warnings
+            # warnings = await self.analysis_agent.analyze_task(task.title, task.description)
+            task.review_warnings = []
         
         # Update timestamp
         task.updated_at = datetime.utcnow()

@@ -362,7 +362,7 @@ async def chat_with_progress(project_id: str, request: ChatRequest):
                     }
                 }
                 await progress_queue.put(progress_data)
-            
+            logger.info(f"Task context: {task_context}")
             # 6. Start unified agent processing in background
             processing_task = asyncio.create_task(
                 unified_samurai_agent.process_message(
@@ -585,11 +585,17 @@ async def chat_stream(project_id: str, request: ChatRequest):
 
 # Task endpoints
 @app.get("/projects/{project_id}/tasks")
-async def get_project_tasks(project_id: str):
+async def get_project_tasks(project_id: str, parent_id: Optional[str] = None):
     """Get all tasks for a project"""
     try:
         logger.info(f"Loading tasks for project: {project_id}")
         tasks = file_service.load_tasks(project_id)
+        if parent_id is not None:
+            # When parent_id is empty string, treat as roots
+            if parent_id == "":
+                tasks = [t for t in tasks if not getattr(t, 'parent_task_id', None)]
+            else:
+                tasks = [t for t in tasks if getattr(t, 'parent_task_id', None) == parent_id]
         logger.info(f"Loaded {len(tasks)} tasks for project {project_id}")
         return tasks
     except Exception as e:
@@ -688,13 +694,18 @@ async def create_task(project_id: str, task_data: dict):
         from services.task_service import TaskService
         task_service = TaskService()
         
-        task = await task_service.create_task(
-            title=task_data.get("title", ""),
-            description=task_data.get("description", ""),
-            project_id=project_id,
-            priority=task_data.get("priority", "medium"),
-            status=task_data.get("status", "pending")
-        )
+        parent_task_id = task_data.get("parent_task_id")
+        try:
+            task = await task_service.create_task(
+                title=task_data.get("title", ""),
+                description=task_data.get("description", ""),
+                project_id=project_id,
+                priority=task_data.get("priority", "medium"),
+                status=task_data.get("status", "pending"),
+                parent_task_id=parent_task_id
+            )
+        except ValueError as ve:
+            raise HTTPException(status_code=400, detail=str(ve))
         
         logger.info(f"Task created successfully: {task.id} with {len(task.review_warnings or [])} warnings")
         return task
@@ -1230,6 +1241,9 @@ async def get_task_context(project_id: str, session_id: str):
     except Exception as e:
         logger.error(f"Error getting task context: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get task context: {str(e)}")
+
+
+ 
 
 
 if __name__ == "__main__":
