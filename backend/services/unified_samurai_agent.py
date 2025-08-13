@@ -1640,7 +1640,7 @@ Break down this feature request into implementable SOFTWARE ENGINEERING tasks on
 
 {active_task_header if context.task_context else ''}{no_active_task_inference}
 
-## COMPREHENSIVE CONVERSATION CONTEXT (review recent messages first)
+## COMPREHENSIVE CONVERSATION CONTEXT (prioritize recency)
 {conversation_context}
 
 ## PROJECT CONTEXT
@@ -1665,42 +1665,63 @@ Tech Stack: {context.project_context.get('tech_stack', 'Unknown')}
 
 If the request is not about software engineering implementation, return an empty JSON array [] without commentary.
 
-## TASK QUALITY BAR
-- Each task must reflect the full understanding gained from the extended conversation
-- Incorporate decisions, constraints, and preferences established throughout the discussion
-- Be small, actionable, and independently testable
-- Avoid vague items and placeholders like "TBD" or "discuss"; avoid duplicates
-- Reference specific components, files, modules, routes, endpoints, or database artifacts when and only when they are explicitly mentioned in the provided context
+## RECENCY AND DEDUPLICATION RULES
+- Treat the most recent conversation segment as authoritative. If the topic shifts mid-thread, IGNORE earlier topics unless the user explicitly ties them to the current request.
+- Focus only on new work not already implied as completed or previously created. If a subtask appears to duplicate a previously discussed/created item, SKIP it.
+- Avoid repeating tasks from older context. Prefer the newest interpretation of the user's intent.
 
-## GROUNDING AND NO-ASSUMPTIONS
-- Use only information explicitly present in the conversation context, project context, and relevant project knowledge above
-- Do NOT fabricate or assume component names, file paths, database tables/columns, API endpoints, libraries, configuration keys, or external services
-- If a specific artifact is required but not named in the context, describe the change generically without inventing names (e.g., "update the existing API handler for <capability>")
-- If critical details are missing, include a final sub-bullet in the description that begins with "Clarify:" listing the precise questions needed to proceed; do not output separate non-engineering tasks
+## STRICT GROUNDEDNESS (NO ASSUMPTIONS)
+- Use only information explicitly present in the latest user message and the recent portion of the conversation context above. Do NOT invent component names, file paths, database tables/columns, API endpoints, libraries, configuration keys, or external services.
+- If a specific artifact is required but not named, use clear placeholders wrapped in braces to mark missing details, e.g., {{method_name}}, {{ClassName}}, {{package_name}}, {{schema}}.{{table}}, {{column_name}}, {{route_path}}, {{component_name}}.
+- If critical details are missing, include at the end of the description a "Clarify:" section that lists precise, concrete questions needed to proceed. Do not output separate non-engineering tasks.
 
-## DESCRIPTION CONTENT REQUIREMENTS
-- Make the description as detailed as possible while strictly grounded in the provided context. Do not make up details
-- Include within the single description string:
-  - Brief context summary tied to conversation details (as they relate to the active task)
-  - Implementation steps (2–6 concise bullets)
-  - Affected areas/files/modules only if explicitly referenced; otherwise, describe the area generically
-  - Tests to add or update (unit/integration/e2e) where applicable
-  - Acceptance criteria as verifiable checks that confirm correctness
+## DESCRIPTION FORMAT (STRUCTURED, PRECISE, AND COMPREHENSIVE)
+Each task's description MUST be a single string that follows this structure and uses placeholders {{like_this}} for any unknown specifics. Be precise and detailed while remaining strictly grounded in the recent conversation (no assumptions):
+- Context: one sentence tying the task to the latest conversation and, if present, the active task.
+- Implementation Steps:
+  - Step 1: ...
+  - Step 2: ...
+  - Step 3: ... (2–6 steps total)
+- Backend Feature Spec (if applicable):
+  - Feature/Behavior: concise definition of what capability is implemented and when it triggers.
+  - Inputs: {{input_sources}} and parameters with types and validation rules.
+  - Processing/Algorithms: describe calculations/transformations/flows; include formulas, branching, retries, idempotency as applicable.
+  - Outputs/Side Effects: returned values, persisted records, emitted events, external calls.
+  - Error Handling: validation failures, exceptions, fallbacks, retry/backoff.
+  - Performance: complexity/latency/throughput constraints if stated; memory limits.
+  - Security: authn/authz constraints, PII handling, logging/redaction.
+  - Edge Cases: enumerate known edge conditions from the conversation.
+- Frontend UI Spec (if applicable):
+  - Screens/Components: exact names if stated, otherwise placeholders e.g., {{component_name}}.
+  - States & Data: loading/empty/error/success; data fields and bindings.
+  - User Flows & Interactions: clicks, keyboard, gestures; navigation and modals.
+  - Layout & Responsive: breakpoints, alignment, spacing, scroll behavior.
+  - Visual Spec: labels, copy, icons, colors, sizes; reference design tokens if stated.
+  - Accessibility: roles, labels, focus order, keyboard support, contrast.
+  - Error/Empty/Edge: messaging and recovery per state.
+- Code Changes:
+  - Backend: specify exact methods/classes/modules when explicitly stated; otherwise use placeholders e.g., {{method_name}} in {{ClassName}} within {{module_path}}
+  - Database: specify schema/migration details when known; otherwise placeholders e.g., {{schema}}.{{table}} add column {{column_name}} {{type}}
+  - API: specify endpoints/handlers only if named; otherwise placeholders e.g., {{HTTP_method}} {{route_path}}
+  - Frontend: specify pages/components/files if named; otherwise placeholders e.g., {{component_name}} in {{path}}
+- Tests: specify unit/integration/e2e to add or update tied to the above changes.
+- Acceptance Criteria: bullet list of verifiable checks.
+- Clarify: only if needed, list missing names/paths/schemas that must be confirmed.
 
 ## TASK CONTEXT INTEGRATION
-- Reference specific technical decisions made during the conversation
-- Include UX considerations, architectural choices, and non-functional requirements (performance, security) if relevant
+- Reference specific technical decisions made during the conversation where applicable.
+- Include UX considerations, architectural choices, and non-functional requirements (performance, security) if relevant and explicitly stated.
 
 ## TASK COUNT AND GRANULARITY
 - Keep the breakdown compact so we can iteratively refine later as the user continues chatting.
-- If there is an ACTIVE TASK: return at most 5 items (all are subtasks of the active task).
+- If there is an ACTIVE TASK: return at most 5 items (all are subtasks of the active task), and only if they strictly advance the active task.
 - If there is NO ACTIVE TASK: return exactly 1 root parent (parent_task_id = null) plus up to 5 child subtasks.
 - Prefer the most critical and unblocking subtasks first. Defer deeper decomposition to future iterations.
 
 ## OUTPUT FORMAT (STRICT HIERARCHY-AWARE)
 Return a pure JSON array of tasks. Each task MUST include these fields:
 - title: string
-- description: string (with context summary; steps; affected areas if named; tests; acceptance; optional Clarify bullet)
+- description: string (following the Description Format above; include placeholders for missing specifics; include optional Clarify section when needed)
 - parent_task_id: string | null
 
 Rules for parent_task_id assignment:
