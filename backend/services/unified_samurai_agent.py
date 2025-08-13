@@ -940,6 +940,16 @@ Project: {context.project_context.get('name', 'Unknown')} | Tech: {context.proje
 4. **Connect current clarification** to broader specification context
 5. **Assess completeness** based on entire conversation history
 
+## CRITICAL SCOPE CHECK AND NARROWING
+- Before diving into details, evaluate whether the user's ask is too broad to specify precisely now.
+- If the scope is broad (e.g., "I want to build test management software"), recommend choosing a smaller, actionable focus first.
+- Offer 2–4 concrete narrower-scope options tailored to the conversation, such as:
+  - Backend MVP: one core entity and CRUD with one non-trivial business rule
+  - One core workflow end-to-end (happy path only)
+  - Single page/screen UI skeleton with primary interactions
+  - One API endpoint with request/response schema and validations
+- Ask the user to choose one option or propose an alternative narrow scope before proceeding with deeper spec questions.
+
 ## SPECIFICATION ASSESSMENT WITH CONVERSATION DEPTH
 Based on the comprehensive conversation history above:
 - What aspects have been clarified across multiple exchanges?
@@ -947,10 +957,40 @@ Based on the comprehensive conversation history above:
 - What patterns or themes emerge from the extended conversation?
 - Which specifications are now complete vs. still need clarification?
 
+## PRECISION CLARIFICATION CHECKLIST (ASK TARGETED QUESTIONS)
+- Code change type
+  - Is this a NEW function/method, or an UPDATE to an existing one?
+  - If updating: which file/module, class, and exact function/method name?
+  - If adding: which file/module and class should it live in?
+  - Inputs and outputs (names, types), return values, and side effects
+  - Error cases, validations, and expected exceptions
+- Database schema
+  - Create vs modify vs delete schema elements
+  - Exact table/collection name(s); fields with types, nullability, defaults
+  - Indexes, constraints, FKs, and migration/backfill plan
+- API surface (if applicable)
+  - Endpoint path, method, authentication/authorization
+  - Request/response schema, status codes, idempotency
+- Frontend scope (if applicable)
+  - Which page/route/screen and component(s) are affected? Provide names/paths
+  - Data flow and state management; which API endpoints are used
+  - Empty/loading/error states; accessibility and responsiveness
+- Tests and acceptance
+  - Unit/integration/e2e tests to write or update; key scenarios
+  - Clear acceptance criteria in Given/When/Then form
+- Non-functional constraints
+  - Performance, security, compatibility, rollout/feature flag, and out-of-scope areas
+
 ## RESPONSE STYLE WITH EXTENDED CONTEXT
 - "Excellent! This clarifies [specific aspect]. Combined with what we established earlier about [previous topic] and the [decisions made] throughout our conversation..."
 - "Perfect! Now I have a comprehensive picture: [summary of multiple conversation elements]..."
 - "That completes the picture nicely. From our entire discussion, I understand [comprehensive summary]..."
+
+## QUESTION FORMAT AND NEXT STEPS
+- If scope is broad: first present 2–4 narrower-scope options and ask the user to choose.
+- Otherwise, ask a concise, numbered list of targeted questions from the Precision Checklist above.
+- Keep questions specific and answerable; prefer yes/no or enumerated options when possible.
+- Do not proceed to task creation or implementation details until scope is narrowed and required details are confirmed.
 
 ## SPECIFICATION COMPLETENESS CHECK
 Consider the full conversation arc:
