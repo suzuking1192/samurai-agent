@@ -33,28 +33,32 @@ class ProjectDetailService:
         partial_summaries: List[str] = []
         chunk_system_prompt = (
             """
-            You are a senior software architect. Digest the following raw notes/document text and extract ONLY facts
-            that are explicitly stated. Do NOT infer, guess, extrapolate, or invent any details.
+            You are a senior software architect creating comprehensive, reader-friendly documentation for engineers
+            and product/project managers. Digest the provided text and extract ONLY facts that are explicitly stated.
+            Do NOT infer, guess, extrapolate, or invent any details.
 
-            Strict rules:
-            - Never make up API endpoints, routes, parameters, response schemas, data models, fields, services,
-              libraries, versions, or architectural components that are not explicitly present in the text.
-            - If a detail is missing or ambiguous, mark it as 'Not specified' or include it under 'Open Questions'
-              as a question (do not propose an answer).
-            - Prefer exact domain terms as written; do not rename concepts unless the text provides the alias.
-            - Remove fluff and keep only actionable information useful for software design.
+            Principles:
+            - Be comprehensive yet concise: capture all explicit, useful facts for understanding the product goal and
+              planning implementation, but avoid fluff.
+            - Use consistent terminology exactly as written in the source; include aliases only if explicitly provided.
+            - If a detail is missing or ambiguous, write 'Not specified' or add a question to 'Open Questions' without
+              proposing an answer.
 
-            Output a concise, structured summary using these headings when applicable (omit headings with no info):
-            - Goals
-            - Features (only if explicitly stated; do not invent)
-            - Tech Stack (as stated)
-            - Architecture (as stated)
-            - Key APIs (only if explicitly named; do not invent).
-            - Data Models (only if explicitly named; do not invent).
-            - Workflows
+            Output a concise, structured summary using these exact sections (omit sections with no info):
+            - Project Overview: primary goal/value proposition, and the 3–5 main features/value points if explicitly
+              present. Exclude implementation details. Include target users only if explicitly stated.
+            - Features: only user-visible capabilities that are clearly and explicitly described. Omit vague items.
+            - Tech Stack: as explicitly stated.
+            - Architecture: as explicitly stated.
+            - Key APIs: only explicitly named endpoints (methods/paths if present); do not invent.
+            - Data Models: only database schema elements (tables/collections, fields, types if provided, relationships).
+              Exclude DTOs/payload shapes/runtime objects unless the text explicitly marks them as schema.
+            - Workflows: only main end-to-end flows at a high level (roughly 3–8 steps); exclude micro-interactions.
             - Constraints
             - Non-Functional Requirements
             - Open Questions
+            Formatting: Use bullet points, crisp language, and avoid internal jargon where possible (unless it appears
+            verbatim in the text).
             """
         )
         for chunk in chunks:
@@ -76,8 +80,9 @@ class ProjectDetailService:
         if mode_for_prompt == "merge" and existing_detail:
             merge_system_prompt = (
                 """
-                You are updating an existing software project specification. Perform a STRICT, FACTS-ONLY, CONSERVATIVE
-                SEMANTIC MERGE of the EXISTING SPEC with the NEW INSIGHTS.
+                You are updating an existing software project specification to be comprehensive and easy to understand
+                for engineers and product/project managers. Perform a STRICT, FACTS-ONLY, CONSERVATIVE SEMANTIC MERGE of
+                the EXISTING SPEC with the NEW INSIGHTS.
 
                 Preservation-first merge policy:
                 - Preserve existing content by default. Do not delete, weaken, rename, or downgrade existing items unless
@@ -88,8 +93,10 @@ class ProjectDetailService:
                 - Never infer, guess, or invent any details (APIs, endpoints, parameters, models, fields, services,
                   libraries, versions, or architectural components). Include ONLY items explicitly present in either the
                   existing spec or the new insights text.
+                - Comprehensiveness: do not drop explicit facts from either source. If a fact does not neatly fit a
+                  section but is relevant, place it under 'Constraints' or 'Open Questions' rather than omitting it.
 
-                Section rules:
+                Section rules (optimize for understanding the goal and major capabilities):
                 - Project Overview: include only the primary goal and 3–5 main features/value propositions. Exclude
                   implementation details, APIs, workflows, tech stack, constraints, or minor specifics.
                 - Features: include only user-visible capabilities that are explicitly and clearly described. If an item
@@ -106,8 +113,9 @@ class ProjectDetailService:
                 - Constraints and Non-Functional Requirements: include only what is explicitly stated.
                 - Open Questions: list gaps, ambiguities, and conflicts.
 
-                Formatting:
-                - Use bullet points.
+                Clarity and formatting for a broad audience:
+                - Use bullet points and short, direct sentences.
+                - Prefer clear phrasing without internal shorthand. Keep original domain terms but avoid unexplained jargon.
                 - If a section lacks explicit information, write 'Not specified'.
                 - Normalize duplicates; prefer stable canonical names present in the existing spec when possible.
 
