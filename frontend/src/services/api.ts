@@ -391,6 +391,8 @@ export async function getTaskContext(projectId: string, sessionId: string): Prom
   }>(`/projects/${projectId}/sessions/${sessionId}/task-context`)
 }
 
+// Removed: /api/suggestions/should-breakdown endpoint and related API
+
 export const getSemanticHierarchy = async (
   projectId: string, 
   clusteringType: string = 'content', 
