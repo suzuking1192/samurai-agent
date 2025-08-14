@@ -4,6 +4,7 @@ import { ChatMessage, Session, Task } from '../types'
 import { sendChatMessageWithProgress, createSession, getCurrentSession, getSessionMessages, endSessionWithConsolidation, SessionEndDetailedResponse, getTaskContext, clearTaskContext, getSuggestionStatus, dismissSuggestion } from '../services/api'
 import ProgressDisplay from './ProgressDisplay'
 import ProactiveSuggestion from './ProactiveSuggestion'
+import CreateTasksButton from './CreateTasksButton'
 
 interface ChatProps {
   projectId?: string
@@ -351,13 +352,14 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrig
           ))
           updateAgentActivity(progress.message || 'Processing...')
         },
-        (finalResponse) => {
+        (finalResponse, intent_type) => {
           // Replace optimistic message with real response
           setMessages(prev => prev.map(msg => 
             msg.id === optimisticMessage.id 
               ? {
                   ...msg,
                   response: finalResponse,
+                  intent_type: intent_type,
                   isOptimistic: false,
                   progress: undefined
                 }
@@ -407,6 +409,101 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrig
       updateAgentActivity('')
     }
   }, [inputMessage, projectId, isLoading, currentSession, onTaskGenerated])
+
+  const handleCreateTasksClick = useCallback(async () => {
+    if (!projectId || isLoading) return
+    
+    const createTasksMessage = "create tasks with the discussion so far"
+    setInputMessage(createTasksMessage)
+    
+    // Create optimistic message
+    const optimisticMessage: OptimisticMessage = {
+      id: `optimistic-${Date.now()}`,
+      project_id: projectId,
+      session_id: currentSession?.id || '',
+      message: createTasksMessage,
+      response: '',
+      created_at: new Date().toISOString(),
+      isOptimistic: true
+    }
+    
+    setMessages(prev => [...prev, optimisticMessage])
+    setIsLoading(true)
+    
+    try {
+      await sendChatMessageWithProgress(
+        { message: createTasksMessage, project_id: projectId },
+        (progress) => {
+          const progressWithTimestamp = {
+            ...progress,
+            timestamp: new Date().toISOString()
+          }
+          
+          setMessages(prev => prev.map(msg => 
+            msg.id === optimisticMessage.id 
+              ? { 
+                  ...msg, 
+                  progress: [progressWithTimestamp]
+                }
+              : msg
+          ))
+          updateAgentActivity(progress.message || 'Processing...')
+        },
+        (finalResponse, intent_type) => {
+          setMessages(prev => prev.map(msg => 
+            msg.id === optimisticMessage.id 
+              ? {
+                  ...msg,
+                  response: finalResponse,
+                  intent_type: intent_type,
+                  isOptimistic: false,
+                  progress: undefined
+                }
+              : msg
+          ))
+          setIsLoading(false)
+          updateAgentActivity('')
+          setInputMessage('')
+          
+          if (onTaskGenerated) {
+            onTaskGenerated()
+          }
+        },
+        (error) => {
+          setMessages(prev => prev.map(msg => 
+            msg.id === optimisticMessage.id 
+              ? {
+                  ...msg,
+                  response: `Error: ${error}`,
+                  isError: true,
+                  isOptimistic: false,
+                  progress: undefined
+                }
+              : msg
+          ))
+          setIsLoading(false)
+          updateAgentActivity('')
+          setInputMessage('')
+        }
+      )
+    } catch (error) {
+      console.error('Error sending create tasks message:', error)
+      setMessages(prev => prev.map(msg => 
+        msg.id === optimisticMessage.id 
+          ? {
+              ...msg,
+              response: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+              isError: true,
+              isOptimistic: false,
+              progress: undefined
+            }
+          : msg
+      ))
+      setIsLoading(false)
+      updateAgentActivity('')
+      setInputMessage('')
+    }
+  }, [projectId, isLoading, currentSession, onTaskGenerated])
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -460,9 +557,8 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrig
             <div className="task-context-info">
               <span className="task-context-icon">🎯</span>
               <div className="task-context-text">
-                <strong>Focused on this task:</strong>
+                <strong>The conversation will use this task as context:</strong>
                 <span className="task-context-title">{taskContext.title}</span>
-                <span className="task-context-subtitle">I'll help you refine this task description for Cursor</span>
               </div>
             </div>
             <button
@@ -591,6 +687,16 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrig
                       </ReactMarkdown>
                     </div>
                   </div>
+                  
+                  {/* Show Create Tasks button for spec_clarification or feature_exploration intent */}
+                  {(message.intent_type === 'spec_clarification' || message.intent_type === 'feature_exploration') && !message.isOptimistic && (
+                    <div className="mt-3">
+                      <CreateTasksButton 
+                        onClick={() => handleCreateTasksClick()}
+                        disabled={isLoading}
+                      />
+                    </div>
+                  )}
                 </div>
               )}
               
