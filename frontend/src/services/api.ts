@@ -143,8 +143,8 @@ export async function getProjectDetail(projectId: string): Promise<{ content: st
   return apiRequest<{ content: string }>(`/projects/${projectId}/project-detail`)
 }
 
-export async function ingestProjectDetail(projectId: string, rawText: string): Promise<{ status: string; chars: number }> {
-  return apiRequest<{ status: string; chars: number }>(`/projects/${projectId}/project-detail/ingest`, {
+export async function ingestProjectDetail(projectId: string, rawText: string): Promise<{ message: string }> {
+  return apiRequest<{ message: string }>(`/projects/${projectId}/project-detail/ingest`, {
     method: 'POST',
     body: JSON.stringify({ raw_text: rawText })
   })
