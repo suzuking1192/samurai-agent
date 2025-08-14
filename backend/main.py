@@ -103,6 +103,26 @@ async def _perform_session_end_background_tasks(pid: str, sid: str) -> None:
     except Exception as e:
         logger.error(f"Error in background session end task for project {pid}, session {sid}: {e}")
 
+async def _perform_async_project_detail_digest(project_id: str, raw_text: str, mode: str) -> None:
+    """
+    Asynchronously perform LLM digest and project detail saving.
+    This function runs in the background and handles all the time-consuming operations.
+    """
+    try:
+        logger.info(f"Starting async project detail digest for project {project_id}")
+        
+        final_text = await project_detail_service.ingest_project_detail(
+            project_id=project_id,
+            raw_text=raw_text,
+            mode=mode
+        )
+        
+        logger.info(f"Successfully completed async project detail digest for project {project_id} ({len(final_text)} chars)")
+        
+    except Exception as e:
+        logger.error(f"Error in async project detail digest for project {project_id}: {e}")
+        # Don't re-raise - this is a background task, we just log the error
+
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
@@ -990,17 +1010,25 @@ async def ingest_project_detail(project_id: str, request: ProjectDetailIngestReq
         if not raw_text:
             raise HTTPException(status_code=400, detail="raw_text is required")
 
-        final_text = await project_detail_service.ingest_project_detail(
-            project_id=project_id,
-            raw_text=raw_text,
-            mode=(request.mode or "merge")
+        # Start the async digest operation in the background
+        asyncio.create_task(
+            _perform_async_project_detail_digest(
+                project_id=project_id,
+                raw_text=raw_text,
+                mode=(request.mode or "merge")
+            )
         )
-        return {"status": "saved", "chars": len(final_text), "mode": (request.mode or "merge").lower()}
+        
+        return JSONResponse(
+            status_code=202,
+            content={"message": "Project detail digest initiated asynchronously."}
+        )
+        
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error ingesting project detail: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to ingest project detail: {str(e)}")
+        logger.error(f"Error initiating project detail digest: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to initiate project detail digest: {str(e)}")
 
 @app.post("/projects/{project_id}/project-detail/save")
 async def save_project_detail(project_id: str, request: ProjectDetailDirectSaveRequest):

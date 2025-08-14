@@ -66,13 +66,17 @@ function App() {
     try {
       setSavingProjectDetail(true)
       if (projectDetailMode === 'ingest') {
-        await ingestProjectDetail(selectedProject.id, projectDetailInput)
+        const response = await ingestProjectDetail(selectedProject.id, projectDetailInput)
+        console.log('Project detail digest initiated:', response.message)
+        // Show a brief success message since the operation is now async
+        alert('Project detail digest has been initiated in the background. The AI will process your text and update the project specification.')
       } else {
         await saveProjectDetail(selectedProject.id, projectDetailInput)
       }
       setShowProjectDetailModal(false)
     } catch (e) {
       console.error('Failed to save project detail', e)
+      alert('Failed to process project detail. Please try again.')
     } finally {
       setSavingProjectDetail(false)
     }
@@ -182,8 +186,8 @@ function App() {
             <button onClick={() => setShowProjectDetailModal(false)} disabled={savingProjectDetail} className="modal-button secondary">Cancel</button>
             <button onClick={handleSubmitProjectDetail} disabled={savingProjectDetail || loadingProjectDetail || !selectedProject} className="modal-button primary">
               {savingProjectDetail
-                ? (projectDetailMode === 'ingest' ? 'Digesting & Saving…' : 'Saving…')
-                : (projectDetailMode === 'ingest' ? 'Digest & Save Project Detail' : 'Save Project Detail')}
+                ? (projectDetailMode === 'ingest' ? 'Initiating Digest…' : 'Saving…')
+                : (projectDetailMode === 'ingest' ? 'Start AI Digest' : 'Save Project Detail')}
             </button>
           </footer>
         </section>
