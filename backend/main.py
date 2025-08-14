@@ -322,6 +322,7 @@ async def chat(project_id: str, request: ChatRequest):
             session_id=current_session.id,
             message=request.message,
             response=final_response,
+            intent_type=result.get('intent_analysis', {}).get('intent_type'),
             created_at=datetime.now()
         )
         file_service.save_chat_message(project_id, chat_message)
@@ -481,6 +482,7 @@ async def chat_with_progress(project_id: str, request: ChatRequest):
                 session_id=current_session.id,
                 message=request.message,
                 response=final_response,
+                intent_type=result.get('intent_analysis', {}).get('intent_type'),
                 created_at=datetime.now()
             )
             file_service.save_chat_message(project_id, chat_message)
@@ -488,8 +490,8 @@ async def chat_with_progress(project_id: str, request: ChatRequest):
             # 11. Update session activity
             file_service.update_session_activity(project_id, current_session.id)
             
-            # 12. Send final response
-            yield f"data: {json.dumps({'type': 'complete', 'response': final_response})}\n\n"
+            # 12. Send final response with intent_type
+            yield f"data: {json.dumps({'type': 'complete', 'response': final_response, 'intent_type': result.get('intent_analysis', {}).get('intent_type', 'unknown')})}\n\n"
             
         except Exception as e:
             logger.error(f"Chat with progress error: {e}")
@@ -629,13 +631,14 @@ async def chat_stream(project_id: str, request: ChatRequest):
                 session_id=current_session.id,
                 message=request.message,
                 response=final_response,
+                intent_type=result.get('intent_analysis', {}).get('intent_type'),
                 created_at=datetime.now()
             )
             file_service.save_chat_message(project_id, chat_message)
             file_service.update_session_activity(project_id, current_session.id)
             
-            # 8. Send final response
-            yield f"data: {json.dumps({'type': 'complete', 'response': final_response})}\n\n"
+            # 8. Send final response with intent_type
+            yield f"data: {json.dumps({'type': 'complete', 'response': final_response, 'intent_type': result.get('intent_analysis', {}).get('intent_type', 'unknown')})}\n\n"
             
         except Exception as e:
             logger.error(f"Chat stream error: {e}")
