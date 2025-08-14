@@ -54,6 +54,55 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Background task for session end processing
+async def _perform_session_end_background_tasks(pid: str, sid: str) -> None:
+    try:
+        # Build project context fresh in case of changes
+        proj = file_service.get_project_by_id(pid)
+        if not proj:
+            logger.warning(f"Background task: project not found for {pid}")
+            return
+        project_context = {
+            "name": proj.name,
+            "description": proj.description,
+            "tech_stack": proj.tech_stack,
+            "project_detail": file_service.load_project_detail(pid)
+        }
+
+        # Perform intelligent memory consolidation
+        consolidation_result = await memory_consolidation_service.consolidate_session_memories(
+            project_id=pid,
+            session_id=sid,
+            project_context=project_context
+        )
+
+        # Update project detail spec using last session conversation (semantic merge)
+        try:
+            session_messages = file_service.load_chat_messages_by_session(pid, sid)
+            parts = []
+            for m in session_messages[-100:]:
+                if m.message:
+                    parts.append(f"User: {m.message}")
+                if m.response:
+                    parts.append(f"Agent: {m.response}")
+            raw_update_text = "\n".join(parts)
+            if raw_update_text:
+                await project_detail_service.ingest_project_detail(
+                    project_id=pid,
+                    raw_text=raw_update_text,
+                    mode="merge"
+                )
+        except Exception as e:
+            logger.warning(f"Project detail update during session end failed: {e}")
+
+        logger.info(
+            "Background session end completed for project %s, session %s",
+            pid,
+            sid,
+        )
+    except Exception as e:
+        logger.error(f"Error in background session end task for project {pid}, session {sid}: {e}")
+
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
@@ -1044,45 +1093,10 @@ async def end_session_with_consolidation(project_id: str, request: Request):
         session = file_service.get_session_by_id(project_id, session_id)
         if not session:
             raise HTTPException(status_code=404, detail="Session not found")
-        
-        # 3. Build project context
-        project_context = {
-            "name": project.name,
-            "description": project.description,
-            "tech_stack": project.tech_stack,
-            "project_detail": file_service.load_project_detail(project_id)
-        }
-        
-        # 4. Perform intelligent memory consolidation
-        consolidation_result = await memory_consolidation_service.consolidate_session_memories(
-            project_id=project_id,
-            session_id=session_id,
-            project_context=project_context
-        )
-        
-        # 5. Update project detail spec using last session conversation (semantic merge)
-        try:
-            session_messages = file_service.load_chat_messages_by_session(project_id, session_id)
-            parts = []
-            for m in session_messages[-100:]:  # last 100 messages
-                if m.message:
-                    parts.append(f"User: {m.message}")
-                if m.response:
-                    parts.append(f"Agent: {m.response}")
-            raw_update_text = "\n".join(parts)
-            if raw_update_text:
-                await project_detail_service.ingest_project_detail(
-                    project_id=project_id,
-                    raw_text=raw_update_text,
-                    mode="merge"
-                )
-        except Exception as e:
-            logger.warning(f"Project detail update during session end failed: {e}")
-
-        # 6. Generate new session ID for clean restart
+        # 3. Generate new session ID for clean restart (do this synchronously)
         new_session_id = str(uuid.uuid4())
         
-        # 7. Create new session
+        # 4. Create new session (immediate so frontend can switch)
         new_session = Session(
             id=new_session_id,
             project_id=project_id,
@@ -1090,33 +1104,11 @@ async def end_session_with_consolidation(project_id: str, request: Request):
         )
         file_service.save_session(project_id, new_session)
         
-        # 8. Build comprehensive response
-        response_data = {
-            "status": "session_ended",
-            "memory_consolidation": {
-                "status": consolidation_result.status,
-                "total_insights_processed": consolidation_result.total_insights_processed,
-                "total_insights_skipped": consolidation_result.total_insights_skipped,
-                "categories_affected": [
-                    {
-                        "category": cat_result.category,
-                        "memories_updated": cat_result.memories_updated,
-                        "memories_created": cat_result.memories_created,
-                        "insights_processed": cat_result.insights_processed,
-                        "is_new_category": cat_result.is_new_category
-                    }
-                    for cat_result in consolidation_result.categories_affected
-                ],
-                "new_categories_created": consolidation_result.new_categories_created,
-                "total_memories_affected": consolidation_result.total_memories_affected
-            },
-            "new_session_id": new_session_id,
-            "insights_found": consolidation_result.total_insights_processed + consolidation_result.total_insights_skipped,
-            "session_relevance": consolidation_result.session_relevance
-        }
-        
-        logger.info(f"Session end completed successfully: {consolidation_result.status}")
-        return response_data
+        # 5. Kick off background processing for consolidation and project detail update
+        asyncio.create_task(_perform_session_end_background_tasks(project_id, session_id))
+
+        # 6. Minimal immediate response
+        return {"status": "processing_started", "new_session_id": new_session_id}
         
     except HTTPException:
         raise

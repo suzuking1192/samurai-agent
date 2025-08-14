@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { ChatMessage, Session, Task } from '../types'
-import { sendChatMessageWithProgress, createSession, getCurrentSession, getSessionMessages, endSessionWithConsolidation, SessionEndResponse, getTaskContext, clearTaskContext, getSuggestionStatus, dismissSuggestion } from '../services/api'
+import { sendChatMessageWithProgress, createSession, getCurrentSession, getSessionMessages, endSessionWithConsolidation, SessionEndDetailedResponse, getTaskContext, clearTaskContext, getSuggestionStatus, dismissSuggestion } from '../services/api'
 import ProgressDisplay from './ProgressDisplay'
 import ProactiveSuggestion from './ProactiveSuggestion'
 
@@ -199,12 +199,12 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrig
       
       // End current session with memory consolidation
       console.log('Ending session with consolidation:', currentSession.id)
-      const consolidationResult: SessionEndResponse = await endSessionWithConsolidation(
+      const consolidationResult = await endSessionWithConsolidation(
         projectId, 
         currentSession.id
       )
       
-      console.log('Memory consolidation completed:', consolidationResult)
+      console.log('Session end response:', consolidationResult)
       
       // Create new session using the returned session ID
       const newSession: Session = {
@@ -218,22 +218,23 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrig
       setCurrentSession(newSession)
       setMessages([])
       
-      // Show consolidation summary
-      const { memory_consolidation } = consolidationResult
+      // Show consolidation summary if detailed response present; otherwise minimal
       let summaryMessage = 'New conversation started!'
-      
-      if (memory_consolidation.status === 'completed') {
-        const categoriesText = memory_consolidation.categories_affected.length > 0 
-          ? memory_consolidation.categories_affected.map(cat => 
-              `${cat.category}: ${cat.memories_updated + cat.memories_created} memories`
-            ).join(', ')
-          : 'No categories'
-        
-        summaryMessage = `✨ Insights saved! ${memory_consolidation.total_insights_processed} insights processed across ${memory_consolidation.categories_affected.length} categories. ${categoriesText}.`
-      } else if (memory_consolidation.status === 'skipped_too_short') {
-        summaryMessage = 'New conversation started! (Previous session was too short to extract insights)'
-      } else if (memory_consolidation.status === 'no_relevant_insights') {
-        summaryMessage = 'New conversation started! (No significant insights found in previous session)'
+      const detailed = (consolidationResult as SessionEndDetailedResponse)
+      if ((detailed as any).memory_consolidation) {
+        const { memory_consolidation } = detailed
+        if (memory_consolidation.status === 'completed') {
+          const categoriesText = memory_consolidation.categories_affected.length > 0 
+            ? memory_consolidation.categories_affected.map(cat => 
+                `${cat.category}: ${cat.memories_updated + cat.memories_created} memories`
+              ).join(', ')
+            : 'No categories'
+          summaryMessage = `✨ Insights saved! ${memory_consolidation.total_insights_processed} insights processed across ${memory_consolidation.categories_affected.length} categories. ${categoriesText}.`
+        } else if (memory_consolidation.status === 'skipped_too_short') {
+          summaryMessage = 'New conversation started! (Previous session was too short to extract insights)'
+        } else if (memory_consolidation.status === 'no_relevant_insights') {
+          summaryMessage = 'New conversation started! (No significant insights found in previous session)'
+        }
       }
       
       setNotification({

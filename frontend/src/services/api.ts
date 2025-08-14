@@ -338,7 +338,7 @@ export interface MemoryConsolidationResult {
   total_memories_affected: number
 }
 
-export interface SessionEndResponse {
+export interface SessionEndDetailedResponse {
   status: string
   memory_consolidation: MemoryConsolidationResult
   new_session_id: string
@@ -346,11 +346,16 @@ export interface SessionEndResponse {
   session_relevance: number
 }
 
+export interface SessionEndImmediateResponse {
+  status: string
+  new_session_id: string
+}
+
 export async function endSessionWithConsolidation(
   projectId: string, 
   sessionId: string
-): Promise<SessionEndResponse> {
-  return apiRequest<SessionEndResponse>(`/api/projects/${projectId}/sessions/end`, {
+): Promise<SessionEndImmediateResponse | SessionEndDetailedResponse> {
+  return apiRequest<SessionEndImmediateResponse | SessionEndDetailedResponse>(`/api/projects/${projectId}/sessions/end`, {
     method: 'POST',
     body: JSON.stringify({ session_id: sessionId }),
   })
