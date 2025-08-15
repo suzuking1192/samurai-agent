@@ -143,8 +143,8 @@ export async function getProjectDetail(projectId: string): Promise<{ content: st
   return apiRequest<{ content: string }>(`/projects/${projectId}/project-detail`)
 }
 
-export async function ingestProjectDetail(projectId: string, rawText: string): Promise<{ status: string; chars: number }> {
-  return apiRequest<{ status: string; chars: number }>(`/projects/${projectId}/project-detail/ingest`, {
+export async function ingestProjectDetail(projectId: string, rawText: string): Promise<{ message: string }> {
+  return apiRequest<{ message: string }>(`/projects/${projectId}/project-detail/ingest`, {
     method: 'POST',
     body: JSON.stringify({ raw_text: rawText })
   })
@@ -169,7 +169,7 @@ export async function sendChatMessage(request: ChatRequest): Promise<ChatRespons
 export async function sendChatMessageWithProgress(
   request: ChatRequest,
   onProgress?: (progress: any) => void,
-  onComplete?: (response: string) => void,
+  onComplete?: (response: string, intent_type?: string) => void,
   onError?: (error: string) => void
 ): Promise<void> {
   // Use the new simplified streaming endpoint
@@ -256,7 +256,8 @@ export async function sendChatMessageWithProgress(
               const totalTime = currentTime - startTime
               console.log(`✅ [${timeSinceStart}ms] Streaming completed successfully after ${totalTime}ms`)
               console.log(`📊 Total progress updates received: ${progressCount}`)
-              onComplete(data.response)
+              console.log(`🎯 Intent type: ${data.intent_type || 'unknown'}`)
+              onComplete(data.response, data.intent_type)
               return
             } else if (data.type === 'error' && onError) {
               console.error(`❌ [${timeSinceStart}ms] Streaming error received:`, data.error)
@@ -338,7 +339,7 @@ export interface MemoryConsolidationResult {
   total_memories_affected: number
 }
 
-export interface SessionEndResponse {
+export interface SessionEndDetailedResponse {
   status: string
   memory_consolidation: MemoryConsolidationResult
   new_session_id: string
@@ -346,11 +347,16 @@ export interface SessionEndResponse {
   session_relevance: number
 }
 
+export interface SessionEndImmediateResponse {
+  status: string
+  new_session_id: string
+}
+
 export async function endSessionWithConsolidation(
   projectId: string, 
   sessionId: string
-): Promise<SessionEndResponse> {
-  return apiRequest<SessionEndResponse>(`/api/projects/${projectId}/sessions/end`, {
+): Promise<SessionEndImmediateResponse | SessionEndDetailedResponse> {
+  return apiRequest<SessionEndImmediateResponse | SessionEndDetailedResponse>(`/api/projects/${projectId}/sessions/end`, {
     method: 'POST',
     body: JSON.stringify({ session_id: sessionId }),
   })

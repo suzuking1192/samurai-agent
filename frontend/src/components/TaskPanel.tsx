@@ -30,9 +30,9 @@ const TaskPanel: React.FC<TaskPanelProps> = ({ projectId, refreshTrigger, onTask
     setIsLoading(true)
     try {
       const projectTasks = await getTasks(projectId)
-      // Sort by creation date (newest first)
+      // Sort by creation date (oldest first - REVERSED ORDER)
       const sortedTasks = (projectTasks || []).sort((a, b) => 
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
       )
       setTasks(sortedTasks)
     } catch (error) {
@@ -48,7 +48,7 @@ const TaskPanel: React.FC<TaskPanelProps> = ({ projectId, refreshTrigger, onTask
 
     try {
       const createdTask = await createTask(projectId, newTask)
-      setTasks(prev => [createdTask, ...prev]) // Add to beginning for newest first
+      setTasks(prev => [...prev, createdTask]) // Add to end for oldest first order
     } catch (error) {
       console.error('Error creating task:', error)
     }
