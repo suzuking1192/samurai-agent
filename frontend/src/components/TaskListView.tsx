@@ -6,13 +6,21 @@ interface TaskListViewProps {
   isLoading: boolean
   onTaskClick: (task: Task) => void
   onCreateTask: (task: TaskCreate) => Promise<void>
+  projectId?: string
+  expandedTasks?: Record<string, boolean>
+  toggleTaskExpansion?: (taskId: string) => void
+  isTaskExpanded?: (taskId: string) => boolean
 }
 
 const TaskListView: React.FC<TaskListViewProps> = ({
   tasks,
   isLoading,
   onTaskClick,
-  onCreateTask
+  onCreateTask,
+  projectId,
+  expandedTasks,
+  toggleTaskExpansion,
+  isTaskExpanded
 }) => {
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [newTask, setNewTask] = useState<TaskCreate>({
@@ -20,6 +28,11 @@ const TaskListView: React.FC<TaskListViewProps> = ({
     description: '',
     priority: TaskPriority.MEDIUM
   })
+
+  // Use expansion state from props if provided, otherwise use defaults
+  const expansionState = expandedTasks || {}
+  const expansionToggle = toggleTaskExpansion || (() => {})
+  const expansionCheck = isTaskExpanded || (() => false)
 
   const handleCreateTask = async () => {
     if (!newTask.title.trim()) return
@@ -77,13 +90,12 @@ const TaskListView: React.FC<TaskListViewProps> = ({
   // Root tasks are those without parent_task_id
   const rootTasks = React.useMemo(() => activeTasks.filter(t => !t.parent_task_id), [activeTasks])
 
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
-  const toggle = (id: string) => setExpanded(prev => ({ ...prev, [id]: !prev[id] }))
+  // Remove the old local state - now using persistent state from the hook
 
   const renderTaskNode = (task: Task, level: number = 0, trail: boolean[] = []) => {
     const kids = childrenMap.get(task.id) || []
     const isParent = kids.length > 0
-    const isExpanded = !!expanded[task.id]
+    const isExpanded = expansionCheck(task.id)
     const nodeIcon = isParent ? '📂' : '📄'
     const buildAsciiPrefix = (trailFlags: boolean[], isLast: boolean) => {
       const parts: string[] = []
@@ -101,7 +113,7 @@ const TaskListView: React.FC<TaskListViewProps> = ({
           data-task-id={task.id}
           onClick={() => {
             if (isParent) {
-              toggle(task.id)
+              expansionToggle(task.id)
             } else if (level > 0) {
               onTaskClick(task)
             }
