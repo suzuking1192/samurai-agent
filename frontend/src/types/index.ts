@@ -269,6 +269,7 @@ export interface ChatMessage {
   message: string
   response: string
   created_at: string
+  intent_type?: string
 }
 
 export interface Session {

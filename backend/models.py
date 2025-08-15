@@ -390,6 +390,7 @@ class ChatMessage(BaseModel):
         message: User message content
         response: AI response content
         created_at: Message timestamp
+        intent_type: Intent type from agent analysis (optional)
         embedding: Vector embedding for semantic search (optional)
         embedding_text: Text used to generate the embedding (optional)
     """
@@ -399,6 +400,7 @@ class ChatMessage(BaseModel):
     message: str = Field(..., max_length=100000, description="User message content")
     response: str = Field(default="", max_length=15000, description="AI response content")
     created_at: datetime = Field(default_factory=datetime.utcnow, description="Message timestamp")
+    intent_type: Optional[str] = Field(None, description="Intent type from agent analysis")
     embedding: Optional[List[float]] = Field(None, description="Vector embedding for semantic search")
     embedding_text: Optional[str] = Field(None, description="Text used to generate the embedding")
 

@@ -39,7 +39,7 @@ describe('Layout Redesign', () => {
 
     // Fill in form
     const nameInput = screen.getByPlaceholderText('Project name')
-    const descInput = screen.getByPlaceholderText('Project description')
+    const descInput = screen.getByPlaceholderText('Project description(One sentence description of the project)')
     const techInput = screen.getByPlaceholderText('Technology stack (e.g., React, Python, Node.js)')
     fireEvent.change(nameInput, { target: { value: 'New Project' } })
     fireEvent.change(descInput, { target: { value: '' } })

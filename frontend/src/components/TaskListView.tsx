@@ -63,6 +63,14 @@ const TaskListView: React.FC<TaskListViewProps> = ({
         map.get(parentId)!.push(t)
       }
     }
+    
+    // Sort children by creation date (oldest first) for each parent
+    for (const [parentId, children] of map.entries()) {
+      children.sort((a, b) => 
+        new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      )
+    }
+    
     return map
   }, [tasks])
 

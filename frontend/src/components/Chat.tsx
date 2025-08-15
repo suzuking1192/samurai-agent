@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { ChatMessage, Session, Task } from '../types'
-import { sendChatMessageWithProgress, createSession, getCurrentSession, getSessionMessages, endSessionWithConsolidation, SessionEndResponse, getTaskContext, clearTaskContext, getSuggestionStatus, dismissSuggestion } from '../services/api'
+import { sendChatMessageWithProgress, createSession, getCurrentSession, getSessionMessages, endSessionWithConsolidation, SessionEndDetailedResponse, getTaskContext, clearTaskContext, getSuggestionStatus, dismissSuggestion } from '../services/api'
 import ProgressDisplay from './ProgressDisplay'
 import ProactiveSuggestion from './ProactiveSuggestion'
+import CreateTasksButton from './CreateTasksButton'
 
 interface ChatProps {
   projectId?: string
@@ -31,6 +32,8 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrig
   const [showProactiveSuggestion, setShowProactiveSuggestion] = useState<boolean>(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const chatMessagesRef = useRef<HTMLDivElement>(null)
+  const lastAgentMessageRef = useRef<HTMLDivElement>(null)
+  const [isAutoScrolling, setIsAutoScrolling] = useState(false)
 
   
 
@@ -199,12 +202,12 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrig
       
       // End current session with memory consolidation
       console.log('Ending session with consolidation:', currentSession.id)
-      const consolidationResult: SessionEndResponse = await endSessionWithConsolidation(
+      const consolidationResult = await endSessionWithConsolidation(
         projectId, 
         currentSession.id
       )
       
-      console.log('Memory consolidation completed:', consolidationResult)
+      console.log('Session end response:', consolidationResult)
       
       // Create new session using the returned session ID
       const newSession: Session = {
@@ -218,22 +221,23 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrig
       setCurrentSession(newSession)
       setMessages([])
       
-      // Show consolidation summary
-      const { memory_consolidation } = consolidationResult
+      // Show consolidation summary if detailed response present; otherwise minimal
       let summaryMessage = 'New conversation started!'
-      
-      if (memory_consolidation.status === 'completed') {
-        const categoriesText = memory_consolidation.categories_affected.length > 0 
-          ? memory_consolidation.categories_affected.map(cat => 
-              `${cat.category}: ${cat.memories_updated + cat.memories_created} memories`
-            ).join(', ')
-          : 'No categories'
-        
-        summaryMessage = `✨ Insights saved! ${memory_consolidation.total_insights_processed} insights processed across ${memory_consolidation.categories_affected.length} categories. ${categoriesText}.`
-      } else if (memory_consolidation.status === 'skipped_too_short') {
-        summaryMessage = 'New conversation started! (Previous session was too short to extract insights)'
-      } else if (memory_consolidation.status === 'no_relevant_insights') {
-        summaryMessage = 'New conversation started! (No significant insights found in previous session)'
+      const detailed = (consolidationResult as SessionEndDetailedResponse)
+      if ((detailed as any).memory_consolidation) {
+        const { memory_consolidation } = detailed
+        if (memory_consolidation.status === 'completed') {
+          const categoriesText = memory_consolidation.categories_affected.length > 0 
+            ? memory_consolidation.categories_affected.map(cat => 
+                `${cat.category}: ${cat.memories_updated + cat.memories_created} memories`
+              ).join(', ')
+            : 'No categories'
+          summaryMessage = `✨ Insights saved! ${memory_consolidation.total_insights_processed} insights processed across ${memory_consolidation.categories_affected.length} categories. ${categoriesText}.`
+        } else if (memory_consolidation.status === 'skipped_too_short') {
+          summaryMessage = 'New conversation started! (Previous session was too short to extract insights)'
+        } else if (memory_consolidation.status === 'no_relevant_insights') {
+          summaryMessage = 'New conversation started! (No significant insights found in previous session)'
+        }
       }
       
       setNotification({
@@ -270,16 +274,60 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrig
     }
   }, [messages, isAtBottom])
 
+  // Find the most recent agent message (message with a response)
+  const findLastAgentMessage = useCallback(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const message = messages[i]
+      if (message.response && !message.isOptimistic && !message.isError) {
+        return message
+      }
+    }
+    return null
+  }, [messages])
+
+  // Auto-scroll to the last agent message
+  const scrollToLastAgentMessage = useCallback(() => {
+    if (lastAgentMessageRef.current) {
+      setIsAutoScrolling(true)
+      lastAgentMessageRef.current.scrollIntoView({ 
+        behavior: 'instant', 
+        block: 'start' 
+      })
+      
+      // Reset auto-scrolling flag after a short delay
+      setTimeout(() => {
+        setIsAutoScrolling(false)
+      }, 100)
+    }
+  }, [])
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
     setIsAtBottom(true)
   }
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    // Prevent user scroll during auto-scroll
+    if (isAutoScrolling) {
+      e.preventDefault()
+      return
+    }
+    
     const { scrollTop, scrollHeight, clientHeight } = e.currentTarget
     const atBottom = scrollTop + clientHeight >= scrollHeight - 10
     setIsAtBottom(atBottom)
   }
+
+  // Auto-scroll to last agent message when a new agent response is received
+  useEffect(() => {
+    const lastAgentMessage = findLastAgentMessage()
+    if (lastAgentMessage && !isLoading) {
+      // Use a small delay to ensure the DOM is updated
+      setTimeout(() => {
+        scrollToLastAgentMessage()
+      }, 50)
+    }
+  }, [messages, isLoading, findLastAgentMessage, scrollToLastAgentMessage])
 
   const updateAgentActivity = (activity: string) => {
     setAgentActivity(activity)
@@ -350,13 +398,14 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrig
           ))
           updateAgentActivity(progress.message || 'Processing...')
         },
-        (finalResponse) => {
+        (finalResponse, intent_type) => {
           // Replace optimistic message with real response
           setMessages(prev => prev.map(msg => 
             msg.id === optimisticMessage.id 
               ? {
                   ...msg,
                   response: finalResponse,
+                  intent_type: intent_type,
                   isOptimistic: false,
                   progress: undefined
                 }
@@ -406,6 +455,101 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrig
       updateAgentActivity('')
     }
   }, [inputMessage, projectId, isLoading, currentSession, onTaskGenerated])
+
+  const handleCreateTasksClick = useCallback(async () => {
+    if (!projectId || isLoading) return
+    
+    const createTasksMessage = "create tasks with the discussion so far"
+    setInputMessage(createTasksMessage)
+    
+    // Create optimistic message
+    const optimisticMessage: OptimisticMessage = {
+      id: `optimistic-${Date.now()}`,
+      project_id: projectId,
+      session_id: currentSession?.id || '',
+      message: createTasksMessage,
+      response: '',
+      created_at: new Date().toISOString(),
+      isOptimistic: true
+    }
+    
+    setMessages(prev => [...prev, optimisticMessage])
+    setIsLoading(true)
+    
+    try {
+      await sendChatMessageWithProgress(
+        { message: createTasksMessage, project_id: projectId },
+        (progress) => {
+          const progressWithTimestamp = {
+            ...progress,
+            timestamp: new Date().toISOString()
+          }
+          
+          setMessages(prev => prev.map(msg => 
+            msg.id === optimisticMessage.id 
+              ? { 
+                  ...msg, 
+                  progress: [progressWithTimestamp]
+                }
+              : msg
+          ))
+          updateAgentActivity(progress.message || 'Processing...')
+        },
+        (finalResponse, intent_type) => {
+          setMessages(prev => prev.map(msg => 
+            msg.id === optimisticMessage.id 
+              ? {
+                  ...msg,
+                  response: finalResponse,
+                  intent_type: intent_type,
+                  isOptimistic: false,
+                  progress: undefined
+                }
+              : msg
+          ))
+          setIsLoading(false)
+          updateAgentActivity('')
+          setInputMessage('')
+          
+          if (onTaskGenerated) {
+            onTaskGenerated()
+          }
+        },
+        (error) => {
+          setMessages(prev => prev.map(msg => 
+            msg.id === optimisticMessage.id 
+              ? {
+                  ...msg,
+                  response: `Error: ${error}`,
+                  isError: true,
+                  isOptimistic: false,
+                  progress: undefined
+                }
+              : msg
+          ))
+          setIsLoading(false)
+          updateAgentActivity('')
+          setInputMessage('')
+        }
+      )
+    } catch (error) {
+      console.error('Error sending create tasks message:', error)
+      setMessages(prev => prev.map(msg => 
+        msg.id === optimisticMessage.id 
+          ? {
+              ...msg,
+              response: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+              isError: true,
+              isOptimistic: false,
+              progress: undefined
+            }
+          : msg
+      ))
+      setIsLoading(false)
+      updateAgentActivity('')
+      setInputMessage('')
+    }
+  }, [projectId, isLoading, currentSession, onTaskGenerated])
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -459,9 +603,8 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrig
             <div className="task-context-info">
               <span className="task-context-icon">🎯</span>
               <div className="task-context-text">
-                <strong>Focused on this task:</strong>
+                <strong>The conversation will use this task as context:</strong>
                 <span className="task-context-title">{taskContext.title}</span>
-                <span className="task-context-subtitle">I'll help you refine this task description for Cursor</span>
               </div>
             </div>
             <button
@@ -543,7 +686,11 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrig
               </div>
               
               {message.response && (
-                <div className={`message ai-message ${message.isError ? 'error' : ''}`}>
+                <div 
+                  ref={message === findLastAgentMessage() ? lastAgentMessageRef : null}
+                  className={`message ai-message ${message.isError ? 'error' : ''}`}
+                  data-agent-message-id={message.id}
+                >
                   <div className="message-content">
                     <div className="message-header">
                       <strong>Samurai Agent</strong>
@@ -590,6 +737,16 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrig
                       </ReactMarkdown>
                     </div>
                   </div>
+                  
+                  {/* Show Create Tasks button for spec_clarification or feature_exploration intent */}
+                  {(message.intent_type === 'spec_clarification' || message.intent_type === 'feature_exploration') && !message.isOptimistic && (
+                    <div className="mt-3">
+                      <CreateTasksButton 
+                        onClick={() => handleCreateTasksClick()}
+                        disabled={isLoading}
+                      />
+                    </div>
+                  )}
                 </div>
               )}
               
