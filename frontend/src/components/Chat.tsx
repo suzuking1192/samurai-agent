@@ -32,6 +32,8 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrig
   const [showProactiveSuggestion, setShowProactiveSuggestion] = useState<boolean>(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const chatMessagesRef = useRef<HTMLDivElement>(null)
+  const lastAgentMessageRef = useRef<HTMLDivElement>(null)
+  const [isAutoScrolling, setIsAutoScrolling] = useState(false)
 
   
 
@@ -272,16 +274,60 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrig
     }
   }, [messages, isAtBottom])
 
+  // Find the most recent agent message (message with a response)
+  const findLastAgentMessage = useCallback(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const message = messages[i]
+      if (message.response && !message.isOptimistic && !message.isError) {
+        return message
+      }
+    }
+    return null
+  }, [messages])
+
+  // Auto-scroll to the last agent message
+  const scrollToLastAgentMessage = useCallback(() => {
+    if (lastAgentMessageRef.current) {
+      setIsAutoScrolling(true)
+      lastAgentMessageRef.current.scrollIntoView({ 
+        behavior: 'instant', 
+        block: 'start' 
+      })
+      
+      // Reset auto-scrolling flag after a short delay
+      setTimeout(() => {
+        setIsAutoScrolling(false)
+      }, 100)
+    }
+  }, [])
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
     setIsAtBottom(true)
   }
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    // Prevent user scroll during auto-scroll
+    if (isAutoScrolling) {
+      e.preventDefault()
+      return
+    }
+    
     const { scrollTop, scrollHeight, clientHeight } = e.currentTarget
     const atBottom = scrollTop + clientHeight >= scrollHeight - 10
     setIsAtBottom(atBottom)
   }
+
+  // Auto-scroll to last agent message when a new agent response is received
+  useEffect(() => {
+    const lastAgentMessage = findLastAgentMessage()
+    if (lastAgentMessage && !isLoading) {
+      // Use a small delay to ensure the DOM is updated
+      setTimeout(() => {
+        scrollToLastAgentMessage()
+      }, 50)
+    }
+  }, [messages, isLoading, findLastAgentMessage, scrollToLastAgentMessage])
 
   const updateAgentActivity = (activity: string) => {
     setAgentActivity(activity)
@@ -640,7 +686,11 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrig
               </div>
               
               {message.response && (
-                <div className={`message ai-message ${message.isError ? 'error' : ''}`}>
+                <div 
+                  ref={message === findLastAgentMessage() ? lastAgentMessageRef : null}
+                  className={`message ai-message ${message.isError ? 'error' : ''}`}
+                  data-agent-message-id={message.id}
+                >
                   <div className="message-content">
                     <div className="message-header">
                       <strong>Samurai Agent</strong>
