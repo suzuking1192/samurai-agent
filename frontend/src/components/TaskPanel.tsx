@@ -1,8 +1,13 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { Task, TaskCreate, TaskUpdate, TaskStatus } from '../types'
 import { getTasks, createTask, updateTask, deleteTask, completeTask } from '../services/api'
 import TaskListView from './TaskListView'
 import TaskDetailsView from './TaskDetailsView'
+import { useTaskExpansionPersistence } from '../hooks/useTaskExpansionPersistence'
+import { 
+  identifyNewTasks, 
+  getParentTasksToAutoExpand 
+} from '../utils/taskExpansionUtils'
 
 interface TaskPanelProps {
   projectId?: string
@@ -15,6 +20,40 @@ const TaskPanel: React.FC<TaskPanelProps> = ({ projectId, refreshTrigger, onTask
   const [isLoading, setIsLoading] = useState(false)
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [taskPanelView, setTaskPanelView] = useState<'list' | 'details'>('list')
+
+  // Task expansion persistence - moved to TaskPanel level to persist across view changes
+  const {
+    expandedTasks,
+    toggleTaskExpansion,
+    setTaskExpanded,
+    isTaskExpanded
+  } = useTaskExpansionPersistence(projectId || null)
+
+  // Track previous tasks for detecting new tasks
+  const previousTasksRef = useRef<Task[]>([])
+  const [newlyCreatedTaskIds, setNewlyCreatedTaskIds] = useState<Set<string>>(new Set())
+
+  // Detect new tasks and auto-expand parent tasks with sub-tasks
+  useEffect(() => {
+    if (tasks.length > 0 && previousTasksRef.current.length > 0) {
+      const newTaskIds = identifyNewTasks(tasks, previousTasksRef.current)
+      if (newTaskIds.length > 0) {
+        setNewlyCreatedTaskIds(new Set(newTaskIds))
+        
+        // Auto-expand parent tasks that have new sub-tasks
+        const parentTasksToExpand = getParentTasksToAutoExpand(tasks, newTaskIds)
+        parentTasksToExpand.forEach(parentId => {
+          setTaskExpanded(parentId, true)
+        })
+        
+        // Clear the newly created task IDs after a short delay
+        setTimeout(() => {
+          setNewlyCreatedTaskIds(new Set())
+        }, 1000)
+      }
+    }
+    previousTasksRef.current = tasks
+  }, [tasks, setTaskExpanded])
 
   useEffect(() => {
     if (projectId) {
@@ -178,6 +217,10 @@ const TaskPanel: React.FC<TaskPanelProps> = ({ projectId, refreshTrigger, onTask
             isLoading={isLoading}
             onTaskClick={handleTaskClick}
             onCreateTask={handleCreateTask}
+            projectId={projectId}
+            expandedTasks={expandedTasks}
+            toggleTaskExpansion={toggleTaskExpansion}
+            isTaskExpanded={isTaskExpanded}
           />
         ) : (
           <TaskDetailsView 
