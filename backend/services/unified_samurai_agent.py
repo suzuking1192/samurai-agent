@@ -303,6 +303,17 @@ class UnifiedSamuraiAgent:
         Analyze user intent with enhanced understanding using the Samurai Engine prompt.
         """
         try:
+            # Check if Gemini API key is valid before proceeding
+            if not self.gemini_service.is_api_key_valid():
+                return IntentAnalysis(
+                    intent_type="api_key_warning",
+                    confidence=1.0,
+                    reasoning="API key validation failed",
+                    needs_clarification=False,
+                    clarification_questions=[],
+                    accumulated_specs={}
+                )
+            
             # Build enhanced context-aware prompt
             active_task_header = ""
             if context.task_context:
@@ -633,6 +644,22 @@ Use this framework to analyze the current message and provide the most accurate 
         Select and execute the appropriate response path based on intent analysis.
         """
         try:
+            if intent_analysis.intent_type == "api_key_warning":
+                return {
+                    "type": "api_key_warning",
+                    "response": "Warning: Gemini API key not found or invalid. Please set your GEMINI_API_KEY in the .env file to enable full functionality.",
+                    "tool_calls_made": 0,
+                    "tool_results": [],
+                    "intent_analysis": {
+                        "intent_type": "api_key_warning",
+                        "confidence": 1.0,
+                        "reasoning": "API key validation failed",
+                        "needs_clarification": False,
+                        "clarification_questions": [],
+                        "accumulated_specs": {}
+                    }
+                }
+            
             if intent_analysis.intent_type == "pure_discussion":
                 return await self._handle_pure_discussion(message, context, progress_callback)
             
