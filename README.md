@@ -27,6 +27,16 @@ cp .env.example .env
 uvicorn main:app --reload
 ```
 
+#### Run Backend with Docker
+
+Alternatively, you can run the backend using Docker Compose:
+
+```bash
+docker compose up --build
+```
+
+The backend will be available at `http://localhost:8000`.
+
 ### Get a Gemini API key (brief)
 
 - Visit Google AI Studio: [Create API key](https://aistudio.google.com/app/apikey)
@@ -65,4 +75,4 @@ samurai-agent/
 
 ## Development
 
-Both services can run simultaneously on different ports. The frontend communicates with the backend via REST API calls. 
+Both services can run simultaneously on different ports. The frontend communicates with the backend via REST API calls.
