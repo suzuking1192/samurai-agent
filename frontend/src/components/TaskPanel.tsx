@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Task, TaskCreate, TaskUpdate, TaskStatus } from '../types'
-import { getTasks, createTask, updateTask, deleteTask, completeTask } from '../services/api'
-import TaskListView from './TaskListView'
+import { Task, TaskUpdate, TaskStatus } from '../types'
+import { getTasks, updateTask, deleteTask, completeTask } from '../services/api'
 import TaskDetailsView from './TaskDetailsView'
+import TaskBoard from './TaskBoard'
 import { useTaskExpansionPersistence } from '../hooks/useTaskExpansionPersistence'
 import { 
   identifyNewTasks, 
@@ -21,7 +21,7 @@ const TaskPanel: React.FC<TaskPanelProps> = ({ projectId, refreshTrigger, onTask
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [taskPanelView, setTaskPanelView] = useState<'list' | 'details'>('list')
 
-  // Task expansion persistence - moved to TaskPanel level to persist across view changes
+  // Task expansion persistence
   const {
     expandedTasks,
     toggleTaskExpansion,
@@ -79,17 +79,6 @@ const TaskPanel: React.FC<TaskPanelProps> = ({ projectId, refreshTrigger, onTask
       setTasks([]) // Set empty array on error
     } finally {
       setIsLoading(false)
-    }
-  }
-
-  const handleCreateTask = async (newTask: TaskCreate) => {
-    if (!projectId) return
-
-    try {
-      const createdTask = await createTask(projectId, newTask)
-      setTasks(prev => [...prev, createdTask]) // Add to end for oldest first order
-    } catch (error) {
-      console.error('Error creating task:', error)
     }
   }
 
@@ -161,6 +150,12 @@ const TaskPanel: React.FC<TaskPanelProps> = ({ projectId, refreshTrigger, onTask
     setTaskPanelView('details')
   }
 
+  const handleTaskUpdate = (updatedTask: Task) => {
+    setTasks(prev => prev.map(task => 
+      task.id === updatedTask.id ? updatedTask : task
+    ))
+  }
+
   const handleBackToList = () => {
     setSelectedTask(null)
     setTaskPanelView('list')
@@ -212,16 +207,18 @@ const TaskPanel: React.FC<TaskPanelProps> = ({ projectId, refreshTrigger, onTask
 
       <div className="panel-content">
         {taskPanelView === 'list' ? (
-          <TaskListView 
-            tasks={tasks}
-            isLoading={isLoading}
-            onTaskClick={handleTaskClick}
-            onCreateTask={handleCreateTask}
-            projectId={projectId}
-            expandedTasks={expandedTasks}
-            toggleTaskExpansion={toggleTaskExpansion}
-            isTaskExpanded={isTaskExpanded}
-          />
+          <>
+            <TaskBoard
+              tasks={tasks}
+              isLoading={isLoading}
+              onTaskClick={handleTaskClick}
+              projectId={projectId}
+              onTaskUpdate={handleTaskUpdate}
+              expandedTasks={expandedTasks}
+              toggleTaskExpansion={toggleTaskExpansion}
+              isTaskExpanded={isTaskExpanded}
+            />
+          </>
         ) : (
           <TaskDetailsView 
             task={selectedTask!}
