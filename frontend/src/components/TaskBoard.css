@@ -1,0 +1,215 @@
+.task-board {
+  padding: 16px;
+  height: 100%;
+  overflow-y: auto;
+  background-color: #ffffff;
+}
+
+.priority-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 200px;
+}
+
+.priority-row {
+  border: 2px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 16px;
+  background-color: #f9fafb;
+  transition: all 0.2s ease;
+  min-height: 120px;
+  display: block;
+  position: relative;
+}
+
+.priority-row.drag-over {
+  border-color: #3b82f6;
+  background-color: rgba(59, 130, 246, 0.05);
+  transform: scale(1.02);
+}
+
+.task-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.task-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 12px;
+  background-color: white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s ease;
+  cursor: pointer;
+  position: relative;
+}
+
+.task-card:hover {
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  transform: translateY(-1px);
+}
+
+.task-card.dragging {
+  opacity: 0.5;
+  transform: rotate(2deg);
+}
+
+.task-card.updating {
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.task-card.updating::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.1), transparent);
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* Responsive design for narrow screens */
+@media (max-width: 768px) {
+  .task-board {
+    padding: 8px;
+  }
+  
+  .priority-row {
+    padding: 12px;
+    margin-bottom: 12px;
+  }
+  
+  .task-card {
+    padding: 10px;
+  }
+}
+
+/* Task view controls styling */
+.task-view-controls {
+  margin-bottom: 16px;
+  padding: 0 16px;
+  background-color: #f3f4f6;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.task-view-controls .view-controls {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.task-view-controls .view-toggle-btn {
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: white;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.task-view-controls .view-toggle-btn:hover {
+  background: #f3f4f6;
+  border-color: #9ca3af;
+}
+
+.task-view-controls .view-toggle-btn.active {
+  background: #3b82f6;
+  color: white;
+  border-color: #3b82f6;
+}
+
+/* Priority-specific styling */
+.priority-row[data-priority="high"] {
+  border-left: 4px solid #ef4444;
+}
+
+.priority-row[data-priority="medium"] {
+  border-left: 4px solid #f59e0b;
+}
+
+.priority-row[data-priority="low"] {
+  border-left: 4px solid #10b981;
+}
+
+/* Empty state styling */
+.task-board .empty-state {
+  text-align: center;
+  padding: 40px;
+  color: #6b7280;
+}
+
+.task-board .empty-state .empty-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  display: block;
+}
+
+.task-board .empty-state h3 {
+  margin: 0 0 8px 0;
+  color: #374151;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.task-board .empty-state p {
+  margin: 0;
+  font-size: 14px;
+}
+
+/* Loading state */
+.task-board .loading-indicator {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 200px;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+/* Notification styling */
+.task-board .notification {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  padding: 12px 16px;
+  border-radius: 6px;
+  color: white;
+  font-weight: 500;
+  z-index: 1001;
+  animation: slideIn 0.3s ease;
+}
+
+.task-board .notification.success {
+  background: #10b981;
+}
+
+.task-board .notification.error {
+  background: #ef4444;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
