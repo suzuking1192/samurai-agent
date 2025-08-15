@@ -303,6 +303,17 @@ class UnifiedSamuraiAgent:
         Analyze user intent with enhanced understanding using the Samurai Engine prompt.
         """
         try:
+            # Check if Gemini API key is valid before proceeding
+            if not self.gemini_service.is_api_key_valid():
+                return IntentAnalysis(
+                    intent_type="api_key_warning",
+                    confidence=1.0,
+                    reasoning="API key validation failed",
+                    needs_clarification=False,
+                    clarification_questions=[],
+                    accumulated_specs={}
+                )
+            
             # Build enhanced context-aware prompt
             active_task_header = ""
             if context.task_context:
@@ -633,6 +644,22 @@ Use this framework to analyze the current message and provide the most accurate 
         Select and execute the appropriate response path based on intent analysis.
         """
         try:
+            if intent_analysis.intent_type == "api_key_warning":
+                return {
+                    "type": "api_key_warning",
+                    "response": "Warning: Gemini API key not found or invalid. Please set your GEMINI_API_KEY in the .env file to enable full functionality.",
+                    "tool_calls_made": 0,
+                    "tool_results": [],
+                    "intent_analysis": {
+                        "intent_type": "api_key_warning",
+                        "confidence": 1.0,
+                        "reasoning": "API key validation failed",
+                        "needs_clarification": False,
+                        "clarification_questions": [],
+                        "accumulated_specs": {}
+                    }
+                }
+            
             if intent_analysis.intent_type == "pure_discussion":
                 return await self._handle_pure_discussion(message, context, progress_callback)
             
@@ -2080,15 +2107,15 @@ PROJECT CONTEXT:
 "{message}"
 
 ## AVAILABLE TOOLS
-- create_task: Create a new task in the project
-- update_task: Update an existing task's details
-- change_task_status: Change the status of a task (pending, in_progress, completed, blocked)
-- search_tasks: Search for tasks by title, description, or status
-- delete_task: Delete a task from the project
-- create_memory: Create a new memory entry
-- update_memory: Update an existing memory
-- search_memories: Search for memories by title or content
-- delete_memory: Delete a memory from the project
+- create_task: Create a new task in the project (parameters: title, description, priority, status, due_date, parent_task_id)
+- update_task: Update an existing task's details (parameters: task_identifier, title, description, priority, status, due_date)
+- change_task_status: Change the status of a task (pending, in_progress, completed, blocked) (parameters: task_identifier, new_status)
+- search_tasks: Search for tasks by title, description, or status (parameters: query, status_filter)
+- delete_task: Delete a task from the project (parameters: task_identifier)
+- create_memory: Create a new memory entry (parameters: title, content, category)
+- update_memory: Update an existing memory (parameters: memory_identifier, title, content, category)
+- search_memories: Search for memories by title or content (parameters: query)
+- delete_memory: Delete a memory from the project (parameters: memory_identifier)
 
 ## EXTENDED CONTEXT ACTION ANALYSIS
 

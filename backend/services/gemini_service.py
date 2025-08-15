@@ -13,15 +13,13 @@ logger = logging.getLogger(__name__)
 class GeminiService:
     def __init__(self):
         # Configure Gemini with graceful fallback for local/dev/test
-        api_key = os.getenv("GEMINI_API_KEY")
-        use_mock = os.getenv("SAMURAI_USE_MOCK_LLM") == "1"
+        self.api_key = os.getenv("GEMINI_API_KEY")
+        self.use_mock = os.getenv("SAMURAI_USE_MOCK_LLM") == "1"
+        self.is_key_valid = self._validate_api_key()
 
-        if not api_key or use_mock:
-            if use_mock:
-                logger.warning("SAMURAI_USE_MOCK_LLM=1 detected. Using mock LLM model for responses.")
-            else:
-                logger.warning("GEMINI_API_KEY not set. Falling back to mock LLM model for local/testing.")
-
+        if self.use_mock:
+            logger.warning("SAMURAI_USE_MOCK_LLM=1 detected. Using mock LLM model for responses.")
+            
             class _DummyResponse:
                 def __init__(self, text: str):
                     self.text = text
@@ -36,13 +34,35 @@ class GeminiService:
 
             self.model = _DummyModel()
             logger.info("Gemini service initialized with mock model")
-        else:
-            genai.configure(api_key=api_key)
+        elif self.is_key_valid:
+            genai.configure(api_key=self.api_key)
             self.model = genai.GenerativeModel('gemini-2.5-flash')
             logger.info("Gemini service initialized successfully")
+        else:
+            logger.warning("GEMINI_API_KEY not set or invalid. Service will return warning messages.")
+            self.model = None
+
+    def _validate_api_key(self) -> bool:
+        """Check if the API key is valid and available."""
+        if not self.api_key:
+            return False
+        
+        # Basic validation - check if key is not empty and has reasonable length
+        if len(self.api_key.strip()) < 10:
+            return False
+            
+        return True
+
+    def is_api_key_valid(self) -> bool:
+        """Return whether the API key is valid and the service can make real API calls."""
+        return self.is_key_valid and not self.use_mock
 
     async def chat(self, message: str, context: str = "") -> str:
         """Simple chat with optional context"""
+        # Check if API key is invalid (not mock mode)
+        if not self.is_key_valid and not self.use_mock:
+            return "Warning: Gemini API key not found or invalid. Please set your GEMINI_API_KEY in the .env file to enable full functionality."
+        
         try:
             if context:
                 full_prompt = f"Context: {context}\n\nUser: {message}"
@@ -59,6 +79,10 @@ class GeminiService:
 
     async def chat_with_system_prompt(self, message: str, system_prompt: str) -> str:
         """Chat with a custom system prompt"""
+        # Check if API key is invalid (not mock mode)
+        if not self.is_key_valid and not self.use_mock:
+            return "Warning: Gemini API key not found or invalid. Please set your GEMINI_API_KEY in the .env file to enable full functionality."
+        
         try:
             full_prompt = f"{system_prompt}\n\nUser: {message}"
             # Offload blocking SDK call to a background thread to avoid blocking the event loop
@@ -73,6 +97,10 @@ class GeminiService:
 
     def _safe_ai_call(self, prompt: str) -> str:
         """Make AI call with error handling (synchronous)"""
+        # Check if API key is invalid (not mock mode)
+        if not self.is_key_valid and not self.use_mock:
+            return "Warning: Gemini API key not found or invalid. Please set your GEMINI_API_KEY in the .env file to enable full functionality."
+        
         try:
             response = self.model.generate_content(prompt)
             return response.text

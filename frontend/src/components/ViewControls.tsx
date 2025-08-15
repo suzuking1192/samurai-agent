@@ -1,6 +1,6 @@
 import React from 'react'
 
-export type ViewMode = 'list' | 'semantic' | 'timeline'
+export type ViewMode = 'list' | 'semantic' | 'timeline' | 'kanban'
 
 interface ViewControlsProps {
   currentView: ViewMode
@@ -43,6 +43,13 @@ const ViewControls: React.FC<ViewControlsProps> = ({
           title="Timeline view"
         >
           📅 Timeline
+        </button>
+        <button 
+          className={`view-toggle-btn ${currentView === 'kanban' ? 'active' : ''}`}
+          onClick={() => onViewChange('kanban')}
+          title="Kanban board view with drag-and-drop"
+        >
+          📋 Kanban
         </button>
       </div>
       
