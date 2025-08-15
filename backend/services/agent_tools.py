@@ -75,58 +75,87 @@ class UpdateTaskTool(TaskTool):
     name: str = "update_task"
     description: str = "Update an existing task's details"
     
-    async def execute(self, task_id: str, project_id: str, updates: Dict[str, Any]) -> Dict[str, Any]:
+    async def execute(self, task_identifier: str, project_id: str, 
+                     title: str = None, description: str = None, 
+                     priority: str = None, status: str = None,
+                     due_date: str = None, **kwargs) -> Dict[str, Any]:
         """
-        Update a task with automatic re-analysis if description changes
-        """
-        try:
-            from .task_service import TaskService
-            task_service = TaskService()
-            
-            # Update task with re-analysis if needed
-            task = await task_service.update_task(
-                project_id=project_id,
-                task_id=task_id,
-                updates=updates
-            )
-            
-            if not task:
-                return {
-                    "success": False,
-                    "error": "Task not found",
-                    "message": f"❌ Task {task_id} not found"
-                }
-            
-            # Return success response
-            response = {
-                "success": True,
-                "task_id": task.id,
-                "message": f"✅ Updated task: '{task.title}'"
-            }
-            
-            # Add warning count if there are any
-            if task.review_warnings:
-                warning_count = len(task.review_warnings)
-                response["message"] += f" ({warning_count} warning{'s' if warning_count != 1 else ''} to review)"
-            
-            return response
-            
-        except Exception as e:
-            logger.error(f"Error updating task: {e}")
-            return {
-                "success": False,
-                "error": str(e),
-                "message": f"❌ Failed to update task: {str(e)}"
-            }
-    
-    def execute(self, task_identifier: str, project_id: str, 
-                title: str = None, description: str = None, 
-                priority: str = None, status: str = None,
-                due_date: str = None) -> Dict[str, Any]:
-        """
-        Update task details by title or ID
+        Update task details by title or ID with automatic re-analysis
+        Supports both individual parameters and updates dictionary
         """
         try:
+            # Handle case where updates are passed as a dictionary
+            if 'updates' in kwargs:
+                updates = kwargs['updates']
+                # Extract individual fields from updates dict
+                title = updates.get('title', title)
+                description = updates.get('description', description)
+                priority = updates.get('priority', priority)
+                status = updates.get('status', status)
+                due_date = updates.get('due_date', due_date)
+            
+            # Handle legacy parameter names
+            if 'task_title' in kwargs:
+                title = kwargs['task_title']
+            if 'task_id' in kwargs:
+                task_identifier = kwargs['task_id']
+            
+            # Try to use TaskService first (preferred method)
+            try:
+                from .task_service import TaskService
+                task_service = TaskService()
+                
+                # Find task by ID or title
+                task = None
+                if task_identifier:
+                    task = await task_service.get_task(project_id, task_identifier)
+                    if not task:
+                        # Try to find by title
+                        tasks = await task_service.list_tasks(project_id)
+                        for t in tasks:
+                            if t.title.lower() == task_identifier.lower():
+                                task = t
+                                break
+                
+                if task:
+                    # Prepare updates dictionary
+                    updates = {}
+                    if title is not None:
+                        updates['title'] = title
+                    if description is not None:
+                        updates['description'] = description
+                    if priority is not None:
+                        updates['priority'] = priority
+                    if status is not None:
+                        updates['status'] = status
+                    if due_date is not None:
+                        updates['due_date'] = due_date
+                    
+                    # Update task with re-analysis
+                    updated_task = await task_service.update_task(
+                        project_id=project_id,
+                        task_id=task.id,
+                        updates=updates
+                    )
+                    
+                    if updated_task:
+                        response = {
+                            "success": True,
+                            "task_id": updated_task.id,
+                            "message": f"✅ Updated task: '{updated_task.title}'"
+                        }
+                        
+                        # Add warning count if there are any
+                        if updated_task.review_warnings:
+                            warning_count = len(updated_task.review_warnings)
+                            response["message"] += f" ({warning_count} warning{'s' if warning_count != 1 else ''} to review)"
+                        
+                        return response
+                
+            except Exception as service_error:
+                logger.warning(f"TaskService update failed, falling back to FileService: {service_error}")
+            
+            # Fallback to FileService method
             file_service = FileService()
             
             # Load existing tasks
@@ -146,11 +175,16 @@ class UpdateTaskTool(TaskTool):
                 }
             
             # Update fields
-            if title: task.title = title
-            if description: task.description = description
-            if priority: task.priority = priority
-            if status: task.status = status
-            if due_date: task.due_date = due_date
+            if title is not None:
+                task.title = title
+            if description is not None:
+                task.description = description
+            if priority is not None:
+                task.priority = priority
+            if status is not None:
+                task.status = status
+            if due_date is not None:
+                task.due_date = due_date
             
             # Update completion status based on status
             if status == "completed":

@@ -2080,15 +2080,15 @@ PROJECT CONTEXT:
 "{message}"
 
 ## AVAILABLE TOOLS
-- create_task: Create a new task in the project
-- update_task: Update an existing task's details
-- change_task_status: Change the status of a task (pending, in_progress, completed, blocked)
-- search_tasks: Search for tasks by title, description, or status
-- delete_task: Delete a task from the project
-- create_memory: Create a new memory entry
-- update_memory: Update an existing memory
-- search_memories: Search for memories by title or content
-- delete_memory: Delete a memory from the project
+- create_task: Create a new task in the project (parameters: title, description, priority, status, due_date, parent_task_id)
+- update_task: Update an existing task's details (parameters: task_identifier, title, description, priority, status, due_date)
+- change_task_status: Change the status of a task (pending, in_progress, completed, blocked) (parameters: task_identifier, new_status)
+- search_tasks: Search for tasks by title, description, or status (parameters: query, status_filter)
+- delete_task: Delete a task from the project (parameters: task_identifier)
+- create_memory: Create a new memory entry (parameters: title, content, category)
+- update_memory: Update an existing memory (parameters: memory_identifier, title, content, category)
+- search_memories: Search for memories by title or content (parameters: query)
+- delete_memory: Delete a memory from the project (parameters: memory_identifier)
 
 ## EXTENDED CONTEXT ACTION ANALYSIS
 
