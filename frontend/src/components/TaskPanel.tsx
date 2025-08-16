@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Task, TaskUpdate, TaskStatus } from '../types'
-import { getTasks, updateTask, deleteTask, completeTask } from '../services/api'
+import { Task, TaskUpdate, TaskStatus, TaskCreate } from '../types'
+import { getTasks, updateTask, deleteTask, completeTask, createTask } from '../services/api'
 import TaskDetailsView from './TaskDetailsView'
 import TaskBoard from './TaskBoard'
 import { useTaskExpansionPersistence } from '../hooks/useTaskExpansionPersistence'
@@ -82,6 +82,17 @@ const TaskPanel: React.FC<TaskPanelProps> = ({ projectId, refreshTrigger, onTask
     }
   }
 
+  const handleCreateTask = async (newTask: TaskCreate) => {
+    if (!projectId) return
+
+    try {
+      const createdTask = await createTask(projectId, newTask)
+      setTasks(prev => [...prev, createdTask]) // Add to end for oldest first order
+    } catch (error) {
+      console.error('Error creating task:', error)
+    }
+  }
+
   const handleUpdateTask = async (taskId: string, updates: TaskUpdate) => {
     const oldStatus = tasks.find(task => task.id === taskId)?.status
     const taskElement = document.querySelector(`[data-task-id="${taskId}"]`)
@@ -146,6 +157,7 @@ const TaskPanel: React.FC<TaskPanelProps> = ({ projectId, refreshTrigger, onTask
   }
 
   const handleTaskClick = (task: Task) => {
+    console.log('TaskPanel: Setting selected task:', task.id, task.title, 'Parent ID:', task.parent_task_id)
     setSelectedTask(task)
     setTaskPanelView('details')
   }
@@ -214,9 +226,11 @@ const TaskPanel: React.FC<TaskPanelProps> = ({ projectId, refreshTrigger, onTask
               onTaskClick={handleTaskClick}
               projectId={projectId}
               onTaskUpdate={handleTaskUpdate}
+              onCreateTask={handleCreateTask}
               expandedTasks={expandedTasks}
               toggleTaskExpansion={toggleTaskExpansion}
               isTaskExpanded={isTaskExpanded}
+              selectedTask={selectedTask}
             />
           </>
         ) : (
