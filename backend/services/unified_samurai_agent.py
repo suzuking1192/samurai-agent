@@ -384,12 +384,14 @@ Analyze the current message for:
 Look for these specific patterns:
 
 **PURE_DISCUSSION patterns:**
-- Theoretical questions about technology concepts
-- Seeking explanations or learning
+- Theoretical questions about technology concepts ("How does X work?", "What is Y?")
+- Seeking explanations or learning ("How can I build this?", "What's the best way to...")
 - Casual conversation without project context
 - General acknowledgments ("thanks", "hello", "got it")
 - Questions about how things work conceptually
 - No reference to their specific project implementation
+- **CRITICAL**: Questions that start with "How can I..." or "What's the best way to..." are typically pure_discussion, NOT ready_for_action
+- **CRITICAL**: Even if the message mentions "implementing" or "building", if it's phrased as a question seeking guidance, it's pure_discussion
 
 **FEATURE_EXPLORATION patterns:**
 - Expressing interest in new capabilities ("I want to add...")
@@ -408,12 +410,11 @@ Look for these specific patterns:
 - Building on previous discussion with concrete details
 
 **READY_FOR_ACTION patterns:**
-- Complete feature descriptions with clear scope
-- Explicit requests to create tasks or implementation plans
-- Detailed requirements with technical specifications
-- Clear acceptance criteria or success metrics
-- Implementation-ready descriptions
-- Direct requests like "break this down into tasks"
+- **EXPLICIT requests to create tasks**: "Create tasks for...", "Break this down into tasks", "Turn this into tasks"
+- **EXPLICIT requests for implementation prompts**: "Generate a prompt for...", "Give me the prompt for..."
+- Complete feature descriptions WITH explicit task creation requests
+- Detailed requirements WITH explicit action requests
+- **CRITICAL**: Must contain explicit action language, not just detailed descriptions
 
 **DIRECT_ACTION patterns:**
 - Task status updates ("completed", "done with", "finished")
@@ -434,10 +435,15 @@ Consider the conversation progression:
 When intent is unclear, use these tie-breakers:
 
 1. **Context Priority**: Recent conversation context takes precedence
-2. **Specificity Indicator**: More specific technical details = closer to ready_for_action
-3. **Question vs Statement**: Questions lean toward discussion/exploration, statements toward action
+2. **Question vs Statement**: Questions lean toward discussion/exploration, statements toward action
+3. **Explicit Action Language**: Only classify as ready_for_action if explicit task creation language is present
 4. **Project Reference**: References to their specific project suggest action-oriented intent
 5. **Implementation Language**: Technical implementation details suggest ready_for_action
+
+**CRITICAL DISTINCTION:**
+- **Questions seeking guidance** ("How can I build this?", "What's the best approach?") = pure_discussion
+- **Statements requesting action** ("Create tasks for...", "Break this down into tasks") = ready_for_action
+- **Detailed descriptions without explicit action requests** = spec_clarification
 
         ### STRICT ACTION GATE
         - Only classify as **ready_for_action** if the user explicitly requests task creation or an implementation prompt.
@@ -518,14 +524,19 @@ Return ONLY the category name: pure_discussion, feature_exploration, spec_clarif
 **Analysis**: Complete requirements, explicit task request, implementation-ready
 **Classification**: ready_for_action
 
-        **Message**: "Here's a complete spec for the new onboarding flow: steps A/B/C, validations, edge cases, and success criteria."
-        **Context**: Providing detailed specs but no explicit task/prompt request
-        **Analysis**: Comprehensive details for discussion/clarification; no explicit ask to create tasks
-        **Classification**: spec_clarification
+**Message**: "Here's a complete spec for the new onboarding flow: steps A/B/C, validations, edge cases, and success criteria."
+**Context**: Providing detailed specs but no explicit task/prompt request
+**Analysis**: Comprehensive details for discussion/clarification; no explicit ask to create tasks
+**Classification**: spec_clarification
 
 **Message**: "How does JWT authentication work?"
 **Context**: General question, no project implementation context
 **Analysis**: Educational question, seeking concept explanation
+**Classification**: pure_discussion
+
+**Message**: "I want to talk about implementing a button where users can select local folder and then our agent has access to read those files in the folder any time. How can I build this?"
+**Context**: User asking for guidance on implementation approach
+**Analysis**: Question seeking guidance ("How can I build this?"), not requesting task creation
 **Classification**: pure_discussion
 
 **Message**: "I finished the login API endpoint task"

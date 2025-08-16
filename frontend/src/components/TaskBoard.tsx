@@ -24,6 +24,7 @@ interface TaskBoardProps {
   toggleTaskExpansion?: (taskId: string) => void
   /** Function to check if a task is expanded */
   isTaskExpanded?: (taskId: string) => boolean
+  selectedTask?: Task | null
 }
 
 /**
@@ -72,7 +73,8 @@ const TaskBoard: React.FC<TaskBoardProps> = ({
   onCreateTask,
   expandedTasks = {},
   toggleTaskExpansion,
-  isTaskExpanded = () => false
+  isTaskExpanded = () => false,
+  selectedTask
 }) => {
   const [dragState, setDragState] = useState<DragState>({
     isDragging: false,
@@ -253,26 +255,49 @@ const TaskBoard: React.FC<TaskBoardProps> = ({
     const isParent = children.length > 0
     const isExpanded = isTaskExpanded(task.id)
     const isTopLevel = !task.parent_task_id
+    const isSelected = selectedTask?.id === task.id
 
     return (
       <div
         key={task.id}
-        className={`task-card ${isDragging ? 'dragging' : ''} ${isBeingUpdated ? 'updating' : ''}`}
+        className={`task-card ${isDragging ? 'dragging' : ''} ${isBeingUpdated ? 'updating' : ''} ${isSelected ? 'selected' : ''}`}
         draggable={!isBeingUpdated}
         onDragStart={(e) => handleDragStart(e, task)}
-        onClick={() => onTaskClick(task)}
+        onClick={(e) => {
+          // Only handle click if not clicking on interactive elements
+          if (e.target === e.currentTarget || 
+              (e.target as HTMLElement).closest('.task-card') === e.currentTarget) {
+            console.log('TaskBoard: Clicked task card:', task.id, task.title, 'Parent ID:', task.parent_task_id)
+            onTaskClick(task)
+          }
+        }}
         style={{
           opacity: isDragging ? 0.5 : 1,
           cursor: 'pointer',
-          border: '1px solid #e5e7eb',
+          border: isSelected ? '2px solid #3b82f6' : '1px solid #e5e7eb',
           borderRadius: '8px',
           padding: '12px',
           marginBottom: '8px',
-          backgroundColor: 'white',
-          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
+          backgroundColor: isSelected ? '#eff6ff' : 'white',
+          boxShadow: isSelected ? '0 4px 12px rgba(59, 130, 246, 0.2)' : '0 1px 3px rgba(0, 0, 0, 0.1)',
           transition: 'all 0.2s ease',
           position: 'relative',
-          marginLeft: isTopLevel ? '0px' : `${level * 20}px`
+          marginLeft: isTopLevel ? '0px' : `${level * 20}px`,
+          // Add visual indicator for subtasks
+          borderLeft: !isTopLevel ? '3px solid #3b82f6' : undefined
+        }}
+        title={`Click to view details: ${task.title}`}
+        onMouseEnter={(e) => {
+          if (!isSelected) {
+            e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.15)'
+            e.currentTarget.style.transform = 'translateY(-1px)'
+          }
+        }}
+        onMouseLeave={(e) => {
+          if (!isSelected) {
+            e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)'
+            e.currentTarget.style.transform = 'translateY(0)'
+          }
         }}
       >
         {isBeingUpdated && (
@@ -284,6 +309,23 @@ const TaskBoard: React.FC<TaskBoardProps> = ({
             color: '#3b82f6'
           }}>
             Updating...
+          </div>
+        )}
+        
+        {isSelected && (
+          <div style={{
+            position: 'absolute',
+            top: '4px',
+            left: '4px',
+            fontSize: '10px',
+            color: '#3b82f6',
+            backgroundColor: '#eff6ff',
+            padding: '2px 6px',
+            borderRadius: '4px',
+            fontWeight: '600',
+            border: '1px solid #3b82f6'
+          }}>
+            ✓ Selected
           </div>
         )}
         
@@ -348,6 +390,44 @@ const TaskBoard: React.FC<TaskBoardProps> = ({
         }}>
           <span>Status: {task.status}</span>
           <span>Created: {new Date(task.created_at).toLocaleDateString()}</span>
+        </div>
+        
+        {/* View Details Button */}
+        <div style={{ marginTop: '8px', textAlign: 'right' }}>
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              console.log('TaskBoard: View Details clicked for task:', task.id, task.title, 'Parent ID:', task.parent_task_id)
+              onTaskClick(task)
+            }}
+            style={{
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              border: 'none',
+              borderRadius: '6px',
+              padding: '6px 12px',
+              fontSize: '12px',
+              color: 'white',
+              cursor: 'pointer',
+              fontWeight: '500',
+              boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
+              transition: 'all 0.2s ease',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'translateY(-1px)'
+              e.currentTarget.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.15)'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)'
+              e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1)'
+            }}
+            title={`View details for ${task.title}`}
+          >
+            <span style={{ fontSize: '14px' }}>👁️</span>
+            View Details
+          </button>
         </div>
 
         {/* Render subtasks if expanded */}

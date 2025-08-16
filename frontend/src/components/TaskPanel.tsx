@@ -157,6 +157,7 @@ const TaskPanel: React.FC<TaskPanelProps> = ({ projectId, refreshTrigger, onTask
   }
 
   const handleTaskClick = (task: Task) => {
+    console.log('TaskPanel: Setting selected task:', task.id, task.title, 'Parent ID:', task.parent_task_id)
     setSelectedTask(task)
     setTaskPanelView('details')
   }
@@ -229,6 +230,7 @@ const TaskPanel: React.FC<TaskPanelProps> = ({ projectId, refreshTrigger, onTask
               expandedTasks={expandedTasks}
               toggleTaskExpansion={toggleTaskExpansion}
               isTaskExpanded={isTaskExpanded}
+              selectedTask={selectedTask}
             />
           </>
         ) : (
