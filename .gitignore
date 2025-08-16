@@ -94,8 +94,6 @@ coverage/
 *.temp
 .cache/
 
-# Docker
-.dockerignore
 
 # Python specific
 *.pyc
