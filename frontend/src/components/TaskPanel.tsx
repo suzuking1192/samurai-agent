@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Task, TaskUpdate, TaskStatus } from '../types'
-import { getTasks, updateTask, deleteTask, completeTask } from '../services/api'
+import { Task, TaskUpdate, TaskStatus, TaskCreate } from '../types'
+import { getTasks, updateTask, deleteTask, completeTask, createTask } from '../services/api'
 import TaskDetailsView from './TaskDetailsView'
 import TaskBoard from './TaskBoard'
 import { useTaskExpansionPersistence } from '../hooks/useTaskExpansionPersistence'
@@ -79,6 +79,17 @@ const TaskPanel: React.FC<TaskPanelProps> = ({ projectId, refreshTrigger, onTask
       setTasks([]) // Set empty array on error
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const handleCreateTask = async (newTask: TaskCreate) => {
+    if (!projectId) return
+
+    try {
+      const createdTask = await createTask(projectId, newTask)
+      setTasks(prev => [...prev, createdTask]) // Add to end for oldest first order
+    } catch (error) {
+      console.error('Error creating task:', error)
     }
   }
 
@@ -214,6 +225,7 @@ const TaskPanel: React.FC<TaskPanelProps> = ({ projectId, refreshTrigger, onTask
               onTaskClick={handleTaskClick}
               projectId={projectId}
               onTaskUpdate={handleTaskUpdate}
+              onCreateTask={handleCreateTask}
               expandedTasks={expandedTasks}
               toggleTaskExpansion={toggleTaskExpansion}
               isTaskExpanded={isTaskExpanded}

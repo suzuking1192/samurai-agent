@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useMemo } from 'react'
-import { Task, TaskPriority, TaskStatus } from '../types'
-import { updateTask } from '../services/api'
+import { Task, TaskPriority, TaskStatus, TaskCreate } from '../types'
+import { updateTask, createTask } from '../services/api'
 import './TaskBoard.css'
 
 /**
@@ -17,6 +17,7 @@ interface TaskBoardProps {
   projectId?: string
   /** Callback function when a task is updated */
   onTaskUpdate?: (updatedTask: Task) => void
+  onCreateTask?: (task: TaskCreate) => Promise<void>
   /** Object to track expanded subtasks for each task */
   expandedTasks?: Record<string, boolean>
   /** Callback to toggle task expansion */
@@ -68,6 +69,7 @@ const TaskBoard: React.FC<TaskBoardProps> = ({
   onTaskClick,
   projectId,
   onTaskUpdate,
+  onCreateTask,
   expandedTasks = {},
   toggleTaskExpansion,
   isTaskExpanded = () => false
@@ -80,6 +82,12 @@ const TaskBoard: React.FC<TaskBoardProps> = ({
   const [updatingTaskId, setUpdatingTaskId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
+  const [showCreateForm, setShowCreateForm] = useState(false)
+  const [newTask, setNewTask] = useState<TaskCreate>({
+    title: '',
+    description: '',
+    priority: TaskPriority.MEDIUM
+  })
 
   // Filter out completed tasks
   const activeTasks = tasks.filter(task => task.status !== TaskStatus.COMPLETED)
@@ -191,6 +199,26 @@ const TaskBoard: React.FC<TaskBoardProps> = ({
       })
     }
   }, [dragState, projectId, onTaskUpdate])
+
+  const handleCreateTask = async () => {
+    if (!newTask.title.trim() || !onCreateTask) return
+
+    try {
+      await onCreateTask(newTask)
+      setNewTask({
+        title: '',
+        description: '',
+        priority: TaskPriority.MEDIUM
+      })
+      setShowCreateForm(false)
+      setSuccessMessage('Task created successfully!')
+      setTimeout(() => setSuccessMessage(null), 3000)
+    } catch (error) {
+      console.error('Error creating task:', error)
+      setError('Failed to create task. Please try again.')
+      setTimeout(() => setError(null), 5000)
+    }
+  }
 
   const getPriorityLabel = (priority: TaskPriority) => {
     switch (priority) {
@@ -451,6 +479,124 @@ const TaskBoard: React.FC<TaskBoardProps> = ({
           fontSize: '14px'
         }}>
           {successMessage}
+        </div>
+      )}
+
+      {/* Create Task Form */}
+      {showCreateForm && (
+        <div style={{
+          backgroundColor: 'white',
+          border: '1px solid #e5e7eb',
+          borderRadius: '8px',
+          padding: '16px',
+          marginBottom: '16px',
+          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+        }}>
+          <h4 style={{ margin: '0 0 12px 0', fontSize: '16px', fontWeight: '600' }}>Create New Task</h4>
+          <input
+            type="text"
+            placeholder="Task title"
+            value={newTask.title}
+            onChange={(e) => setNewTask(prev => ({ ...prev, title: e.target.value }))}
+            style={{
+              width: '100%',
+              padding: '8px 12px',
+              border: '1px solid #d1d5db',
+              borderRadius: '6px',
+              marginBottom: '8px',
+              fontSize: '14px'
+            }}
+          />
+          <textarea
+            placeholder="Task description"
+            value={newTask.description}
+            onChange={(e) => setNewTask(prev => ({ ...prev, description: e.target.value }))}
+            style={{
+              width: '100%',
+              padding: '8px 12px',
+              border: '1px solid #d1d5db',
+              borderRadius: '6px',
+              marginBottom: '8px',
+              fontSize: '14px',
+              minHeight: '60px',
+              resize: 'vertical'
+            }}
+            rows={3}
+          />
+          <select
+            value={newTask.priority}
+            onChange={(e) => setNewTask(prev => ({ ...prev, priority: e.target.value as TaskPriority }))}
+            style={{
+              width: '100%',
+              padding: '8px 12px',
+              border: '1px solid #d1d5db',
+              borderRadius: '6px',
+              marginBottom: '12px',
+              fontSize: '14px'
+            }}
+          >
+            <option value={TaskPriority.LOW}>Low Priority</option>
+            <option value={TaskPriority.MEDIUM}>Medium Priority</option>
+            <option value={TaskPriority.HIGH}>High Priority</option>
+          </select>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              onClick={handleCreateTask}
+              disabled={!newTask.title.trim()}
+              style={{
+                padding: '8px 16px',
+                background: '#3b82f6',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: '500'
+              }}
+            >
+              Create Task
+            </button>
+            <button
+              onClick={() => setShowCreateForm(false)}
+              style={{
+                padding: '8px 16px',
+                background: '#f3f4f6',
+                color: '#374151',
+                border: '1px solid #d1d5db',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: '500'
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Add Task Button */}
+      {!showCreateForm && (
+        <div style={{ marginBottom: '16px' }}>
+          <button
+            onClick={() => setShowCreateForm(true)}
+            style={{
+              padding: '8px 16px',
+              background: '#3b82f6',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '14px',
+              fontWeight: '500',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+          >
+            <span style={{ fontSize: '16px' }}>+</span>
+            Add Task
+          </button>
         </div>
       )}
 
