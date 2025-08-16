@@ -262,12 +262,14 @@ class Project(BaseModel):
         description: Project description
         tech_stack: Technology stack used in the project
         created_at: Timestamp when the project was created
+        codebase_path: Optional path to the local codebase folder
     """
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Unique project identifier")
     name: str = Field(..., min_length=1, max_length=100, description="Project name")
     description: str = Field(..., max_length=500, description="Project description")
     tech_stack: str = Field(..., max_length=200, description="Technology stack")
     created_at: datetime = Field(default_factory=datetime.utcnow, description="Creation timestamp")
+    codebase_path: Optional[str] = Field(None, description="Path to the local codebase folder")
 
     class Config:
         """Pydantic configuration for JSON serialization."""
