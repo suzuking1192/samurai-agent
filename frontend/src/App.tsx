@@ -6,6 +6,7 @@ import TaskPanel from './components/TaskPanel'
 import MemoryPanel from './components/MemoryPanel'
 import ProjectSelector from './components/ProjectSelector'
 import FullScreenModal from './components/FullScreenModal'
+import { CodebaseIntegrationSection } from './components/CodebaseIntegrationSection'
 import { getProjectDetail, ingestProjectDetail, saveProjectDetail } from './services/api'
 import { Project } from './types'
 
@@ -19,6 +20,7 @@ function App() {
   const [projectDetailInput, setProjectDetailInput] = useState('')
   const [loadingProjectDetail, setLoadingProjectDetail] = useState(false)
   const [savingProjectDetail, setSavingProjectDetail] = useState(false)
+  const [codebasePath, setCodebasePath] = useState<string | null>(null)
 
   const handleProjectSelect = (project: Project) => {
     setSelectedProject(project)
@@ -80,6 +82,10 @@ function App() {
     } finally {
       setSavingProjectDetail(false)
     }
+  }
+
+  const handleCodebaseConnected = (path: string) => {
+    setCodebasePath(path)
   }
 
   return (
@@ -169,27 +175,38 @@ function App() {
           </div>
 
           <div className="project-detail-body">
-            <textarea
-              placeholder={projectDetailMode === 'ingest' ? 'Paste raw meeting minutes, specs, documents...' : 'Edit your current project detail...'}
-              value={projectDetailInput}
-              onChange={(e) => setProjectDetailInput(e.target.value)}
-              className="project-detail-textarea"
-            />
-            <div className="project-detail-helper">
-              {projectDetailMode === 'ingest'
-                ? 'The Samurai Agent will use AI to digest this text and save the most relevant project details as your permanent project specification for future reference.'
-                : 'Editing directly updates your permanent project specification. This bypasses AI digestion.'}
+            <div className="project-detail-textarea-container">
+              <textarea
+                placeholder={projectDetailMode === 'ingest' ? 'Paste raw meeting minutes, specs, documents...' : 'Edit your current project detail...'}
+                value={projectDetailInput}
+                onChange={(e) => setProjectDetailInput(e.target.value)}
+                className="project-detail-textarea"
+              />
+              <div className="project-detail-helper">
+                {projectDetailMode === 'ingest'
+                  ? 'The Samurai Agent will use AI to digest this text and save the most relevant project details as your permanent project specification for future reference.'
+                  : 'Editing directly updates your permanent project specification. This bypasses AI digestion.'}
+              </div>
+              
+              <footer className="project-detail-footer">
+                <button onClick={() => setShowProjectDetailModal(false)} disabled={savingProjectDetail} className="modal-button secondary">Cancel</button>
+                <button onClick={handleSubmitProjectDetail} disabled={savingProjectDetail || loadingProjectDetail || !selectedProject} className="modal-button primary">
+                  {savingProjectDetail
+                    ? (projectDetailMode === 'ingest' ? 'Initiating Digest…' : 'Saving…')
+                    : (projectDetailMode === 'ingest' ? 'Start AI Digest' : 'Save Project Detail')}
+                </button>
+              </footer>
             </div>
+            
+            {/* Codebase Access Section */}
+            {selectedProject && (
+              <CodebaseIntegrationSection
+                projectId={selectedProject.id}
+                currentCodebasePath={codebasePath || undefined}
+                onCodebaseConnected={handleCodebaseConnected}
+              />
+            )}
           </div>
-
-          <footer className="project-detail-footer">
-            <button onClick={() => setShowProjectDetailModal(false)} disabled={savingProjectDetail} className="modal-button secondary">Cancel</button>
-            <button onClick={handleSubmitProjectDetail} disabled={savingProjectDetail || loadingProjectDetail || !selectedProject} className="modal-button primary">
-              {savingProjectDetail
-                ? (projectDetailMode === 'ingest' ? 'Initiating Digest…' : 'Saving…')
-                : (projectDetailMode === 'ingest' ? 'Start AI Digest' : 'Save Project Detail')}
-            </button>
-          </footer>
         </section>
       </FullScreenModal>
     </div>

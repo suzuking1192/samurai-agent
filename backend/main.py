@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Optional
 import os
 import asyncio
@@ -1265,8 +1265,53 @@ async def get_task_context(project_id: str, session_id: str):
         logger.error(f"Error getting task context: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get task context: {str(e)}")
 
+# Codebase connection endpoint
+class CodebaseConnectRequest(BaseModel):
+    path: str = Field(..., description="Local folder path for the codebase")
+    project_id: str = Field(..., description="Project ID to associate with the codebase")
 
- 
+@app.post("/api/codebase/connect")
+async def connect_codebase(request: CodebaseConnectRequest):
+    """
+    Connect a local codebase folder to a project.
+    This endpoint registers the codebase path for future code analysis and lookup.
+    """
+    try:
+        logger.info(f"Connecting codebase for project {request.project_id} at path: {request.path}")
+        
+        # 1. Validate project exists
+        project = file_service.get_project_by_id(request.project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # 2. Validate path is a string and not empty
+        if not request.path or not isinstance(request.path, str):
+            raise HTTPException(status_code=400, detail="Path must be a non-empty string")
+        
+        # 3. Basic path validation (check if it's a valid path format)
+        if not os.path.isabs(request.path) and not request.path.startswith('./'):
+            raise HTTPException(status_code=400, detail="Path must be an absolute path or relative path starting with './'")
+        
+        # 4. Store the codebase path in the project data
+        # For now, we'll store it in a simple way - in a real implementation,
+        # you might want to store this in a database or configuration file
+        project.codebase_path = request.path
+        file_service.save_project(project)
+        
+        logger.info(f"Codebase connected successfully for project {request.project_id}")
+        
+        return {
+            "success": True,
+            "message": "Codebase connected successfully",
+            "project_id": request.project_id,
+            "codebase_path": request.path
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error connecting codebase: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to connect codebase: {str(e)}")
 
 
 if __name__ == "__main__":

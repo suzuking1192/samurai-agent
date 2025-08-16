@@ -449,3 +449,23 @@ export async function dismissSuggestion(): Promise<{ status: string }> {
     method: 'POST'
   })
 }
+
+// Codebase connection API functions
+export interface CodebaseConnectRequest {
+  path: string
+  project_id: string
+}
+
+export interface CodebaseConnectResponse {
+  success: boolean
+  message: string
+  project_id: string
+  codebase_path: string
+}
+
+export async function connectCodebase(request: CodebaseConnectRequest): Promise<CodebaseConnectResponse> {
+  return apiRequest<CodebaseConnectResponse>('/api/codebase/connect', {
+    method: 'POST',
+    body: JSON.stringify(request),
+  })
+}
