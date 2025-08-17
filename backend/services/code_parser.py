@@ -70,7 +70,6 @@ class CodeParser:
             'python': {
                 'function': r'^\s*(?:async\s+)?def\s+(\w+)\s*\(',
                 'class': r'^\s*class\s+(\w+)',
-                'method': r'^\s*(?:async\s+)?def\s+(\w+)\s*\(',
             },
             'javascript': {
                 'function': r'^\s*(?:export\s+)?(?:async\s+)?function\s+(\w+)\s*\(',
@@ -337,25 +336,87 @@ class CodeParser:
             
             patterns = self.element_patterns.get(language, {})
             
-            for line_num, line in enumerate(lines, 1):
-                for element_type, pattern in patterns.items():
-                    match = re.search(pattern, line.strip())
-                    if match:
-                        name = match.group(1)
-                        # Skip common false positives
-                        if name in ['if', 'for', 'while', 'try', 'catch', 'finally', 'switch', 'case']:
-                            continue
-                        
-                        elements.append(CodeElement(
-                            name=name,
-                            type=element_type,
-                            line_number=line_num,
-                            file_path=file_path,
-                            signature=line.strip()
-                        ))
+            # For Python, we need special handling to distinguish functions from methods
+            if language == 'python':
+                elements = self._extract_python_elements(lines, file_path)
+            else:
+                # For other languages, use the standard pattern matching
+                for line_num, line in enumerate(lines, 1):
+                    for element_type, pattern in patterns.items():
+                        match = re.search(pattern, line.strip())
+                        if match:
+                            name = match.group(1)
+                            # Skip common false positives
+                            if name in ['if', 'for', 'while', 'try', 'catch', 'finally', 'switch', 'case']:
+                                continue
+                            
+                            elements.append(CodeElement(
+                                name=name,
+                                type=element_type,
+                                line_number=line_num,
+                                file_path=file_path,
+                                signature=line.strip()
+                            ))
         
         except Exception as e:
             logger.warning(f"Error parsing file {file_path}: {e}")
+        
+        return elements
+    
+    def _extract_python_elements(self, lines: List[str], file_path: str) -> List[CodeElement]:
+        """Extract Python code elements with proper function/method distinction."""
+        elements = []
+        current_class = None
+        current_indentation = 0
+        
+        for line_num, line in enumerate(lines, 1):
+            stripped_line = line.strip()
+            if not stripped_line or stripped_line.startswith('#'):
+                continue
+            
+            # Calculate indentation level
+            indentation = len(line) - len(line.lstrip())
+            
+            # Check for class definition
+            class_match = re.search(r'^\s*class\s+(\w+)', stripped_line)
+            if class_match:
+                current_class = class_match.group(1)
+                current_indentation = indentation
+                elements.append(CodeElement(
+                    name=current_class,
+                    type='class',
+                    line_number=line_num,
+                    file_path=file_path,
+                    signature=stripped_line
+                ))
+                continue
+            
+            # Check for function/method definition
+            func_match = re.search(r'^\s*(?:async\s+)?def\s+(\w+)\s*\(', stripped_line)
+            if func_match:
+                name = func_match.group(1)
+                # Skip common false positives
+                if name in ['if', 'for', 'while', 'try', 'catch', 'finally', 'switch', 'case']:
+                    continue
+                
+                # Determine if this is a method or function based on context
+                if current_class and indentation > current_indentation:
+                    # This is a method within a class
+                    element_type = 'method'
+                else:
+                    # This is a standalone function
+                    element_type = 'function'
+                    # Reset class context if we're at module level
+                    if indentation <= current_indentation:
+                        current_class = None
+                
+                elements.append(CodeElement(
+                    name=name,
+                    type=element_type,
+                    line_number=line_num,
+                    file_path=file_path,
+                    signature=stripped_line
+                ))
         
         return elements
     

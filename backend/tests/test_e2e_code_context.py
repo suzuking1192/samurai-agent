@@ -160,7 +160,8 @@ class TestE2ECodeContextExtraction:
         for file_path in key_files_found:
             if "unified_samurai_agent.py" in file_path:
                 file_info = file_infos[file_path]
-                method_names = [elem.name for elem in file_info.elements if elem.type == "function"]
+                # Look for both functions and methods since our new logic distinguishes them
+                method_names = [elem.name for elem in file_info.elements if elem.type in ["function", "method"]]
                 print(f"Methods in {file_path}: {method_names[:5]}...")
                 
                 # Should have key methods
