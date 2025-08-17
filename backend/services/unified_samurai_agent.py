@@ -184,7 +184,6 @@ class UnifiedSamuraiAgent:
                         project_id=project_id,
                         session_id=session_id,
                         connected_codebase_path=codebase_path,
-                        max_files_to_scan=5000,
                         max_iterations=3
                     )
                     

@@ -614,7 +614,7 @@ class ExtractCodeContextTool(BaseModel):
     
     async def execute(self, natural_language_request: str, project_id: str, 
                      connected_codebase_path: str = None, session_id: str = None,
-                     max_files_to_scan: int = 5000, max_iterations: int = 3) -> Dict[str, Any]:
+                     max_iterations: int = 3) -> Dict[str, Any]:
         """
         Extract relevant code context from the codebase based on a natural language request.
         
@@ -623,7 +623,6 @@ class ExtractCodeContextTool(BaseModel):
             project_id: The project identifier
             connected_codebase_path: Path to the codebase (optional, will use project path if not provided)
             session_id: The chat session identifier for persistence
-            max_files_to_scan: Maximum number of files to scan
             max_iterations: Maximum number of LLM iterations for file selection
         
         Returns:
@@ -668,10 +667,11 @@ class ExtractCodeContextTool(BaseModel):
                     "file_path": None
                 }
             
-            # Step 1: Scan the codebase for files and methods
+            # Step 1: Scan the codebase for files and methods (no file limit for comprehensive coverage)
             logger.info(f"Scanning codebase at {connected_codebase_path}")
             try:
-                file_infos = code_parser.scan_codebase(connected_codebase_path, max_files_to_scan)
+                # Remove file limit to ensure we capture all relevant files
+                file_infos = code_parser.scan_codebase(connected_codebase_path, max_files=100000)
                 logger.info(f"Code parser returned {len(file_infos)} files")
             except Exception as e:
                 logger.error(f"Error scanning codebase: {e}")
@@ -738,41 +738,174 @@ class ExtractCodeContextTool(BaseModel):
     
     async def _identify_relevant_files_and_methods(self, file_infos: Dict[str, Any], 
                                                  request: str, max_iterations: int) -> Dict[str, List[str]]:
-        """Use LLM to identify the most relevant files and methods for the request."""
+        """Use LLM to identify the most relevant files and methods for the request using a two-step approach."""
         try:
             from .gemini_service import GeminiService
             gemini_service = GeminiService()
             
-            # Create a detailed summary of available files and methods for the LLM
-            file_summary = self._create_detailed_file_summary_for_llm(file_infos)
+            # Step 1: Get all file names and let LLM identify relevant files
+            logger.info("Step 1: Identifying relevant files from all available files")
+            relevant_files = await self._step1_identify_relevant_files(file_infos, request, gemini_service)
+            
+            if not relevant_files:
+                logger.info("No relevant files identified in Step 1")
+                return {}
+            
+            logger.info(f"Step 1 identified {len(relevant_files)} relevant files")
+            
+            # Step 2: For selected files, extract ALL elements and let LLM find relevant ones
+            logger.info("Step 2: Extracting all elements from relevant files and identifying specific methods/classes")
+            relevant_files_and_methods = await self._step2_identify_relevant_elements(
+                file_infos, relevant_files, request, gemini_service
+            )
+            
+            logger.info(f"Step 2 identified {len(relevant_files_and_methods)} files with specific methods")
+            return relevant_files_and_methods
+                
+        except Exception as e:
+            logger.error(f"Error in two-step file identification: {e}")
+            # Fallback to simple file identification
+            fallback_files = code_parser.get_relevant_files(file_infos, request, max_results=3)
+            return {file_path: [] for file_path in fallback_files}
+    
+    async def _step1_identify_relevant_files(self, file_infos: Dict[str, Any], 
+                                           request: str, gemini_service) -> List[str]:
+        """Step 1: Get all file names and let LLM identify relevant files."""
+        try:
+            # Create a list of all file names with their structure information
+            file_list = []
+            for file_path, file_info in file_infos.items():
+                # Get directory structure info
+                path_parts = file_path.split('/')
+                if len(path_parts) > 1:
+                    directory = '/'.join(path_parts[:-1])
+                else:
+                    directory = "root"
+                
+                file_list.append({
+                    "path": file_path,
+                    "name": file_info.name,
+                    "language": file_info.language,
+                    "directory": directory,
+                    "element_count": len(file_info.elements)
+                })
+            
+            # Create a comprehensive file summary for the LLM
+            file_summary = self._create_comprehensive_file_list_for_llm(file_list)
             
             prompt = f"""
-You are an expert code analyzer. Given a user request and a list of files with their methods/classes in a codebase, 
-identify the most relevant files and specific methods/classes that would help answer the request.
+You are an expert code analyzer. Given a user request and a comprehensive list of all files in a codebase, 
+identify the most relevant files that would help answer the request.
 
 User Request: {request}
 
-Available Files and Methods:
+Available Files (Total: {len(file_list)}):
 {file_summary}
 
 Instructions:
 1. Analyze the user request carefully
 2. Look for files that contain relevant code, functions, classes, or concepts
-3. For each relevant file, identify the specific methods/classes that are most relevant
-4. Consider file names, paths, and the types of code elements they contain
-5. Return a JSON object with file paths as keys and arrays of method/class names as values
-6. Limit to 3-5 most relevant files
-7. If no files seem relevant, return an empty object {{}}
+3. Consider file names, paths, directories, and programming languages
+4. Focus on files that are most likely to contain the information needed
+5. Return a JSON array of file paths that are most relevant
+6. Limit to 5-10 most relevant files
+7. If no files seem relevant, return an empty array []
 
-Return format: {{"file1.py": ["method1", "class1"], "file2.js": ["function1"]}}
+Return format: ["file1.py", "file2.js", "file3.py"]
 """
             
             response = await gemini_service.chat_with_system_prompt("", prompt)
             
+            # Extract JSON array from response
+            try:
+                import re
+                json_match = re.search(r'\[.*\]', response, re.DOTALL)
+                if json_match:
+                    relevant_file_paths = json.loads(json_match.group())
+                else:
+                    # Fallback: try to parse the entire response as JSON
+                    relevant_file_paths = json.loads(response)
+                
+                # Validate that returned paths exist in our file_infos
+                # Handle both full paths and just filenames
+                valid_file_paths = []
+                for path in relevant_file_paths:
+                    # Check if it's a full path
+                    if path in file_infos:
+                        valid_file_paths.append(path)
+                    else:
+                        # Check if it's just a filename by matching against basenames
+                        for full_path in file_infos.keys():
+                            if os.path.basename(full_path) == path:
+                                valid_file_paths.append(full_path)
+                                break
+                
+                logger.info(f"Step 1: LLM identified {len(valid_file_paths)} relevant files out of {len(file_list)} total files")
+                return valid_file_paths
+                
+            except json.JSONDecodeError as e:
+                logger.warning(f"Failed to parse Step 1 LLM response as JSON: {e}")
+                # Fallback to simple file identification
+                fallback_files = code_parser.get_relevant_files(file_infos, request, max_results=5)
+                return fallback_files
+                
+        except Exception as e:
+            logger.error(f"Error in Step 1 file identification: {e}")
+            # Fallback to simple file identification
+            fallback_files = code_parser.get_relevant_files(file_infos, request, max_results=5)
+            return fallback_files
+    
+    async def _step2_identify_relevant_elements(self, file_infos: Dict[str, Any], 
+                                              relevant_files: List[str], 
+                                              request: str, gemini_service) -> Dict[str, List[str]]:
+        """Step 2: For selected files, extract ALL elements and let LLM find relevant ones."""
+        try:
+            # Create detailed element information for the selected files
+            file_elements_summary = self._create_detailed_elements_summary_for_llm(file_infos, relevant_files)
+            logger.info(f"Step 2: Elements summary for LLM:\n{file_elements_summary}")
+            
+            prompt = f"""
+You are an expert code analyzer. Given a user request and detailed information about specific files with ALL their methods, classes, and functions, 
+identify the most relevant files and specific methods/classes that would help answer the request.
+
+User Request: {request}
+
+Selected Files with ALL Elements:
+{file_elements_summary}
+
+CRITICAL INSTRUCTIONS:
+1. Analyze the user request carefully
+2. For each relevant file, identify the specific methods/classes that are most relevant
+3. Consider the purpose and functionality of each element
+4. Focus on elements that directly relate to the user's request
+5. When the request asks about a specific data model (e.g., "Project data model", "Task data model", "User data model"), you MUST include the main class with that exact name
+6. If you see a class named exactly what the user is asking for (e.g., "Project" for "Project data model", "Task" for "Task data model"), include it as the highest priority
+7. IMPORTANT: Look for exact name matches first. If the user asks for "[ModelName] data model" and you see a class named "[ModelName]", you MUST include it.
+8. URGENT: If the user asks about any data model and you see a class with the exact name in the elements list, you MUST include that class in your response.
+9. Return a JSON object with file paths as keys and arrays of method/class names as values
+10. Limit to 3-5 most relevant files with their most relevant elements
+11. If no elements seem relevant, return an empty object {{}}
+
+Please also provide your reasoning for why you selected or did not select specific elements.
+
+Return format: {{"file1.py": ["method1", "class1"], "file2.js": ["function1"]}}
+
+Reasoning: [Explain your selection process]
+"""
+            
+            response = await gemini_service.chat_with_system_prompt("", prompt)
+            
+            logger.info(f"Step 2: Raw LLM response: {response}")
+            
+            # Extract reasoning if present
+            import re
+            reasoning_match = re.search(r'Reasoning:\s*(.*?)(?=\n\n|$)', response, re.DOTALL)
+            if reasoning_match:
+                reasoning = reasoning_match.group(1).strip()
+                logger.info(f"Step 2: LLM Reasoning: {reasoning}")
+            
             # Extract JSON object from response
             try:
-                # Try to find JSON object in the response
-                import re
                 json_match = re.search(r'\{.*\}', response, re.DOTALL)
                 if json_match:
                     file_methods_map = json.loads(json_match.group())
@@ -780,67 +913,93 @@ Return format: {{"file1.py": ["method1", "class1"], "file2.js": ["function1"]}}
                     # Fallback: try to parse the entire response as JSON
                     file_methods_map = json.loads(response)
                 
-                # Validate that returned paths exist in our file_infos
+                # Validate that returned paths exist and methods are valid
                 valid_file_methods = {}
                 for file_path, methods in file_methods_map.items():
+                    # Handle both full paths and just filenames
+                    actual_file_path = None
                     if file_path in file_infos:
-                        # Validate that the methods exist in the file
-                        file_info = file_infos[file_path]
+                        actual_file_path = file_path
+                    else:
+                        # Check if it's just a filename by matching against basenames
+                        for full_path in file_infos.keys():
+                            if os.path.basename(full_path) == file_path:
+                                actual_file_path = full_path
+                                break
+                    
+                    if actual_file_path:
+                        # Validate that the methods exist in the file's elements
+                        file_info = file_infos[actual_file_path]
                         valid_methods = []
                         for method in methods:
+                            logger.info(f"Step 2: Looking for method '{method}' in file {actual_file_path}")
                             # Check if method exists in the file's elements
                             for element in file_info.elements:
-                                if element.name.lower() == method.lower() or method.lower() in element.name.lower():
+                                logger.info(f"Step 2: Checking element '{element.name}' against method '{method}'")
+                                if element.name.lower() == method.lower():
+                                    logger.info(f"Step 2: Found match! Adding '{element.name}' for method '{method}'")
                                     valid_methods.append(element.name)
                                     break
                         if valid_methods:
-                            valid_file_methods[file_path] = valid_methods
+                            valid_file_methods[actual_file_path] = valid_methods
                 
-                logger.info(f"LLM identified {len(valid_file_methods)} relevant files with methods")
+                logger.info(f"Step 2: LLM identified {len(valid_file_methods)} files with specific methods")
+                logger.info(f"Step 2: Valid file methods: {valid_file_methods}")
                 return valid_file_methods
                 
             except json.JSONDecodeError as e:
-                logger.warning(f"Failed to parse LLM response as JSON: {e}")
-                # Fallback to simple file identification
-                fallback_files = code_parser.get_relevant_files(file_infos, request, max_results=3)
-                return {file_path: [] for file_path in fallback_files}
+                logger.warning(f"Failed to parse Step 2 LLM response as JSON: {e}")
+                # Fallback: return all files with empty method lists
+                return {file_path: [] for file_path in relevant_files}
                 
         except Exception as e:
-            logger.error(f"Error identifying relevant files and methods: {e}")
-            # Fallback to simple file identification
-            fallback_files = code_parser.get_relevant_files(file_infos, request, max_results=3)
-            return {file_path: [] for file_path in fallback_files}
+            logger.error(f"Error in Step 2 element identification: {e}")
+            # Fallback: return all files with empty method lists
+            return {file_path: [] for file_path in relevant_files}
     
-    def _create_file_summary_for_llm(self, file_infos: Dict[str, Any]) -> str:
-        """Create a summary of files for the LLM to analyze."""
+    def _create_comprehensive_file_list_for_llm(self, file_list: List[Dict[str, Any]]) -> str:
+        """Create a comprehensive list of all files for Step 1 LLM analysis."""
         summary_lines = []
         
-        for file_path, file_info in file_infos.items():
-            elements_summary = []
-            for element in file_info.elements[:5]:  # Limit to first 5 elements
-                elements_summary.append(f"{element.type}:{element.name}")
-            
-            elements_str = ", ".join(elements_summary) if elements_summary else "no elements"
-            summary_lines.append(f"- {file_path} ({file_info.language}): {elements_str}")
+        # Group files by directory for better organization
+        files_by_directory = {}
+        for file_info in file_list:
+            directory = file_info["directory"]
+            if directory not in files_by_directory:
+                files_by_directory[directory] = []
+            files_by_directory[directory].append(file_info)
         
-        return "\n".join(summary_lines[:50])  # Limit to first 50 files
+        # Create organized summary
+        for directory, files in files_by_directory.items():
+            summary_lines.append(f"📁 {directory}/")
+            for file_info in files:
+                summary_lines.append(f"  📄 {file_info['name']} ({file_info['language']}) - {file_info['element_count']} elements")
+            summary_lines.append("")  # Empty line for readability
+        
+        return "\n".join(summary_lines)
     
-    def _create_detailed_file_summary_for_llm(self, file_infos: Dict[str, Any]) -> str:
-        """Create a detailed summary of files and their methods for the LLM to analyze."""
+    def _create_detailed_elements_summary_for_llm(self, file_infos: Dict[str, Any], 
+                                                relevant_files: List[str]) -> str:
+        """Create a detailed summary of ALL elements from selected files for Step 2 LLM analysis."""
         summary_lines = []
         
-        for file_path, file_info in file_infos.items():
+        for file_path in relevant_files:
+            if file_path not in file_infos:
+                continue
+                
+            file_info = file_infos[file_path]
             summary_lines.append(f"📁 {file_path} ({file_info.language}):")
             
             if file_info.elements:
-                for element in file_info.elements[:10]:  # Limit to first 10 elements
+                # Include ALL elements without any limits
+                for element in file_info.elements:
                     summary_lines.append(f"  • {element.type}: {element.name}")
             else:
                 summary_lines.append("  • no elements")
             
             summary_lines.append("")  # Empty line for readability
         
-        return "\n".join(summary_lines[:100])  # Limit to first 100 lines
+        return "\n".join(summary_lines)
     
     async def _extract_code_context(self, file_methods_map: Dict[str, List[str]], 
                                   request: str, max_iterations: int) -> Dict[str, Any]:
@@ -940,6 +1099,9 @@ If the content is not relevant, set relevance_score to 0.
                     
                     relevance_score = analysis.get("relevance_score", 0)
                     
+                    logger.info(f"Chunk {i+1} relevance score: {relevance_score}")
+                    logger.info(f"Chunk {i+1} analysis: {analysis}")
+                    
                     if relevance_score > 0:
                         accumulated_context.append(analysis.get("context", ""))
                         accumulated_code.append(analysis.get("relevant_code", ""))
@@ -987,23 +1149,52 @@ If the content is not relevant, set relevance_score to 0.
             }
     
     def _extract_methods_from_file(self, file_content: str, target_methods: List[str], file_path: str) -> Optional[str]:
-        """Extract specific methods from a file based on target method names."""
+        """Extract specific methods from a file based on target method names, with fallback to related code."""
         try:
             # Get file info to find method locations
             file_info = code_parser.extract_elements_from_file(file_path, code_parser.detect_language(file_path))
             
             extracted_parts = []
+            found_exact_matches = set()
             
+            # For each target method, always include related code for better context
             for target_method in target_methods:
+                # First, try to find exact matches
+                exact_found = False
                 for element in file_info:
-                    if (element.name.lower() == target_method.lower() or 
-                        target_method.lower() in element.name.lower()):
+                    if element.name.lower() == target_method.lower():
                         # Extract the method content
                         method_content = self._extract_element_content(file_content, element)
                         if method_content:
                             # Include file path in the method header to distinguish from other files
                             extracted_parts.append(f"// {element.type}: {element.name} (from {file_path})\n{method_content}")
+                            found_exact_matches.add(target_method.lower())
+                            exact_found = True
                         break
+                
+                # Always look for related elements to provide better context
+                related_elements = []
+                for element in file_info:
+                    # Check if element name contains the target method name (case-insensitive)
+                    if (target_method.lower() in element.name.lower() or 
+                        element.name.lower() in target_method.lower()):
+                        method_content = self._extract_element_content(file_content, element)
+                        if method_content:
+                            related_elements.append(f"// {element.type}: {element.name} (related to {target_method}) (from {file_path})\n{method_content}")
+                
+                # If we found related elements, include them
+                if related_elements:
+                    extracted_parts.extend(related_elements)
+                
+                # Also try to extract broader context as additional information
+                broader_content = self._extract_broader_context(file_content, target_method, file_info)
+                if broader_content:
+                    extracted_parts.append(f"// Broader context for {target_method} (from {file_path})\n{broader_content}")
+                
+                # Debug: log what we extracted
+                logger.info(f"Extracted {len(related_elements)} related elements and broader context for {target_method}")
+            
+
             
             if extracted_parts:
                 return "\n\n".join(extracted_parts)
@@ -1015,30 +1206,116 @@ If the content is not relevant, set relevance_score to 0.
             return None
     
     def _extract_element_content(self, file_content: str, element) -> Optional[str]:
-        """Extract the content of a specific code element (method, class, etc.)."""
+        """Extract the content of all relevant code elements (methods, classes, etc.) throughout the file."""
         try:
             # This is a simplified extraction - in a real implementation, you'd want
             # to use proper AST parsing to extract the exact method boundaries
             lines = file_content.split('\n')
             
-            # Find the line that contains the element definition
-            element_start = None
+            # Find ALL lines that contain the element definition throughout the file
+            element_starts = []
             for i, line in enumerate(lines):
-                if element.name in line and ('def ' in line or 'class ' in line or 'function ' in line):
-                    element_start = i
-                    break
+                # Look for exact class definition match - must start with "class " followed by exact name
+                if (element.type == 'class' and 
+                    line.strip().startswith(f"class {element.name}") and 
+                    ('(' in line or ':' in line)):
+                    element_starts.append(i)
+                # Look for function/method definition match
+                elif (element.type in ['function', 'method'] and 
+                      f"def {element.name}" in line):
+                    element_starts.append(i)
             
-            if element_start is None:
+            # If we didn't find it with exact matching, try a more flexible approach for classes
+            if not element_starts and element.type == 'class':
+                for i, line in enumerate(lines):
+                    # Look for class definition with the exact name (case-insensitive)
+                    if (f"class {element.name}" in line and 
+                        ('(' in line or ':' in line)):
+                        element_starts.append(i)
+            
+            # Debug: If we still haven't found it, let's search more broadly
+            if not element_starts and element.type == 'class':
+                logger.info(f"Debug: Could not find exact match for class {element.name}, searching more broadly...")
+                for i, line in enumerate(lines):
+                    # Look for any line containing the class name
+                    if element.name in line and 'class' in line:
+                        logger.info(f"Debug: Found potential match at line {i+1}: {line.strip()}")
+                        element_starts.append(i)
+            
+            if not element_starts:
                 return None
             
-            # Extract a reasonable chunk around the element (simplified approach)
-            start_line = max(0, element_start - 2)  # Include 2 lines before
-            end_line = min(len(lines), element_start + 20)  # Include up to 20 lines after
+            # Extract content around ALL found elements
+            extracted_parts = []
+            for element_start in element_starts:
+                # Extract a reasonable chunk around each element (simplified approach)
+                start_line = max(0, element_start - 2)  # Include 2 lines before
+                end_line = min(len(lines), element_start + 20)  # Include up to 20 lines after
+                
+                extracted_content = '\n'.join(lines[start_line:end_line])
+                extracted_parts.append(f"// Found at line {element_start + 1}\n{extracted_content}")
             
-            return '\n'.join(lines[start_line:end_line])
+            # Combine all extracted parts
+            return '\n\n'.join(extracted_parts)
             
         except Exception as e:
             logger.warning(f"Error extracting element content: {e}")
+            return None
+    
+    def _extract_broader_context(self, file_content: str, target_name: str, file_info) -> Optional[str]:
+        """Extract a broader context around where the target might be located."""
+        try:
+            lines = file_content.split('\n')
+            
+            # Look for any line that contains the target name
+            target_lines = []
+            for i, line in enumerate(lines):
+                if target_name.lower() in line.lower():
+                    target_lines.append(i)
+                    logger.info(f"Found '{target_name}' at line {i+1}: {line.strip()}")
+            
+            # Filter out lines that contain the target name as part of another word
+            # (e.g., "Task" in "TaskStatus" should not match when looking for "Task")
+            filtered_target_lines = []
+            for line_num in target_lines:
+                line_content = lines[line_num].strip()
+                # Check if the line contains the exact target name as a standalone word
+                # or as part of a class definition
+                if (f"class {target_name}" in line_content or 
+                    f"def {target_name}" in line_content or
+                    f" {target_name}:" in line_content or
+                    f" {target_name}(" in line_content or
+                    f" {target_name}[" in line_content or
+                    f" {target_name}=" in line_content):
+                    filtered_target_lines.append(line_num)
+            
+            target_lines = filtered_target_lines
+            
+            if not target_lines:
+                return None
+            
+            # Find the most relevant occurrence (prefer class definitions)
+            best_line = target_lines[0]  # Default to first occurrence
+            for line_num in target_lines:
+                line_content = lines[line_num].strip()
+                # Prefer lines that start with "class " followed by the exact target name
+                if (line_content.startswith(f"class {target_name}") and 
+                    ('(' in line_content or ':' in line_content)):
+                    best_line = line_num
+                    logger.info(f"Found best match for '{target_name}' at line {line_num+1}: {line_content}")
+                    break
+            
+            # Extract a broader section around the best occurrence
+            start_line = max(0, best_line - 10)  # Include more context before
+            end_line = min(len(lines), best_line + 50)  # Include more context after
+            
+            extracted_content = '\n'.join(lines[start_line:end_line])
+            logger.info(f"Extracted broader context for {target_name}: {len(extracted_content)} characters")
+            logger.info(f"First 500 chars of broader context: {extracted_content[:500]}")
+            return extracted_content
+            
+        except Exception as e:
+            logger.warning(f"Error extracting broader context: {e}")
             return None
     
     def _split_content_into_chunks(self, content: str, max_chunk_size: int) -> List[str]:
