@@ -66,7 +66,8 @@ async def _perform_session_end_background_tasks(pid: str, sid: str) -> None:
             "name": proj.name,
             "description": proj.description,
             "tech_stack": proj.tech_stack,
-            "project_detail": file_service.load_project_detail(pid)
+            "project_detail": file_service.load_project_detail(pid),
+            "codebase_path": proj.codebase_path
         }
 
         # Perform intelligent memory consolidation
@@ -292,7 +293,8 @@ async def chat(project_id: str, request: ChatRequest):
             "name": project.name,
             "description": project.description,
             "tech_stack": project.tech_stack,
-            "project_detail": file_service.load_project_detail(project_id)
+            "project_detail": file_service.load_project_detail(project_id),
+            "codebase_path": project.codebase_path
         }
 
         # Get or create current session
@@ -335,7 +337,8 @@ async def chat(project_id: str, request: ChatRequest):
             type=result.get("type", "chat"),
             intent_analysis=result.get("intent_analysis"),
             memory_updated=result.get("memory_updated", False),
-            task_context=None
+            task_context=None,
+            code_context=result.get("code_context")
         )
 
     except HTTPException:
@@ -380,7 +383,8 @@ async def chat_with_progress(project_id: str, request: ChatRequest):
                 "name": project.name,
                 "description": project.description,
                 "tech_stack": project.tech_stack,
-                "project_detail": file_service.load_project_detail(project_id)
+                "project_detail": file_service.load_project_detail(project_id),
+                "codebase_path": project.codebase_path
             }
             
             # 3. Get or create current session
@@ -526,7 +530,8 @@ async def chat_stream(project_id: str, request: ChatRequest):
                 "name": project.name,
                 "description": project.description,
                 "tech_stack": project.tech_stack,
-                "project_detail": file_service.load_project_detail(project_id)
+                "project_detail": file_service.load_project_detail(project_id),
+                "codebase_path": project.codebase_path
             }
             
             current_session = file_service.get_latest_session(project_id)
@@ -1073,7 +1078,8 @@ async def complete_session(project_id: str, session_id: str):
             "name": project.name,
             "description": project.description,
             "tech_stack": project.tech_stack,
-            "project_detail": file_service.load_project_detail(project_id)
+            "project_detail": file_service.load_project_detail(project_id),
+            "codebase_path": project.codebase_path
         }
         
         # 4. Perform session completion with unified agent
