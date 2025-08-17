@@ -491,6 +491,7 @@ class ChatResponse(BaseModel):
     intent_analysis: Optional[Dict[str, Any]] = Field(default=None, description="Intent analysis from unified agent")
     memory_updated: Optional[bool] = Field(default=False, description="Whether memory was updated")
     task_context: Optional[Task] = Field(default=None, description="Task used as context for this response")
+    code_context: Optional[Dict[str, Any]] = Field(default=None, description="Code context extracted for this response")
 
     class Config:
         json_schema_extra = {

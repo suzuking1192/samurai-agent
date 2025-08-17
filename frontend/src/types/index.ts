@@ -231,6 +231,7 @@ export interface Project {
   tech_stack: string
   created_at: string
   updated_at?: string
+  codebase_path?: string
 }
 
 export interface TaskWarning {

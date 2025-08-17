@@ -2,18 +2,23 @@ import uuid
 import json
 import logging
 import asyncio
+import os
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from pydantic import BaseModel, Field
 
 try:
     from .file_service import FileService
+    from .code_parser import code_parser
+    from .code_context_storage import code_context_storage
     from models import Task, Memory, Project
 except ImportError:
     import sys
     import os
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from file_service import FileService
+    from code_parser import code_parser
+    from code_context_storage import code_context_storage
     from models import Task, Memory, Project
 
 logger = logging.getLogger(__name__)
@@ -603,6 +608,460 @@ class DeleteMemoryTool(BaseModel):
             }
 
 
+class ExtractCodeContextTool(BaseModel):
+    name: str = "extract_code_context"
+    description: str = "Extract relevant code context from the local codebase based on a natural language request"
+    
+    async def execute(self, natural_language_request: str, project_id: str, 
+                     connected_codebase_path: str = None, session_id: str = None,
+                     max_files_to_scan: int = 5000, max_iterations: int = 3) -> Dict[str, Any]:
+        """
+        Extract relevant code context from the codebase based on a natural language request.
+        
+        Args:
+            natural_language_request: The user's request in natural language
+            project_id: The project identifier
+            connected_codebase_path: Path to the codebase (optional, will use project path if not provided)
+            session_id: The chat session identifier for persistence
+            max_files_to_scan: Maximum number of files to scan
+            max_iterations: Maximum number of LLM iterations for file selection
+        
+        Returns:
+            Dictionary containing extracted code context
+        """
+        try:
+            # Determine codebase path
+            if not connected_codebase_path:
+                # Try to get the project's codebase_path from the database
+                try:
+                    from .file_service import file_service
+                    project = file_service.get_project_by_id(project_id)
+                    if project and project.codebase_path:
+                        connected_codebase_path = project.codebase_path
+                    else:
+                        # Fallback to project ID if no codebase_path is set
+                        connected_codebase_path = f"../{project_id}"
+                except Exception as e:
+                    logger.warning(f"Failed to get project codebase_path: {e}")
+                    # Fallback to project ID
+                    connected_codebase_path = f"../{project_id}"
+            
+            # Validate codebase path exists
+            if not os.path.exists(connected_codebase_path):
+                return {
+                    "success": False,
+                    "message": f"❌ Codebase path not found: {connected_codebase_path}",
+                    "context": None,
+                    "relevant_code": None,
+                    "file_path": None
+                }
+            
+            # Step 1: Scan the codebase for files and methods
+            logger.info(f"Scanning codebase at {connected_codebase_path}")
+            try:
+                file_infos = code_parser.scan_codebase(connected_codebase_path, max_files_to_scan)
+                logger.info(f"Code parser returned {len(file_infos)} files")
+            except Exception as e:
+                logger.error(f"Error scanning codebase: {e}")
+                return {
+                    "success": False,
+                    "message": f"❌ Error scanning codebase: {str(e)}",
+                    "context": None,
+                    "relevant_code": None,
+                    "file_path": None
+                }
+            
+            if not file_infos:
+                return {
+                    "success": False,
+                    "message": "❌ No code files found in the specified codebase",
+                    "context": None,
+                    "relevant_code": None,
+                    "file_path": None
+                }
+            
+            # Step 2: Use LLM to identify relevant files and methods
+            logger.info(f"Identifying relevant files for request: {natural_language_request}")
+            relevant_files_and_methods = await self._identify_relevant_files_and_methods(
+                file_infos, natural_language_request, max_iterations
+            )
+            logger.info(f"LLM identified {len(relevant_files_and_methods)} relevant files")
+            
+            if not relevant_files_and_methods:
+                return {
+                    "success": False,
+                    "message": "❌ No relevant files found for the request",
+                    "context": None,
+                    "relevant_code": None,
+                    "file_path": None
+                }
+            
+            # Step 3: Extract and analyze code from relevant files and methods
+            extracted_context = await self._extract_code_context(
+                relevant_files_and_methods, natural_language_request, max_iterations
+            )
+            
+            # Step 4: Save context if session_id is provided
+            if session_id and extracted_context.get("success"):
+                logger.info(f"Saving code context for project {project_id}, session {session_id}")
+                save_success = code_context_storage.save_code_context(
+                    project_id, session_id, extracted_context
+                )
+                logger.info(f"Save result: {save_success}")
+            else:
+                logger.info(f"Not saving code context: session_id={session_id}, success={extracted_context.get('success')}")
+            
+            return extracted_context
+            
+        except Exception as e:
+            logger.error(f"Error extracting code context: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "message": f"❌ Failed to extract code context: {str(e)}",
+                "context": None,
+                "relevant_code": None,
+                "file_path": None
+            }
+    
+    async def _identify_relevant_files_and_methods(self, file_infos: Dict[str, Any], 
+                                                 request: str, max_iterations: int) -> Dict[str, List[str]]:
+        """Use LLM to identify the most relevant files and methods for the request."""
+        try:
+            from .gemini_service import GeminiService
+            gemini_service = GeminiService()
+            
+            # Create a detailed summary of available files and methods for the LLM
+            file_summary = self._create_detailed_file_summary_for_llm(file_infos)
+            
+            prompt = f"""
+You are an expert code analyzer. Given a user request and a list of files with their methods/classes in a codebase, 
+identify the most relevant files and specific methods/classes that would help answer the request.
+
+User Request: {request}
+
+Available Files and Methods:
+{file_summary}
+
+Instructions:
+1. Analyze the user request carefully
+2. Look for files that contain relevant code, functions, classes, or concepts
+3. For each relevant file, identify the specific methods/classes that are most relevant
+4. Consider file names, paths, and the types of code elements they contain
+5. Return a JSON object with file paths as keys and arrays of method/class names as values
+6. Limit to 3-5 most relevant files
+7. If no files seem relevant, return an empty object {{}}
+
+Return format: {{"file1.py": ["method1", "class1"], "file2.js": ["function1"]}}
+"""
+            
+            response = await gemini_service.chat_with_system_prompt("", prompt)
+            
+            # Extract JSON object from response
+            try:
+                # Try to find JSON object in the response
+                import re
+                json_match = re.search(r'\{.*\}', response, re.DOTALL)
+                if json_match:
+                    file_methods_map = json.loads(json_match.group())
+                else:
+                    # Fallback: try to parse the entire response as JSON
+                    file_methods_map = json.loads(response)
+                
+                # Validate that returned paths exist in our file_infos
+                valid_file_methods = {}
+                for file_path, methods in file_methods_map.items():
+                    if file_path in file_infos:
+                        # Validate that the methods exist in the file
+                        file_info = file_infos[file_path]
+                        valid_methods = []
+                        for method in methods:
+                            # Check if method exists in the file's elements
+                            for element in file_info.elements:
+                                if element.name.lower() == method.lower() or method.lower() in element.name.lower():
+                                    valid_methods.append(element.name)
+                                    break
+                        if valid_methods:
+                            valid_file_methods[file_path] = valid_methods
+                
+                logger.info(f"LLM identified {len(valid_file_methods)} relevant files with methods")
+                return valid_file_methods
+                
+            except json.JSONDecodeError as e:
+                logger.warning(f"Failed to parse LLM response as JSON: {e}")
+                # Fallback to simple file identification
+                fallback_files = code_parser.get_relevant_files(file_infos, request, max_results=3)
+                return {file_path: [] for file_path in fallback_files}
+                
+        except Exception as e:
+            logger.error(f"Error identifying relevant files and methods: {e}")
+            # Fallback to simple file identification
+            fallback_files = code_parser.get_relevant_files(file_infos, request, max_results=3)
+            return {file_path: [] for file_path in fallback_files}
+    
+    def _create_file_summary_for_llm(self, file_infos: Dict[str, Any]) -> str:
+        """Create a summary of files for the LLM to analyze."""
+        summary_lines = []
+        
+        for file_path, file_info in file_infos.items():
+            elements_summary = []
+            for element in file_info.elements[:5]:  # Limit to first 5 elements
+                elements_summary.append(f"{element.type}:{element.name}")
+            
+            elements_str = ", ".join(elements_summary) if elements_summary else "no elements"
+            summary_lines.append(f"- {file_path} ({file_info.language}): {elements_str}")
+        
+        return "\n".join(summary_lines[:50])  # Limit to first 50 files
+    
+    def _create_detailed_file_summary_for_llm(self, file_infos: Dict[str, Any]) -> str:
+        """Create a detailed summary of files and their methods for the LLM to analyze."""
+        summary_lines = []
+        
+        for file_path, file_info in file_infos.items():
+            summary_lines.append(f"📁 {file_path} ({file_info.language}):")
+            
+            if file_info.elements:
+                for element in file_info.elements[:10]:  # Limit to first 10 elements
+                    summary_lines.append(f"  • {element.type}: {element.name}")
+            else:
+                summary_lines.append("  • no elements")
+            
+            summary_lines.append("")  # Empty line for readability
+        
+        return "\n".join(summary_lines[:100])  # Limit to first 100 lines
+    
+    async def _extract_code_context(self, file_methods_map: Dict[str, List[str]], 
+                                  request: str, max_iterations: int) -> Dict[str, Any]:
+        """Extract and analyze code from the identified relevant files and methods using cost-effective approach."""
+        try:
+            from .gemini_service import GeminiService
+            gemini_service = GeminiService()
+            
+            # Step 1: Collect all relevant code content
+            all_code_content = []
+            
+            for file_path, target_methods in file_methods_map.items():
+                try:
+                    # Read file content
+                    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                        file_content = f.read()
+                    
+                    # If specific methods are targeted, extract only those
+                    if target_methods:
+                        extracted_content = self._extract_methods_from_file(file_content, target_methods, file_path)
+                        if extracted_content:
+                            # Add file header to distinguish content from different files
+                            all_code_content.append(f"=== FILE: {file_path} ===\n{extracted_content}")
+                        else:
+                            # If method extraction failed, use full file content
+                            if len(file_content) > 8000:
+                                file_content = file_content[:8000] + "\n... (truncated)"
+                            all_code_content.append(f"=== FILE: {file_path} ===\n{file_content}")
+                    else:
+                        # No specific methods, use full file content
+                        if len(file_content) > 8000:
+                            file_content = file_content[:8000] + "\n... (truncated)"
+                        all_code_content.append(f"=== FILE: {file_path} ===\n{file_content}")
+                
+                except Exception as e:
+                    logger.warning(f"Error reading file {file_path}: {e}")
+                    continue
+            
+            if not all_code_content:
+                return {
+                    "success": False,
+                    "message": "❌ No code content could be extracted from the identified files",
+                    "context": None,
+                    "relevant_code": None,
+                    "file_path": None
+                }
+            
+            # Step 2: Combine all code content
+            combined_content = "\n\n".join(all_code_content)
+            
+            # Step 3: Process in chunks if content is too long
+            max_chunk_size = 12000  # Characters per chunk
+            chunks = self._split_content_into_chunks(combined_content, max_chunk_size)
+            
+            # Step 4: Analyze each chunk and accumulate results
+            accumulated_context = []
+            accumulated_code = []
+            best_file_path = None
+            total_relevance_score = 0
+            
+            for i, chunk in enumerate(chunks):
+                prompt = f"""
+You are an expert code analyzer. Given a user request and code content from multiple files, extract the most relevant 
+information that would help answer the request.
+
+User Request: {request}
+
+Code Content (Chunk {i+1}/{len(chunks)}):
+{chunk}
+
+Instructions:
+1. Analyze the code content in relation to the user request
+2. Extract the most relevant code snippets and context
+3. Provide a concise summary of how this code relates to the request
+4. If the code is not relevant to the request, indicate this clearly
+5. Focus on the most important and relevant parts
+
+Return a JSON object with:
+- "relevance_score": 0-10 (how relevant this chunk is to the request)
+- "context": A brief summary of the relevant code and its purpose
+- "relevant_code": The most relevant code snippets from this chunk (limit to 1000 characters)
+- "file_path": The most relevant file path from this chunk
+
+If the content is not relevant, set relevance_score to 0.
+"""
+                
+                response = await gemini_service.chat_with_system_prompt("", prompt)
+                
+                # Extract JSON from response
+                try:
+                    import re
+                    json_match = re.search(r'\{.*\}', response, re.DOTALL)
+                    if json_match:
+                        analysis = json.loads(json_match.group())
+                    else:
+                        analysis = json.loads(response)
+                    
+                    relevance_score = analysis.get("relevance_score", 0)
+                    
+                    if relevance_score > 0:
+                        accumulated_context.append(analysis.get("context", ""))
+                        accumulated_code.append(analysis.get("relevant_code", ""))
+                        total_relevance_score += relevance_score
+                        
+                        # Keep track of the best file path
+                        if not best_file_path:
+                            best_file_path = analysis.get("file_path")
+                
+                except json.JSONDecodeError as e:
+                    logger.warning(f"Failed to parse analysis for chunk {i+1}: {e}")
+                    continue
+            
+            # Step 5: Combine results
+            if accumulated_context and accumulated_code:
+                final_context = " ".join(accumulated_context)
+                final_code = "\n\n".join(accumulated_code)
+                avg_relevance_score = total_relevance_score / len(chunks) if chunks else 0
+                
+                return {
+                    "success": True,
+                    "context": final_context,
+                    "relevant_code": final_code,
+                    "file_path": best_file_path,
+                    "relevance_score": avg_relevance_score
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": "❌ No sufficiently relevant code found for the request",
+                    "context": None,
+                    "relevant_code": None,
+                    "file_path": None
+                }
+                
+        except Exception as e:
+            logger.error(f"Error extracting code context: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "message": f"❌ Failed to extract code context: {str(e)}",
+                "context": None,
+                "relevant_code": None,
+                "file_path": None
+            }
+    
+    def _extract_methods_from_file(self, file_content: str, target_methods: List[str], file_path: str) -> Optional[str]:
+        """Extract specific methods from a file based on target method names."""
+        try:
+            # Get file info to find method locations
+            file_info = code_parser.extract_elements_from_file(file_path, code_parser.detect_language(file_path))
+            
+            extracted_parts = []
+            
+            for target_method in target_methods:
+                for element in file_info:
+                    if (element.name.lower() == target_method.lower() or 
+                        target_method.lower() in element.name.lower()):
+                        # Extract the method content
+                        method_content = self._extract_element_content(file_content, element)
+                        if method_content:
+                            # Include file path in the method header to distinguish from other files
+                            extracted_parts.append(f"// {element.type}: {element.name} (from {file_path})\n{method_content}")
+                        break
+            
+            if extracted_parts:
+                return "\n\n".join(extracted_parts)
+            else:
+                return None
+                
+        except Exception as e:
+            logger.warning(f"Error extracting methods from {file_path}: {e}")
+            return None
+    
+    def _extract_element_content(self, file_content: str, element) -> Optional[str]:
+        """Extract the content of a specific code element (method, class, etc.)."""
+        try:
+            # This is a simplified extraction - in a real implementation, you'd want
+            # to use proper AST parsing to extract the exact method boundaries
+            lines = file_content.split('\n')
+            
+            # Find the line that contains the element definition
+            element_start = None
+            for i, line in enumerate(lines):
+                if element.name in line and ('def ' in line or 'class ' in line or 'function ' in line):
+                    element_start = i
+                    break
+            
+            if element_start is None:
+                return None
+            
+            # Extract a reasonable chunk around the element (simplified approach)
+            start_line = max(0, element_start - 2)  # Include 2 lines before
+            end_line = min(len(lines), element_start + 20)  # Include up to 20 lines after
+            
+            return '\n'.join(lines[start_line:end_line])
+            
+        except Exception as e:
+            logger.warning(f"Error extracting element content: {e}")
+            return None
+    
+    def _split_content_into_chunks(self, content: str, max_chunk_size: int) -> List[str]:
+        """Split content into chunks while preserving file boundaries."""
+        if len(content) <= max_chunk_size:
+            return [content]
+        
+        chunks = []
+        current_chunk = ""
+        
+        # Split by file boundaries first
+        file_sections = content.split("=== FILE:")
+        
+        for section in file_sections:
+            if not section.strip():
+                continue
+            
+            # If adding this section would exceed chunk size, start a new chunk
+            if len(current_chunk) + len(section) > max_chunk_size and current_chunk:
+                chunks.append(current_chunk.strip())
+                current_chunk = ""
+            
+            # Add the section to current chunk
+            if current_chunk:
+                current_chunk += "\n\n=== FILE:" + section
+            else:
+                current_chunk = "=== FILE:" + section
+        
+        # Add the last chunk if it has content
+        if current_chunk.strip():
+            chunks.append(current_chunk.strip())
+        
+        return chunks
+
+
 class AgentToolRegistry:
     """
     Registry of all available tools for the agent
@@ -622,6 +1081,9 @@ class AgentToolRegistry:
             "update_memory": UpdateMemoryTool(),
             "search_memories": SearchMemoriesTool(),
             "delete_memory": DeleteMemoryTool(),
+            
+            # Code context tools
+            "extract_code_context": ExtractCodeContextTool(),
         }
     
     def get_tool_descriptions(self) -> str:
