@@ -4,8 +4,8 @@ import asyncio
 import sys
 import os
 
-# Add the current directory to the Python path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Add the parent directory to the Python path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from services.agent_tools import ExtractCodeContextTool
 
@@ -18,7 +18,7 @@ async def test_project_data_model():
     
     # Test request
     request = "What are the data fields of the Project data model?"
-    codebase_path = "/Users/yutosuzuki/code/samurai-agent/backend"
+    codebase_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     
     print(f"Request: {request}")
     print(f"Codebase path: {codebase_path}")
