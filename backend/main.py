@@ -255,7 +255,8 @@ async def create_project(request: ProjectCreateRequest):
             name=request.name,
             description=request.description,
             tech_stack=request.tech_stack,
-            created_at=datetime.now()
+            created_at=datetime.now(),
+            codebase_path=request.codebase_path
         )
         
         file_service.save_project(project)
