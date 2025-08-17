@@ -438,17 +438,20 @@ class ProjectCreateRequest(BaseModel):
         name: Project name
         description: Project description
         tech_stack: Technology stack
+        codebase_path: Optional path to the local codebase folder
     """
     name: str = Field(..., min_length=1, max_length=100, description="Project name")
     description: str = Field(..., max_length=500, description="Project description")
     tech_stack: str = Field(..., max_length=200, description="Technology stack")
+    codebase_path: Optional[str] = Field(None, description="Optional path to the local codebase folder")
 
     class Config:
         json_schema_extra = {
             "example": {
                 "name": "E-commerce Platform",
                 "description": "A modern e-commerce platform with React frontend",
-                "tech_stack": "React, Node.js, PostgreSQL"
+                "tech_stack": "React, Node.js, PostgreSQL",
+                "codebase_path": "/path/to/codebase"
             }
         }
 

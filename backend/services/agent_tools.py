@@ -639,12 +639,24 @@ class ExtractCodeContextTool(BaseModel):
                     if project and project.codebase_path:
                         connected_codebase_path = project.codebase_path
                     else:
-                        # Fallback to project ID if no codebase_path is set
-                        connected_codebase_path = f"../{project_id}"
+                        # No codebase path set for this project - return error
+                        return {
+                            "success": False,
+                            "message": f"❌ No codebase path configured for project {project_id}. Please connect a codebase first.",
+                            "context": None,
+                            "relevant_code": None,
+                            "file_path": None
+                        }
                 except Exception as e:
                     logger.warning(f"Failed to get project codebase_path: {e}")
-                    # Fallback to project ID
-                    connected_codebase_path = f"../{project_id}"
+                    # Return error if we can't determine the codebase path
+                    return {
+                        "success": False,
+                        "message": f"❌ Failed to determine codebase path for project {project_id}: {str(e)}",
+                        "context": None,
+                        "relevant_code": None,
+                        "file_path": None
+                    }
             
             # Validate codebase path exists
             if not os.path.exists(connected_codebase_path):

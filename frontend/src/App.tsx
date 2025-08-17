@@ -170,7 +170,7 @@ function App() {
             className="button"
             title="Add Project Detail"
           >
-            📄 Add Project Detail
+            📄 Add Project Detail and Codebase
           </button>
           <button 
             onClick={toggleMemory}

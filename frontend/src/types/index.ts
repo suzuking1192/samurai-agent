@@ -297,6 +297,7 @@ export interface ProjectCreate {
   name: string
   description: string
   tech_stack: string
+  codebase_path?: string
 }
 
 export interface TaskCreate {

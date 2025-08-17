@@ -198,5 +198,13 @@
     "tech_stack": "Python, FastAPI, React",
     "created_at": "2025-08-17 12:54:11.875524",
     "codebase_path": "/Users/yutosuzuki/code/samurai-agent"
+  },
+  {
+    "id": "819cee17-ff9f-44fa-8513-f718aa06f750",
+    "name": "Shishito",
+    "description": "Realestate ai agent",
+    "tech_stack": "React and Node.js",
+    "created_at": "2025-08-17 14:11:56.229082",
+    "codebase_path": "./samurai-agent"
   }
 ]
