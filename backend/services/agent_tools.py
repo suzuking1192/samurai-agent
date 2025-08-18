@@ -3,9 +3,11 @@ import json
 import logging
 import asyncio
 import os
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
 from pydantic import BaseModel, Field
+from pathlib import Path
+import re
 
 try:
     from .file_service import FileService
@@ -612,8 +614,60 @@ class ExtractCodeContextTool(BaseModel):
     name: str = "extract_code_context"
     description: str = "Extract relevant code context from the local codebase based on a natural language request"
     
+    def _validate_and_canonicalize_path(self, project_id: str, provided_path: str) -> Tuple[bool, str, str]:
+        """
+        Securely validate and canonicalize a provided path against the project's configured codebase_path.
+        
+        Args:
+            project_id: The project identifier
+            provided_path: The path to validate
+            
+        Returns:
+            Tuple of (is_valid, canonicalized_path, error_message)
+        """
+        try:
+            # Get the project to validate against its configured codebase_path
+            from .file_service import file_service
+            project = file_service.get_project_by_id(project_id)
+            
+            if not project:
+                return False, "", f"❌ Project {project_id} not found"
+            
+            if not project.codebase_path:
+                return False, "", f"❌ No codebase path configured for project {project_id}. Please connect a codebase first."
+            
+            # Canonicalize both paths to resolve any symlinks and normalize
+            try:
+                canonicalized_provided = os.path.realpath(provided_path)
+                canonicalized_project = os.path.realpath(project.codebase_path)
+            except (OSError, ValueError) as e:
+                return False, "", f"❌ Invalid path provided: {str(e)}"
+            
+            # Check if the provided path is a directory
+            if not os.path.isdir(canonicalized_provided):
+                return False, "", f"❌ Provided path is not a directory: {canonicalized_provided}"
+            
+            # Use safe common path comparison to ensure the provided path is within the project's codebase
+            try:
+                # Get the common prefix between the two paths
+                common_prefix = os.path.commonpath([canonicalized_provided, canonicalized_project])
+                
+                # The provided path should be either equal to or a subpath of the project's codebase_path
+                if common_prefix != canonicalized_project:
+                    return False, "", f"❌ Provided path is outside the project's codebase. Project codebase: {canonicalized_project}, Provided: {canonicalized_provided}"
+                
+            except ValueError:
+                # This can happen if paths are on different drives (Windows) or have no common prefix
+                return False, "", f"❌ Provided path is outside the project's codebase. Project codebase: {canonicalized_project}, Provided: {canonicalized_provided}"
+            
+            return True, canonicalized_provided, ""
+            
+        except Exception as e:
+            logger.error(f"Error validating path for project {project_id}: {e}")
+            return False, "", f"❌ Failed to validate path: {str(e)}"
+
     async def execute(self, natural_language_request: str, project_id: str, 
-                     connected_codebase_path: str = None, session_id: str = None,
+                     connected_codebase_path: Optional[str] = None, session_id: Optional[str] = None,
                      max_iterations: int = 3) -> Dict[str, Any]:
         """
         Extract relevant code context from the codebase based on a natural language request.
@@ -629,7 +683,7 @@ class ExtractCodeContextTool(BaseModel):
             Dictionary containing extracted code context
         """
         try:
-            # Determine codebase path
+            # Determine and validate codebase path
             if not connected_codebase_path:
                 # Try to get the project's codebase_path from the database
                 try:
@@ -657,15 +711,22 @@ class ExtractCodeContextTool(BaseModel):
                         "file_path": None
                     }
             
-            # Validate codebase path exists
-            if not os.path.exists(connected_codebase_path):
+            # Securely validate and canonicalize the provided path
+            is_valid, canonicalized_path, error_message = self._validate_and_canonicalize_path(
+                project_id, connected_codebase_path
+            )
+            
+            if not is_valid:
                 return {
                     "success": False,
-                    "message": f"❌ Codebase path not found: {connected_codebase_path}",
+                    "message": error_message,
                     "context": None,
                     "relevant_code": None,
                     "file_path": None
                 }
+            
+            # Use the canonicalized path for all subsequent operations
+            connected_codebase_path = canonicalized_path
             
             # Step 1: Scan the codebase for files and methods (no file limit for comprehensive coverage)
             logger.info(f"Scanning codebase at {connected_codebase_path}")
@@ -1150,7 +1211,12 @@ If the content is not relevant, set relevance_score to 0.
         """Extract specific methods from a file based on target method names, with fallback to related code."""
         try:
             # Get file info to find method locations
-            file_info = code_parser.extract_elements_from_file(file_path, code_parser.detect_language(file_path))
+            detected_language = code_parser.detect_language(file_path)
+            if not detected_language:
+                logger.warning(f"Could not detect language for file: {file_path}")
+                return None
+            
+            file_info = code_parser.extract_elements_from_file(file_path, detected_language)
             
             extracted_parts = []
             found_exact_matches = set()
