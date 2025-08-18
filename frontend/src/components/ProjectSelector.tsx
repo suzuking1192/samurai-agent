@@ -180,7 +180,7 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
                 className="modal-input"
               />
               <textarea
-                placeholder="Project description"
+                placeholder="Project description (One sentence description of the project)"
                 value={newProject.description}
                 onChange={(e) => setNewProject(prev => ({ ...prev, description: e.target.value }))}
                 className="modal-input"
