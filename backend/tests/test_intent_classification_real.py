@@ -58,13 +58,15 @@ class TestRealIntentClassification:
         assert result.confidence >= 0.6
         assert "pure_discussion" in result.reasoning.lower()
         
-        # Verify the AI was called with the correct prompt
-        mock_gemini_service.chat_with_system_prompt.assert_called_once()
-        call_args = mock_gemini_service.chat_with_system_prompt.call_args
-        assert message == call_args[0][0]  # First argument should be the message
+        # Verify the AI was called twice (once for intent analysis, once for code context necessity)
+        assert mock_gemini_service.chat_with_system_prompt.call_count == 2
+        
+        # Get the first call (intent analysis)
+        first_call_args = mock_gemini_service.chat_with_system_prompt.call_args_list[0]
+        assert message == first_call_args[0][0]  # First argument should be the message
         
         # Verify the prompt contains our improved guidance
-        system_prompt = call_args[0][1]  # Second argument should be the system prompt
+        system_prompt = first_call_args[0][1]  # Second argument should be the system prompt
         assert "pure_discussion" in system_prompt
         assert "ready_for_action" in system_prompt
         assert "How can I build this?" in system_prompt  # Verify the user's message is in the prompt
