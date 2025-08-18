@@ -794,9 +794,9 @@ Return ONLY the JSON object."""
 
             # Send progress update before AI call
             if progress_callback:
-                await progress_callback("ai_call", "🤖 Calling AI service...", "Analyzing code context necessity")
+                await progress_callback("ai_call", "🤖 Calling AI service...", "Analyzing code context necessity", {})
             
-            logger.info(f"Calling Gemini service for code context analysis...")
+            logger.info("Calling Gemini service for code context analysis...")
             code_context_response = await self.gemini_service.chat_with_system_prompt(message, code_context_system_prompt)
             
             # Debug: Log the raw LLM response for code context analysis

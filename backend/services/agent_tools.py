@@ -776,10 +776,8 @@ class ExtractCodeContextTool(BaseModel):
             file_list = []
             for file_path, file_info in file_infos.items():
                 # Get directory structure info
-                path_parts = file_path.split('/')
-                if len(path_parts) > 1:
-                    directory = '/'.join(path_parts[:-1])
-                else:
+                directory = os.path.dirname(file_path)
+                if not directory:
                     directory = "root"
                 
                 file_list.append({
