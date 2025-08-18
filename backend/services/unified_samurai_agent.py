@@ -1315,9 +1315,12 @@ Show deep understanding of how the specification has evolved throughout the enti
             
             response = await self.gemini_service.chat_with_system_prompt(message, system_prompt)
             
+            # Step 4: Process spec_clarification response for codebase-relevant questions
+            processed_response = await self._process_spec_clarification_response(response.strip(), context)
+            
             return {
                 "type": "spec_clarification_response",
-                "response": response.strip(),
+                "response": processed_response,
                 "tool_calls_made": 0,
                 "tool_results": [],
                 "context_used": {
@@ -1338,6 +1341,259 @@ Show deep understanding of how the specification has evolved throughout the enti
                 "context_used": {},
                 "code_context": context.code_context
             }
+    
+    async def _process_spec_clarification_response(self, chat_response: str, conversation_context: ConversationContext) -> str:
+        """
+        Process spec_clarification response to identify and rephrase codebase-relevant questions.
+        
+        This method:
+        1. Identifies questions in the chat_response that are likely answerable from the codebase
+        2. Uses the Agent Code Context Extraction Tool to find answers
+        3. Rephrases questions into confirmation statements using the found information
+        4. Gracefully handles cases where no relevant code is found
+        
+        Args:
+            chat_response: The initially generated response from the agent
+            conversation_context: The conversation context containing project information
+            
+        Returns:
+            The processed response with rephrased questions where possible
+        """
+        try:
+            # Step 1: Identify codebase-relevant questions in the response
+            identified_questions = await self._identify_codebase_relevant_questions(chat_response)
+            
+            if not identified_questions:
+                logger.info("No codebase-relevant questions identified in spec clarification response")
+                return chat_response
+            
+            logger.info(f"Identified {len(identified_questions)} codebase-relevant questions")
+            
+            # Step 2: Process each question and build the final response
+            final_response_parts = []
+            current_position = 0
+            
+            for question_info in identified_questions:
+                # Add text before the question
+                if question_info['start'] > current_position:
+                    final_response_parts.append(chat_response[current_position:question_info['start']])
+                
+                # Process the question
+                processed_question = await self._process_individual_question(
+                    question_info['question'], 
+                    conversation_context
+                )
+                
+                final_response_parts.append(processed_question)
+                current_position = question_info['end']
+            
+            # Add remaining text after the last question
+            if current_position < len(chat_response):
+                final_response_parts.append(chat_response[current_position:])
+            
+            # Combine all parts
+            final_response = ''.join(final_response_parts)
+            
+            logger.info("Successfully processed spec clarification response with rephrased questions")
+            return final_response
+            
+        except Exception as e:
+            logger.error(f"Error processing spec clarification response: {e}")
+            # Return original response if processing fails
+            return chat_response
+    
+    async def _identify_codebase_relevant_questions(self, chat_response: str) -> List[Dict[str, Any]]:
+        """
+        Use LLM to identify questions in the response that are likely answerable from the codebase.
+        
+        Args:
+            chat_response: The agent's response text
+            
+        Returns:
+            List of dictionaries containing question info: {'question': str, 'start': int, 'end': int}
+        """
+        try:
+            prompt = f"""
+Given the following user-facing message from an AI assistant, identify any questions that directly ask about current code implementation details or facts that could be found in a codebase.
+
+Message: {chat_response}
+
+Instructions:
+1. Look for questions that ask about:
+   - How something is implemented in the code
+   - What files, functions, or classes exist
+   - Current code structure or architecture
+   - Specific implementation details
+   - Configuration or setup details
+   
+2. Ignore questions that are:
+   - About user preferences or decisions
+   - About future implementation plans
+   - About general concepts or explanations
+   - About requirements gathering
+   
+3. For each identified question, provide:
+   - The exact question text
+   - The start and end character positions in the original message
+   
+Return a JSON array of objects with this structure:
+[
+  {{
+    "question": "exact question text",
+    "start": character_position_start,
+    "end": character_position_end
+  }}
+]
+
+If no relevant questions are found, return an empty array [].
+"""
+            
+            response = await self.gemini_service.chat_with_system_prompt("", prompt)
+            
+            # Extract JSON from response
+            import re
+            import json
+            
+            json_match = re.search(r'\[.*\]', response, re.DOTALL)
+            if json_match:
+                questions_data = json.loads(json_match.group())
+            else:
+                # Try to parse the entire response as JSON
+                questions_data = json.loads(response)
+            
+            # Validate the questions are actually in the original text
+            validated_questions = []
+            for question_info in questions_data:
+                question_text = question_info.get('question', '')
+                start_pos = question_info.get('start', 0)
+                end_pos = question_info.get('end', 0)
+                
+                # Verify the question text matches what's at the specified position
+                if (start_pos < len(chat_response) and 
+                    end_pos <= len(chat_response) and
+                    chat_response[start_pos:end_pos].strip() == question_text.strip()):
+                    validated_questions.append(question_info)
+                else:
+                    logger.warning(f"Question position mismatch: {question_text}")
+            
+            return validated_questions
+            
+        except Exception as e:
+            logger.error(f"Error identifying codebase-relevant questions: {e}")
+            return []
+    
+    async def _process_individual_question(self, question: str, conversation_context: ConversationContext) -> str:
+        """
+        Process an individual question by looking up codebase information and rephrasing it.
+        
+        Args:
+            question: The original question text
+            conversation_context: The conversation context containing project information
+            
+        Returns:
+            The rephrased question or the original question if no relevant code is found
+        """
+        try:
+            # Step 1: Use Agent Code Context Extraction Tool to find relevant code
+            codebase_path = conversation_context.project_context.get('codebase_path')
+            project_id = conversation_context.project_context.get('id')
+            session_id = conversation_context.session_id
+            
+            if not codebase_path or not project_id:
+                logger.warning("No codebase path or project ID available for code context extraction")
+                return question
+            
+            # Call the code context extraction tool
+            code_context_result = await self.tool_registry.execute_tool(
+                "extract_code_context",
+                natural_language_request=question,
+                project_id=project_id,
+                session_id=session_id,
+                connected_codebase_path=codebase_path,
+                max_iterations=2  # Use fewer iterations for efficiency
+            )
+            
+            # Step 2: Check if relevant code was found
+            if not code_context_result.get("success"):
+                logger.info(f"No relevant code found for question: {question[:50]}...")
+                return question
+            
+            context = code_context_result.get("context")
+            relevant_code = code_context_result.get("relevant_code")
+            file_path = code_context_result.get("file_path")
+            
+            if not context or not relevant_code:
+                logger.info(f"Insufficient code context for question: {question[:50]}...")
+                return question
+            
+            # Step 3: Use LLM to rephrase the question into a confirmation statement
+            rephrased_question = await self._rephrase_question_with_context(
+                question, context, relevant_code, file_path
+            )
+            
+            return rephrased_question
+            
+        except Exception as e:
+            logger.error(f"Error processing individual question: {e}")
+            return question
+    
+    async def _rephrase_question_with_context(self, original_question: str, context: str, 
+                                            relevant_code: str, file_path: str) -> str:
+        """
+        Use LLM to rephrase a question into a confirmation statement using codebase information.
+        
+        Args:
+            original_question: The original question
+            context: The context summary from the code context tool
+            relevant_code: The relevant code snippets
+            file_path: The file path where the code was found
+            
+        Returns:
+            The rephrased question as a confirmation statement
+        """
+        try:
+            prompt = f"""
+Rephrase this question into a concise yes/no or confirmation question, using the provided codebase information.
+
+Original Question: {original_question}
+
+Codebase Information:
+- Context: {context}
+- Relevant Code: {relevant_code}
+- File Path: {file_path}
+
+Instructions:
+1. Use the codebase information to create a confirmation question
+2. Make it a simple yes/no question when possible
+3. Include specific details from the code (function names, file paths, etc.)
+4. Keep it concise and clear
+5. If the code shows the answer, phrase it as "Is it correct that..." or "Does [file] contain..."
+
+Examples:
+- "Is it correct that the User model has an 'email' field?"
+- "Does the authentication service use JWT tokens?"
+- "Is the API endpoint '/api/users' implemented in the UserController?"
+
+Rephrased Question:
+"""
+            
+            response = await self.gemini_service.chat_with_system_prompt("", prompt)
+            
+            # Clean up the response
+            rephrased = response.strip()
+            if rephrased.startswith("Rephrased Question:"):
+                rephrased = rephrased[len("Rephrased Question:"):].strip()
+            
+            # Validate the rephrased question is reasonable
+            if len(rephrased) < 10 or len(rephrased) > 200:
+                logger.warning(f"Rephrased question seems too short or too long: {rephrased}")
+                return original_question
+            
+            return rephrased
+            
+        except Exception as e:
+            logger.error(f"Error rephrasing question with context: {e}")
+            return original_question
     
     async def _handle_ready_for_action(self, message: str, context: ConversationContext, project_id: str, progress_callback: Optional[Callable] = None) -> dict:
         """Handle ready for action with comprehensive conversation context for task creation."""
