@@ -1,6 +1,7 @@
-import React, { useState, useCallback, useMemo } from 'react'
+import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { Task, TaskPriority, TaskStatus, TaskCreate } from '../types'
 import { updateTask, createTask } from '../services/api'
+import { useAutoScroll } from '../hooks/useAutoScroll'
 import './TaskBoard.css'
 
 /**
@@ -76,12 +77,31 @@ const TaskBoard: React.FC<TaskBoardProps> = ({
   isTaskExpanded = () => false,
   selectedTask
 }) => {
+  // Reference to the main scrollable container
+  const taskBoardRef = useRef<HTMLDivElement>(null)
+  
+  // Auto-scroll hook configuration
+  const autoScrollConfig = {
+    hotZoneSize: 80, // 80px hot zone from edges
+    baseScrollSpeed: 8, // Base scroll speed
+    maxScrollSpeed: 25, // Maximum scroll speed
+    accelerationFactor: 1.5 // Acceleration factor
+  }
+  
+  // Initialize auto-scroll hook
+  const { handleDragOver: handleAutoScrollDragOver, handleDragEnd: handleAutoScrollDragEnd, cleanup } = useAutoScroll(taskBoardRef, autoScrollConfig)
+  
   const [dragState, setDragState] = useState<DragState>({
     isDragging: false,
     draggedTask: null,
     draggedOverPriority: null
   })
   const [updatingTaskId, setUpdatingTaskId] = useState<string | null>(null)
+  
+  // Cleanup auto-scroll on unmount
+  useEffect(() => {
+    return cleanup
+  }, [cleanup])
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [showCreateForm, setShowCreateForm] = useState(false)
@@ -142,7 +162,10 @@ const TaskBoard: React.FC<TaskBoardProps> = ({
       ...prev,
       draggedOverPriority: priority
     }))
-  }, [])
+    
+    // Handle auto-scrolling
+    handleAutoScrollDragOver(e)
+  }, [handleAutoScrollDragOver])
 
   const handleDragLeave = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -154,6 +177,9 @@ const TaskBoard: React.FC<TaskBoardProps> = ({
 
   const handleDrop = useCallback(async (e: React.DragEvent, targetPriority: TaskPriority) => {
     e.preventDefault()
+    
+    // Stop auto-scrolling
+    handleAutoScrollDragEnd()
     
     if (!dragState.draggedTask || !projectId) return
     
@@ -532,7 +558,11 @@ const TaskBoard: React.FC<TaskBoardProps> = ({
   }
 
   return (
-    <div className="task-board">
+    <div 
+      ref={taskBoardRef}
+      className="task-board"
+      onDragEnd={handleAutoScrollDragEnd}
+    >
       {/* Error and Success Messages */}
       {error && (
         <div style={{
