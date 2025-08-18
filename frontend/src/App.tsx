@@ -32,15 +32,15 @@ function App() {
       const fullProject = await getProject(project.id)
       setSelectedProject(fullProject)
       
-      // Set codebase path if it exists
-      if (fullProject.codebase_path) {
-        setCodebasePath(fullProject.codebase_path)
-      }
+      // Set codebase path - use null coalescing to clear state for falsy values
+      setCodebasePath(fullProject.codebase_path ?? null)
       
       // Update persistence
       updateProjectId(project.id)
     } catch (error) {
       console.error('Error loading full project details:', error)
+      // Reset codebase path on error before fallback
+      setCodebasePath(null)
       // Fallback to the project from the list
       setSelectedProject(project)
       updateProjectId(project.id)
@@ -117,12 +117,12 @@ function App() {
           const project = await getProject(conversationState.projectId)
           setSelectedProject(project)
           
-          // Set codebase path if it exists
-          if (project.codebase_path) {
-            setCodebasePath(project.codebase_path)
-          }
+          // Set codebase path - use null coalescing to clear state for falsy values
+          setCodebasePath(project.codebase_path ?? null)
         } catch (error) {
           console.error('Error restoring project selection:', error)
+          // Reset codebase path on error
+          setCodebasePath(null)
         }
       }
     }
