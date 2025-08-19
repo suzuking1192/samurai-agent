@@ -854,7 +854,7 @@ class ExtractCodeContextTool(BaseModel):
             
             prompt = f"""
 You are an expert code analyzer. Given a user request and a comprehensive list of all files in a codebase, 
-identify the most relevant files that would help answer the request.
+identify potentially relevant files that could help answer the request.
 
 User Request: {request}
 
@@ -863,12 +863,18 @@ Available Files (Total: {len(file_list)}):
 
 Instructions:
 1. Analyze the user request carefully
-2. Look for files that contain relevant code, functions, classes, or concepts
+2. Look for files that MIGHT contain relevant code, functions, classes, or concepts
 3. Consider file names, paths, directories, and programming languages
-4. Focus on files that are most likely to contain the information needed
-5. Return a JSON array of file paths that are most relevant
-6. Limit to 5-10 most relevant files
-7. If no files seem relevant, return an empty array []
+4. Be INCLUSIVE rather than restrictive - include files that could potentially be relevant
+5. Common files like main.py, app.py, models.py, services/, utils/ are often relevant
+6. Include files from relevant directories (e.g., if asking about tasks, include task-related directories)
+7. Don't be too strict - it's better to include more files than miss important ones
+8. Return a JSON array of file paths that could be relevant
+9. You can return up to 15-20 files if needed - the next step will filter them further
+10. If no files seem relevant, return an empty array []
+
+IMPORTANT: This is just the first step of a two-step process. The next step will analyze the actual code content 
+and filter down to the most relevant elements. So be generous in your selection here.
 
 Return format: ["file1.py", "file2.js", "file3.py"]
 """
@@ -925,7 +931,7 @@ Return format: ["file1.py", "file2.js", "file3.py"]
             
             prompt = f"""
 You are an expert code analyzer. Given a user request and detailed information about specific files with ALL their methods, classes, and functions, 
-identify the most relevant files and specific methods/classes that would help answer the request.
+identify potentially relevant files and specific methods/classes that could help answer the request.
 
 User Request: {request}
 
@@ -934,16 +940,21 @@ Selected Files with ALL Elements:
 
 CRITICAL INSTRUCTIONS:
 1. Analyze the user request carefully
-2. For each relevant file, identify the specific methods/classes that are most relevant
+2. For each relevant file, identify the specific methods/classes that could be relevant
 3. Consider the purpose and functionality of each element
-4. Focus on elements that directly relate to the user's request
+4. Be INCLUSIVE rather than restrictive - include elements that might be related to the request
 5. When the request asks about a specific data model (e.g., "Project data model", "Task data model", "User data model"), you MUST include the main class with that exact name
 6. If you see a class named exactly what the user is asking for (e.g., "Project" for "Project data model", "Task" for "Task data model"), include it as the highest priority
 7. IMPORTANT: Look for exact name matches first. If the user asks for "[ModelName] data model" and you see a class named "[ModelName]", you MUST include it.
 8. URGENT: If the user asks about any data model and you see a class with the exact name in the elements list, you MUST include that class in your response.
 9. Return a JSON object with file paths as keys and arrays of method/class names as values
-10. Limit to 3-5 most relevant files with their most relevant elements
-11. If no elements seem relevant, return an empty object {{}}
+10. You can include up to 8-12 files if needed - complex operations often span multiple files
+11. For each file, include more methods/classes rather than fewer - it's better to have more information
+12. Consider related functionality, utility functions, helper methods, and supporting classes
+13. If no elements seem relevant, return an empty object {{}}
+
+IMPORTANT: This is the final step before code analysis. More information is better than missing information. 
+The next step will analyze all the code content with an LLM, so having comprehensive coverage is crucial.
 
 Please also provide your reasoning for why you selected or did not select specific elements.
 
