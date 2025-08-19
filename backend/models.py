@@ -16,6 +16,12 @@ class TaskPriority(str, Enum):
     MEDIUM = "medium"
     HIGH = "high"
 
+class CodeContextMode(str, Enum):
+    """Enumeration for code context mode selection."""
+    AUTO = "auto"
+    WITH_CODE_LOOKUP = "with code look up"
+    WITHOUT_CODE_LOOKUP = "without code look up"
+
 class TaskWarning(BaseModel):
     """
     Model for task review warnings.
@@ -462,15 +468,18 @@ class ChatRequest(BaseModel):
     Attributes:
         message: User message content
         task_context_id: Optional task ID to use as context for this chat
+        code_context_mode: Optional code context mode for this chat
     """
     message: str = Field(..., min_length=1, max_length=100000, description="User message")
     task_context_id: Optional[str] = Field(default=None, description="Task ID to use as context for this chat")
+    code_context_mode: CodeContextMode = Field(default=CodeContextMode.AUTO, description="Code context mode for this chat")
 
     class Config:
         json_schema_extra = {
             "example": {
                 "message": "Help me implement user authentication",
-                "task_context_id": "abc123"
+                "task_context_id": "abc123",
+                "code_context_mode": "auto"
             }
         }
 

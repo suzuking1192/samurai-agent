@@ -47,6 +47,12 @@ export enum MemoryCategory {
   GENERAL = 'general'
 }
 
+export enum CodeContextMode {
+  AUTO = 'auto',
+  WITH_CODE_LOOKUP = 'with code look up',
+  WITHOUT_CODE_LOOKUP = 'without code look up'
+}
+
 // Category configuration for better UX
 export const CATEGORY_CONFIG = {
   // Technical Categories
@@ -285,6 +291,8 @@ export interface Session {
 export interface ChatRequest {
   project_id?: string
   message: string
+  task_context_id?: string
+  code_context_mode?: CodeContextMode
 }
 
 export interface ChatResponse {

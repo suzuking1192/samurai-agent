@@ -105,7 +105,8 @@ class UnifiedSamuraiAgent:
         session_id: str = None, 
         conversation_history: List[ChatMessage] = None,
         progress_callback: Optional[Callable[[str, str, str, Dict[str, Any]], None]] = None,
-        task_context: Optional[Any] = None
+        task_context: Optional[Any] = None,
+        code_context_mode: Optional[str] = None
     ) -> dict:
         """
         Process user message with unified architecture and smart memory management.
@@ -165,8 +166,20 @@ class UnifiedSamuraiAgent:
                     f"Identified intent: {intent_analysis.intent_type}", project_context
                 )
             
-            # Step 3.5: Extract code context if needed
-            if intent_analysis.new_code_context_necessary and intent_analysis.code_context_request:
+            # Step 3.5: Extract code context based on mode and intent analysis
+            should_extract_code_context = False
+            
+            if code_context_mode == "with code look up":
+                should_extract_code_context = True
+                logger.info("Code context mode is 'with code look up' - forcing code context extraction")
+            elif code_context_mode == "without code look up":
+                should_extract_code_context = False
+                logger.info("Code context mode is 'without code look up' - skipping code context extraction")
+            elif code_context_mode == "auto" or code_context_mode is None:
+                should_extract_code_context = intent_analysis.new_code_context_necessary and intent_analysis.code_context_request
+                logger.info(f"Code context mode is 'auto' - using intent analysis: {should_extract_code_context}")
+            
+            if should_extract_code_context and intent_analysis.code_context_request:
                 if progress_callback:
                     await self._send_dynamic_progress_update(
                         progress_callback, "code_context", "🔍 Extracting code context...", 
@@ -214,7 +227,7 @@ class UnifiedSamuraiAgent:
                 )
             logger.info(f"Conversation context: {conversation_context}")
             response_result = await self._select_and_execute_response_path(
-                message, intent_analysis, conversation_context, project_id, progress_callback
+                message, intent_analysis, conversation_context, project_id, progress_callback, code_context_mode
             )
             
             if progress_callback:
@@ -410,7 +423,7 @@ class UnifiedSamuraiAgent:
             intent_system_prompt = f"""You are Samurai Engine's intent analysis expert. Your role is to deeply understand developer conversations and classify user intent to enable the perfect "vibe coding partner" response.
 
 CONVERSATION CONTEXT:
-{active_task_header}{context.conversation_summary}
+{active_task_header}{no_active_task_inference}{context.conversation_summary}
 
 PROJECT CONTEXT:
 - Project: {context.project_context.get('name', 'Unknown')}
@@ -695,7 +708,7 @@ Return ONLY the intent type: pure_discussion, feature_exploration, spec_clarific
             code_context_system_prompt = f"""You are Samurai Engine's code context necessity expert. Your role is to determine if new code context extraction is needed to provide accurate answers.
 
 CONVERSATION CONTEXT:
-{active_task_header}{context.conversation_summary}
+{active_task_header}{no_active_task_inference}{context.conversation_summary}
 
 PROJECT CONTEXT:
 - Project: {context.project_context.get('name', 'Unknown')}
@@ -887,7 +900,8 @@ Use this code context to provide more accurate and specific answers about the co
         intent_analysis: IntentAnalysis, 
         context: ConversationContext, 
         project_id: str,
-        progress_callback: Optional[Callable[[str, str, str, Dict[str, Any]], None]] = None
+        progress_callback: Optional[Callable[[str, str, str, Dict[str, Any]], None]] = None,
+        code_context_mode: Optional[str] = None
     ) -> dict:
         """
         Select and execute the appropriate response path based on intent analysis.
@@ -916,7 +930,7 @@ Use this code context to provide more accurate and specific answers about the co
                 return await self._handle_feature_exploration(message, context, intent_analysis, progress_callback)
             
             elif intent_analysis.intent_type == "spec_clarification":
-                return await self._handle_spec_clarification(message, context, intent_analysis)
+                return await self._handle_spec_clarification(message, context, intent_analysis, code_context_mode)
             
             elif intent_analysis.intent_type == "ready_for_action":
                 return await self._handle_ready_for_action(message, context, project_id, progress_callback)
@@ -1186,7 +1200,7 @@ Your response should demonstrate deep understanding of the entire conversation, 
                 "code_context": context.code_context
             }
     
-    async def _handle_spec_clarification(self, message: str, context: ConversationContext, intent_analysis: IntentAnalysis) -> dict:
+    async def _handle_spec_clarification(self, message: str, context: ConversationContext, intent_analysis: IntentAnalysis, code_context_mode: Optional[str] = None) -> dict:
         """Handle specification clarification with comprehensive conversation awareness."""
         try:
             # Build enhanced conversation context with full history
@@ -1316,7 +1330,12 @@ Show deep understanding of how the specification has evolved throughout the enti
             response = await self.gemini_service.chat_with_system_prompt(message, system_prompt)
             
             # Step 4: Process spec_clarification response for codebase-relevant questions
-            processed_response = await self._process_spec_clarification_response(response.strip(), context)
+            # Only process if code context mode allows it
+            if code_context_mode == "without code look up":
+                processed_response = response.strip()
+                logger.info("Code context mode is 'without code look up' - skipping spec clarification response processing")
+            else:
+                processed_response = await self._process_spec_clarification_response(response.strip(), context)
             
             return {
                 "type": "spec_clarification_response",
