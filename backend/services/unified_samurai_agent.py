@@ -157,7 +157,7 @@ class UnifiedSamuraiAgent:
                 )
             
             intent_analysis = await self._analyze_user_intent(
-                message, conversation_context, progress_callback=progress_callback
+                message, conversation_context, progress_callback=progress_callback, code_context_mode=code_context_mode
             )
             
             if progress_callback:
@@ -373,7 +373,8 @@ class UnifiedSamuraiAgent:
         self, 
         message: str, 
         context: ConversationContext,
-        progress_callback: Optional[Callable[[str, str, str, Dict[str, Any]], None]] = None
+        progress_callback: Optional[Callable[[str, str, str, Dict[str, Any]], None]] = None,
+        code_context_mode: Optional[str] = None
     ) -> IntentAnalysis:
         """
         Analyze user intent with enhanced understanding using the Samurai Engine prompt.
@@ -704,8 +705,14 @@ Return ONLY the intent type: pure_discussion, feature_exploration, spec_clarific
                 detected_intent = "pure_discussion"  # Default fallback
             
             # Step 2: Code Context Necessity Analysis
-            logger.info(f"Starting Step 2: Code Context Necessity Analysis for message: '{message}'")
-            code_context_system_prompt = f"""You are Samurai Engine's code context necessity expert. Your role is to determine if new code context extraction is needed to provide accurate answers.
+            # Skip code context analysis if mode is "without code look up"
+            if code_context_mode == "without code look up":
+                logger.info("Code context mode is 'without code look up' - skipping code context analysis")
+                new_code_context_necessary = False
+                code_context_request = None
+            else:
+                logger.info(f"Starting Step 2: Code Context Necessity Analysis for message: '{message}'")
+                code_context_system_prompt = f"""You are Samurai Engine's code context necessity expert. Your role is to determine if new code context extraction is needed to provide accurate answers.
 
 CONVERSATION CONTEXT:
 {active_task_header}{no_active_task_inference}{context.conversation_summary}
@@ -805,39 +812,39 @@ If new_code_context_necessary is false, set code_context_request to null.
 
 Return ONLY the JSON object."""
 
-            # Send progress update before AI call
-            if progress_callback:
-                await progress_callback("ai_call", "🤖 Calling AI service...", "Analyzing code context necessity", {})
+                # Send progress update before AI call
+                if progress_callback:
+                    await progress_callback("ai_call", "🤖 Calling AI service...", "Analyzing code context necessity", {})
+                
+                logger.info("Calling Gemini service for code context analysis...")
+                code_context_response = await self.gemini_service.chat_with_system_prompt(message, code_context_system_prompt)
             
-            logger.info("Calling Gemini service for code context analysis...")
-            code_context_response = await self.gemini_service.chat_with_system_prompt(message, code_context_system_prompt)
-            
-            # Debug: Log the raw LLM response for code context analysis
-            logger.info(f"Raw LLM response for code context analysis: {code_context_response}")
-            
-            # Parse code context response
-            try:
-                import json
-                import re
+                # Debug: Log the raw LLM response for code context analysis
+                logger.info(f"Raw LLM response for code context analysis: {code_context_response}")
                 
-                # Try to extract JSON from the response
-                json_match = re.search(r'\{.*\}', code_context_response, re.DOTALL)
-                if json_match:
-                    code_context_result = json.loads(json_match.group())
-                else:
-                    code_context_result = json.loads(code_context_response)
-                
-                new_code_context_necessary = code_context_result.get("new_code_context_necessary", False)
-                code_context_request = code_context_result.get("code_context_request")
-                reasoning = code_context_result.get("reasoning", "No reasoning provided")
-                
-                logger.info(f"Parsed code context analysis: new_code_context_necessary={new_code_context_necessary}, code_context_request={code_context_request}, reasoning={reasoning}")
-                
-            except (json.JSONDecodeError, KeyError) as e:
-                logger.warning(f"Failed to parse code context response as JSON: {e}")
-                # Fallback: assume no code context needed
-                new_code_context_necessary = False
-                code_context_request = None
+                # Parse code context response
+                try:
+                    import json
+                    import re
+                    
+                    # Try to extract JSON from the response
+                    json_match = re.search(r'\{.*\}', code_context_response, re.DOTALL)
+                    if json_match:
+                        code_context_result = json.loads(json_match.group())
+                    else:
+                        code_context_result = json.loads(code_context_response)
+                    
+                    new_code_context_necessary = code_context_result.get("new_code_context_necessary", False)
+                    code_context_request = code_context_result.get("code_context_request")
+                    reasoning = code_context_result.get("reasoning", "No reasoning provided")
+                    
+                    logger.info(f"Parsed code context analysis: new_code_context_necessary={new_code_context_necessary}, code_context_request={code_context_request}, reasoning={reasoning}")
+                    
+                except (json.JSONDecodeError, KeyError) as e:
+                    logger.warning(f"Failed to parse code context response as JSON: {e}")
+                    # Fallback: assume no code context needed
+                    new_code_context_necessary = False
+                    code_context_request = None
             
 
             return IntentAnalysis(
