@@ -58,10 +58,14 @@ class CodeParser:
             'rust': r'\.(rs)$',
             'php': r'\.(php)$',
             'ruby': r'\.(rb)$',
+            'shell': r'\.(sh|bash|zsh|fish)$',
+            'powershell': r'\.(ps1)$',
+            'batch': r'\.(bat|cmd)$',
             'html': r'\.(html|htm)$',
             'css': r'\.(css|scss|sass|less)$',
             'json': r'\.(json)$',
             'yaml': r'\.(yaml|yml)$',
+            'sql': r'\.(sql)$',
             'markdown': r'\.(md|markdown)$',
         }
         
@@ -122,14 +126,14 @@ class CodeParser:
             },
         }
         
-        # Files/directories to ignore - Balanced approach to focus on functional code
+        # Files/directories to ignore - Focus on user-written code only
         self.ignore_patterns = [
             # Version control
             r'\.git',
             r'\.svn',
             r'\.hg',
             
-            # Dependencies and virtual environments
+            # Dependencies and virtual environments - Comprehensive coverage
             r'node_modules',
             r'__pycache__',
             r'\.pytest_cache',
@@ -139,6 +143,49 @@ class CodeParser:
             r'\.env',
             r'\.env\..*',
             r'pip.*\.log',
+            
+            # Virtual environment patterns - catch all common venv structures
+            r'lib/python\d+\.\d+/site-packages',
+            r'lib64/python\d+\.\d+/site-packages',
+            r'lib/python\d+\.\d+/dist-packages',
+            r'lib64/python\d+\.\d+/dist-packages',
+            r'site-packages',
+            r'dist-packages',
+            r'\.local/lib/python\d+\.\d+/site-packages',
+            r'\.local/lib64/python\d+\.\d+/site-packages',
+            
+            # Python virtual environment directories
+            r'bin/python\d+\.\d+',
+            r'Scripts/python\d+\.\d+',
+            r'\.python-version',
+            
+            # Package manager directories
+            r'\.npm',
+            r'\.yarn',
+            r'\.pnpm',
+            r'\.cargo',
+            r'\.maven',
+            r'\.gradle',
+            
+            # Additional library and dependency patterns
+            r'\.conda',
+            r'\.anaconda',
+            r'\.miniconda',
+            r'\.poetry',
+            r'\.pip',
+            r'\.pipenv',
+            r'\.virtualenv',
+            r'\.virtualenvs',
+            r'\.pyenv',
+            r'\.pyenv-versions',
+            r'\.rbenv',
+            r'\.rvm',
+            r'\.nvm',
+            r'\.nvm-versions',
+            r'\.jenv',
+            r'\.sdkman',
+            r'\.asdf',
+            r'\.asdf-versions',
             
             # IDE and editor files
             r'\.DS_Store',
@@ -152,11 +199,21 @@ class CodeParser:
             r'\.cache',
             r'\.build',
             r'dist',
-            r'build',
-            r'target',
-            r'bin',
-            r'obj',
-            r'out',
+            r'/build/',     # Build directory (with slashes to avoid matching build.* files)
+            r'^build/',     # Build directory at start of path
+            r'build$',      # Build directory at end of path
+            r'/target/',    # Target directory (with slashes to avoid matching target.* files)
+            r'^target/',    # Target directory at start of path  
+            r'target$',     # Target directory at end of path
+            r'/bin/',       # Bin directory (with slashes to avoid matching bin.* files)
+            r'^bin/',       # Bin directory at start of path
+            r'bin$',        # Bin directory at end of path
+            r'/obj/',       # Object directory
+            r'^obj/',       # Object directory at start of path
+            r'obj$',        # Object directory at end of path
+            r'/out/',       # Output directory
+            r'^out/',       # Output directory at start of path
+            r'out$',        # Output directory at end of path
             r'\.next',
             r'\.nuxt',
             r'\.output',
@@ -187,10 +244,51 @@ class CodeParser:
             r'poetry\.lock',
             r'Pipfile\.lock',
             
-            # Documentation files (but keep some important ones)
+            # Documentation and text files
+            r'README\.md',
+            r'readme\.md',
             r'CHANGELOG\.md',
+            r'changelog\.md',
+            r'HISTORY\.md',
+            r'CONTRIBUTING\.md',
+            r'CONTRIBUTORS\.md',
+            r'CODE_OF_CONDUCT\.md',
+            r'SECURITY\.md',
+            r'SUPPORT\.md',
+            r'FUNDING\.yml',
             r'LICENSE',
+            r'LICENSE\.md',
+            r'LICENSE\.txt',
+            r'COPYING',
+            r'AUTHORS',
+            r'MAINTAINERS',
             r'\.rst$',
+            r'\.md$',
+            # Specific txt files to ignore (not all .txt files since some are functional)
+            r'README\.txt$',
+            r'readme\.txt$',
+            r'CHANGELOG\.txt$',
+            r'changelog\.txt$',
+            r'HISTORY\.txt$',
+            r'LICENSE\.txt$',
+            r'AUTHORS\.txt$',
+            r'CONTRIBUTORS\.txt$',
+            r'MAINTAINERS\.txt$',
+            r'COPYING\.txt$',
+            r'docs?\.txt$',        # docs.txt, doc.txt
+            r'notes?\.txt$',       # notes.txt, note.txt
+            r'manual\.txt$',       # manual.txt
+            r'guide\.txt$',        # guide.txt
+            r'tutorial\.txt$',     # tutorial.txt
+            r'help\.txt$',         # help.txt
+            r'about\.txt$',        # about.txt
+            r'info\.txt$',         # info.txt
+            r'\.doc$',
+            r'\.docx$',
+            r'\.pdf$',
+            r'\.rtf$',
+            r'\.tex$',
+            r'\.latex$',
             
             # Configuration files (keep only essential ones)
             r'\.eslintrc',
@@ -209,27 +307,52 @@ class CodeParser:
             r'\.bundle\.js',
             r'\.chunk\.js',
             
-            # Large binary files and assets
+            # Images and graphics files
             r'\.png$',
             r'\.jpg$',
             r'\.jpeg$',
             r'\.gif$',
+            r'\.bmp$',
+            r'\.tiff$',
+            r'\.tif$',
+            r'\.webp$',
             r'\.svg$',
             r'\.ico$',
+            r'\.icns$',
+            
+            # Font files
             r'\.woff$',
             r'\.woff2$',
             r'\.ttf$',
+            r'\.otf$',
             r'\.eot$',
+            
+            # Audio and video files
             r'\.mp4$',
-            r'\.mp3$',
-            r'\.wav$',
             r'\.avi$',
             r'\.mov$',
+            r'\.wmv$',
+            r'\.flv$',
+            r'\.webm$',
+            r'\.mkv$',
+            r'\.m4v$',
+            r'\.mp3$',
+            r'\.wav$',
+            r'\.flac$',
+            r'\.aac$',
+            r'\.ogg$',
+            r'\.m4a$',
+            
+            # Archive and compressed files
             r'\.zip$',
             r'\.tar$',
             r'\.gz$',
+            r'\.bz2$',
+            r'\.xz$',
             r'\.rar$',
             r'\.7z$',
+            r'\.dmg$',
+            r'\.iso$',
             
             # Database and data files
             r'\.db$',
@@ -238,6 +361,31 @@ class CodeParser:
             r'\.csv$',
             r'\.xlsx$',
             r'\.xls$',
+            r'\.ods$',
+            r'\.ppt$',
+            r'\.pptx$',
+            r'\.odp$',
+            
+            # Executable and binary files
+            r'\.exe$',
+            r'\.dll$',
+            r'\.so$',
+            r'\.dylib$',
+            r'\.bin$',
+            r'\.app$',
+            r'\.deb$',
+            r'\.rpm$',
+            r'\.msi$',
+            
+            # Temporary and cache files
+            r'\.cache$',
+            r'\.tmp$',
+            r'\.temp$',
+            r'\.lock$',
+            r'\.pid$',
+            r'~$',
+            r'\.orig$',
+            r'\.rej$',
             
             # OS and system files
             r'Thumbs\.db',
@@ -246,11 +394,8 @@ class CodeParser:
             r'\.Spotlight-V100',
             r'\.fseventsd',
             
-            # Docker and container files
-            r'Dockerfile',
+            # Docker and container files (ignore some, but not Dockerfile itself)
             r'\.dockerignore',
-            r'docker-compose\.yml',
-            r'docker-compose\.yaml',
             
             # CI/CD files
             r'\.github',
@@ -277,53 +422,192 @@ class CodeParser:
     
     def should_ignore_file(self, file_path: str) -> bool:
         """Check if a file should be ignored based on ignore patterns."""
+        # Check ignore patterns first
         for pattern in self.ignore_patterns:
             if re.search(pattern, file_path, re.IGNORECASE):
                 return True
+        
+        # Additional check for virtual environments and library files
+        if self._is_in_virtual_environment(file_path):
+            return True
+            
+        return False
+    
+    def _is_in_virtual_environment(self, file_path: str) -> bool:
+        """Check if a file is inside a virtual environment or library directory."""
+        path_parts = Path(file_path).parts
+        
+        # Check for common virtual environment indicators
+        for i, part in enumerate(path_parts):
+            # Check for site-packages or dist-packages
+            if part in ['site-packages', 'dist-packages']:
+                return True
+            
+            # Check for Python version directories that indicate virtual environments
+            if re.match(r'python\d+\.\d+', part):
+                # If this is followed by site-packages or dist-packages, it's a venv
+                if i + 1 < len(path_parts) and path_parts[i + 1] in ['site-packages', 'dist-packages']:
+                    return True
+            
+            # Check for lib/pythonX.Y patterns
+            if part == 'lib' and i + 1 < len(path_parts):
+                next_part = path_parts[i + 1]
+                if re.match(r'python\d+\.\d+', next_part):
+                    if i + 2 < len(path_parts) and path_parts[i + 2] in ['site-packages', 'dist-packages']:
+                        return True
+            
+            # Check for lib64/pythonX.Y patterns
+            if part == 'lib64' and i + 1 < len(path_parts):
+                next_part = path_parts[i + 1]
+                if re.match(r'python\d+\.\d+', next_part):
+                    if i + 2 < len(path_parts) and path_parts[i + 2] in ['site-packages', 'dist-packages']:
+                        return True
+        
         return False
     
     def is_functional_code_file(self, file_path: str) -> bool:
-        """Check if a file is likely to contain functional code (not just data/config)."""
+        """Check if a file is likely to contain functional code (exclude documentation, images, etc.)."""
         # Get file extension
         ext = Path(file_path).suffix.lower()
         
-        # Priority functional code extensions
-        priority_extensions = {'.py', '.js', '.ts', '.jsx', '.tsx', '.java', '.cpp', '.cc', '.cxx', 
-                             '.h', '.hpp', '.cs', '.go', '.rs', '.php', '.rb', '.swift', '.kt'}
+        # Core functional programming languages - highest priority
+        core_code_extensions = {
+            '.py',      # Python
+            '.js',      # JavaScript
+            '.ts',      # TypeScript
+            '.jsx',     # React JavaScript
+            '.tsx',     # React TypeScript
+            '.java',    # Java
+            '.cpp',     # C++
+            '.cc',      # C++
+            '.cxx',     # C++
+            '.c',       # C
+            '.h',       # C/C++ headers
+            '.hpp',     # C++ headers
+            '.cs',      # C#
+            '.go',      # Go
+            '.rs',      # Rust
+            '.php',     # PHP
+            '.rb',      # Ruby
+            '.swift',   # Swift
+            '.kt',      # Kotlin
+            '.m',       # Objective-C
+            '.mm',      # Objective-C++
+        }
         
-        # Secondary functional code extensions
-        secondary_extensions = {'.vue', '.svelte', '.r', '.scala', '.clj', '.hs', '.ml', '.fs', '.dart'}
+        # Secondary functional languages
+        secondary_code_extensions = {
+            '.vue',     # Vue.js
+            '.svelte',  # Svelte
+            '.r',       # R
+            '.scala',   # Scala
+            '.clj',     # Clojure
+            '.cljs',    # ClojureScript
+            '.hs',      # Haskell
+            '.ml',      # OCaml
+            '.fs',      # F#
+            '.dart',    # Dart
+            '.elm',     # Elm
+            '.ex',      # Elixir
+            '.exs',     # Elixir scripts
+            '.erl',     # Erlang
+            '.jl',      # Julia
+            '.lua',     # Lua
+            '.pl',      # Perl
+            '.pm',      # Perl modules
+            '.sh',      # Shell scripts
+            '.bash',    # Bash scripts
+            '.zsh',     # Zsh scripts
+            '.fish',    # Fish scripts
+            '.ps1',     # PowerShell
+            '.bat',     # Batch files
+            '.cmd',     # Command files
+        }
         
-        # Configuration files that might contain logic
-        config_extensions = {'.json', '.yaml', '.yml', '.toml', '.ini', '.cfg', '.conf'}
+        # Web and markup languages that contain logic
+        web_code_extensions = {
+            '.html',    # HTML (might contain embedded JS)
+            '.htm',     # HTML
+            '.css',     # CSS (might contain complex logic)
+            '.scss',    # Sass
+            '.sass',    # Sass
+            '.less',    # Less
+            '.styl',    # Stylus
+        }
         
-        # Documentation files that might contain important information
-        doc_extensions = {'.md', '.txt'}
+        # Configuration files that contain executable logic or are essential for development
+        functional_config_extensions = {
+            '.sql',     # SQL scripts
+            '.graphql', # GraphQL schemas
+            '.gql',     # GraphQL
+            '.proto',   # Protocol Buffers
+            '.thrift',  # Apache Thrift
+        }
         
-        # Check if it's a priority functional code file
-        if ext in priority_extensions:
+        # Essential configuration files that affect functionality
+        essential_config_files = {
+            'package.json',
+            'composer.json',
+            'cargo.toml',
+            'pyproject.toml',
+            'setup.py',
+            'requirements.txt',
+            'gemfile',
+            'podfile',
+            'build.gradle',
+            'pom.xml',
+            'makefile',
+            'dockerfile',
+            'docker-compose.yml',
+            'docker-compose.yaml',
+            'docker-compose.dev.yml',
+            'docker-compose.prod.yml',
+            'docker-compose.test.yml',
+            'webpack.config.js',
+            'webpack.config.ts',
+            'vite.config.js',
+            'vite.config.ts',
+            'rollup.config.js',
+            'rollup.config.ts',
+            'jest.config.js',
+            'jest.config.ts',
+            'babel.config.js',
+            'babel.config.json',
+            'tsconfig.json',
+            'jsconfig.json',
+            '.eslintrc.js',
+            '.eslintrc.json',
+            'tailwind.config.js',
+            'tailwind.config.ts',
+            'next.config.js',
+            'nuxt.config.js',
+            'vue.config.js',
+            'angular.json',
+            'ember-cli-build.js',
+        }
+        
+        # Check core programming languages first
+        if ext in core_code_extensions:
             return True
         
-        # Check if it's a secondary functional code file
-        if ext in secondary_extensions:
+        # Check secondary programming languages
+        if ext in secondary_code_extensions:
             return True
         
-        # For config files, check if they might contain logic (like package.json with scripts)
-        if ext in config_extensions:
-            # Allow package.json, tsconfig.json, etc. but ignore most other config files
-            filename = Path(file_path).name.lower()
-            if filename in {'package.json', 'tsconfig.json', 'webpack.config.js', 'vite.config.ts', 
-                           'rollup.config.js', 'jest.config.js', 'babel.config.js'}:
-                return True
-            return False
+        # Check web languages with logic
+        if ext in web_code_extensions:
+            return True
         
-        # For documentation files, allow README files and other important docs
-        if ext in doc_extensions:
-            filename = Path(file_path).name.lower()
-            if filename in {'readme.md', 'readme.txt', 'api.md', 'architecture.md', 'design.md'}:
-                return True
-            return False
+        # Check functional configuration files
+        if ext in functional_config_extensions:
+            return True
         
+        # Check essential configuration files by filename
+        filename = Path(file_path).name.lower()
+        if filename in essential_config_files:
+            return True
+        
+        # Exclude everything else (documentation, images, data files, etc.)
         return False
     
     def extract_elements_from_file(self, file_path: str, language: str) -> List[CodeElement]:
