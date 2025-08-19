@@ -960,6 +960,9 @@ CRITICAL INSTRUCTIONS:
 11. For each file, include more methods/classes rather than fewer - it's better to have more information
 12. Consider related functionality, utility functions, helper methods, and supporting classes
 13. If no elements seem relevant, return an empty object {{}}
+14. CRITICAL: Order files and methods by relevance - the most relevant files and methods should appear FIRST in your response
+15. For each file, list methods in order of relevance (most relevant first)
+16. The system will prioritize the first files and methods in your response, so put the most likely to be relevant content at the top
 
 IMPORTANT: This is the final step before code analysis. More information is better than missing information. 
 The next step will analyze all the code content with an LLM, so having comprehensive coverage is crucial.
@@ -968,7 +971,7 @@ Please also provide your reasoning for why you selected or did not select specif
 
 Return format: {{"file1.py": ["method1", "class1"], "file2.js": ["function1"]}}
 
-Reasoning: [Explain your selection process]
+Reasoning: [Explain your selection process and relevance ordering]
 """
             
             response = await gemini_service.chat_with_system_prompt("", prompt)
@@ -1129,16 +1132,24 @@ Reasoning: [Explain your selection process]
             combined_content = "\n\n".join(all_code_content)
             
             # Step 3: Process in chunks if content is too long
-            max_chunk_size = 12000  # Characters per chunk
+            max_chunk_size = 100000  # Characters per chunk
             chunks = self._split_content_into_chunks(combined_content, max_chunk_size)
             
-            # Step 4: Analyze each chunk and accumulate results
+            # Step 4: Analyze chunks - if total content exceeds max_chunk_size, only use the first chunk for efficiency
             accumulated_context = []
             accumulated_code = []
             best_file_path = None
             total_relevance_score = 0
             
-            for i, chunk in enumerate(chunks):
+            # If we have multiple chunks and total content is large, only process the first chunk
+            # This saves LLM calls and focuses on the most relevant content (which should be first due to relevance ordering)
+            if len(chunks) > 1 and len(combined_content) > max_chunk_size:
+                logger.info(f"Total content length ({len(combined_content)}) exceeds max_chunk_size ({max_chunk_size}). Processing only the first chunk for efficiency.")
+                chunks_to_process = [chunks[0]]
+            else:
+                chunks_to_process = chunks
+            
+            for i, chunk in enumerate(chunks_to_process):
                 prompt = f"""
 You are an expert code analyzer. Given a user request and code content from multiple files, extract comprehensive and detailed 
 information that would help answer the request. Your analysis should be thorough and include all relevant technical details, 
@@ -1199,7 +1210,8 @@ If the content is not relevant, set relevance_score to 0.
             if accumulated_context and accumulated_code:
                 final_context = " ".join(accumulated_context)
                 final_code = "\n\n".join(accumulated_code)
-                avg_relevance_score = total_relevance_score / len(chunks) if chunks else 0
+                # Calculate average relevance score based on processed chunks, not total chunks
+                avg_relevance_score = total_relevance_score / len(chunks_to_process) if chunks_to_process else 0
                 
                 return {
                     "success": True,
