@@ -1157,6 +1157,13 @@ body {
   opacity: 0.6;
 }
 
+.chat-input-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
 /* Task and Memory card styles */
 .task-card,
 .memory-card {

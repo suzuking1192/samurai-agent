@@ -9,7 +9,8 @@ import {
   TaskCreate,
   TaskUpdate,
   MemoryCreate,
-  Session
+  Session,
+  CodeContextMode
 } from '../types'
 
 const API_BASE_URL = 'http://localhost:8000'
@@ -468,4 +469,14 @@ export async function connectCodebase(request: CodebaseConnectRequest): Promise<
     method: 'POST',
     body: JSON.stringify(request),
   })
+}
+
+// Mode selection API functions
+export interface ModeSelectionResponse {
+  project_id: string
+  code_context_mode: string
+}
+
+export async function getProjectModeSelection(projectId: string): Promise<ModeSelectionResponse> {
+  return apiRequest<ModeSelectionResponse>(`/projects/${projectId}/mode-selection`)
 }
