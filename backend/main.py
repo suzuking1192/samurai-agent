@@ -64,6 +64,7 @@ async def _perform_session_end_background_tasks(pid: str, sid: str) -> None:
             logger.warning(f"Background task: project not found for {pid}")
             return
         project_context = {
+            "id": pid,
             "name": proj.name,
             "description": proj.description,
             "tech_stack": proj.tech_stack,
@@ -293,6 +294,7 @@ async def chat(project_id: str, request: ChatRequest):
             raise HTTPException(status_code=404, detail="Project not found")
 
         project_context = {
+            "id": project_id,
             "name": project.name,
             "description": project.description,
             "tech_stack": project.tech_stack,
@@ -383,6 +385,7 @@ async def chat_with_progress(project_id: str, request: ChatRequest):
             
             # 2. Convert project to context dict
             project_context = {
+                "id": project_id,
                 "name": project.name,
                 "description": project.description,
                 "tech_stack": project.tech_stack,
@@ -567,6 +570,7 @@ async def chat_stream(project_id: str, request: ChatRequest):
             
             # 2. Setup context
             project_context = {
+                "id": project_id,
                 "name": project.name,
                 "description": project.description,
                 "tech_stack": project.tech_stack,
@@ -1115,6 +1119,7 @@ async def complete_session(project_id: str, session_id: str):
         
         # 3. Convert project to context dict
         project_context = {
+            "id": project_id,
             "name": project.name,
             "description": project.description,
             "tech_stack": project.tech_stack,

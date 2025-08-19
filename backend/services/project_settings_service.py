@@ -21,7 +21,7 @@ class ProjectSettingsService:
         """
         self.data_dir = Path(data_dir)
         self.settings_dir = self.data_dir / "projects"
-        self.settings_dir.mkdir(exist_ok=True)
+        self.settings_dir.mkdir(parents=True, exist_ok=True)
     
     def _get_settings_file_path(self, project_id: str) -> Path:
         """
