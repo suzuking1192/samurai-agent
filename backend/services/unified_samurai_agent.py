@@ -940,7 +940,7 @@ Use this code context to provide more accurate and specific answers about the co
                 return await self._handle_spec_clarification(message, context, intent_analysis, code_context_mode)
             
             elif intent_analysis.intent_type == "ready_for_action":
-                return await self._handle_ready_for_action(message, context, project_id, progress_callback)
+                return await self._handle_ready_for_action(message, context, project_id, progress_callback, code_context_mode)
             
             elif intent_analysis.intent_type == "direct_action":
                 return await self._handle_direct_action(message, context, project_id, progress_callback)
@@ -1735,13 +1735,50 @@ Rephrased Question:
             logger.error(f"Error rephrasing question with context: {e}")
             return original_question
     
-    async def _handle_ready_for_action(self, message: str, context: ConversationContext, project_id: str, progress_callback: Optional[Callable] = None) -> dict:
+    async def _handle_ready_for_action(self, message: str, context: ConversationContext, project_id: str, progress_callback: Optional[Callable] = None, code_context_mode: Optional[str] = None) -> dict:
         """Handle ready for action with comprehensive conversation context for task creation."""
         try:
             # Build enhanced conversation context for comprehensive task generation
             conversation_context = self._create_conversation_summary_with_smart_truncation(
                 context.session_messages, message
             )
+            
+            # Extract code context if mode is not "without code look up"
+            if code_context_mode and code_context_mode != "without code look up":
+                if progress_callback:
+                    await progress_callback("code_context", "🔍 Extracting code context for task creation...", "Scanning codebase for relevant code")
+                
+                try:
+                    # Extract code context using conversation_context as the user request
+                    codebase_path = context.project_context.get('codebase_path')
+                    logger.info(f"Code context extraction for task creation - project_id: {project_id}, codebase_path: {codebase_path}")
+                    
+                    code_context_result = await self.tool_registry.execute_tool(
+                        "extract_code_context",
+                        natural_language_request=conversation_context,
+                        project_id=project_id,
+                        session_id=context.session_id,
+                        connected_codebase_path=codebase_path,
+                        max_iterations=3
+                    )
+                    
+                    logger.info(f"Code context extraction result for task creation: {code_context_result}")
+                    
+                    if code_context_result.get("success"):
+                        code_context = {
+                            "context": code_context_result.get("context"),
+                            "relevant_code": code_context_result.get("relevant_code"),
+                            "file_path": code_context_result.get("file_path"),
+                            "relevance_score": code_context_result.get("relevance_score", 0)
+                        }
+                        context.code_context = code_context
+                        logger.info(f"Successfully extracted code context for task creation from {code_context['file_path']}")
+                        logger.info(f"Code context details: context={len(code_context['context']) if code_context['context'] else 0} chars, code={len(code_context['relevant_code']) if code_context['relevant_code'] else 0} chars")
+                    else:
+                        logger.info(f"No relevant code context found for task creation: {code_context_result.get('message', 'Unknown error')}")
+                        
+                except Exception as e:
+                    logger.error(f"Error extracting code context for task creation: {e}")
             
             if progress_callback:
                 await progress_callback("planning", "📋 Creating task breakdown...", "Analyzing comprehensive conversation context and requirements")
@@ -2396,6 +2433,9 @@ Tech Stack: {context.project_context.get('tech_stack', 'Unknown')}
 
 ## RELEVANT PROJECT KNOWLEDGE
 {self._format_memories_for_context(context.relevant_memories)}
+
+## CODE CONTEXT
+{self._format_code_context_for_prompt(context.code_context)}
 
 ## SCOPE: SOFTWARE ENGINEERING TASKS ONLY
 - Include only tasks that produce concrete changes to: application code, tests, configuration, CI/CD pipelines, infrastructure-as-code, database schemas/migrations, APIs, security/hardening, performance tuning, or developer documentation inside the repository that is directly tied to code changes (e.g., updating `README.md` after implementing a feature).
