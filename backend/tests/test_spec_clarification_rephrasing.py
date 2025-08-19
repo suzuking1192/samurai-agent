@@ -66,47 +66,20 @@ class TestSpecClarificationRephrasing:
     @pytest.mark.asyncio
     async def test_identify_codebase_relevant_questions_success(self, agent, sample_chat_response_with_questions):
         """Test successful identification of codebase-relevant questions."""
-        # Find the actual positions of the questions in the text
-        text = sample_chat_response_with_questions
         q1 = "How is the user authentication currently implemented in the codebase?"
         q2 = "What database schema is being used for storing user data?"
         q3 = "Are there any existing API endpoints for user management?"
         
-        start1 = text.find(q1)
-        end1 = start1 + len(q1)
-        start2 = text.find(q2)
-        end2 = start2 + len(q2)
-        start3 = text.find(q3)
-        end3 = start3 + len(q3)
-        
-        # Mock the LLM response with correct positions
-        mock_llm_response = json.dumps([
-            {
-                "question": q1,
-                "start": start1,
-                "end": end1
-            },
-            {
-                "question": q2,
-                "start": start2,
-                "end": end2
-            },
-            {
-                "question": q3,
-                "start": start3,
-                "end": end3
-            }
-        ])
+        # Mock the LLM response with the new format (list of strings)
+        mock_llm_response = json.dumps([q1, q2, q3])
         
         with patch.object(agent.gemini_service, 'chat_with_system_prompt', return_value=mock_llm_response):
             questions = await agent._identify_codebase_relevant_questions(sample_chat_response_with_questions)
             
             assert len(questions) == 3
-            assert questions[0]['question'] == q1
-            assert questions[0]['start'] == start1
-            assert questions[0]['end'] == end1
-            assert questions[1]['question'] == q2
-            assert questions[2]['question'] == q3
+            assert questions[0] == q1
+            assert questions[1] == q2
+            assert questions[2] == q3
 
     @pytest.mark.asyncio
     async def test_identify_codebase_relevant_questions_no_questions(self, agent, sample_chat_response_without_questions):
@@ -241,20 +214,20 @@ class TestSpecClarificationRephrasing:
     @pytest.mark.asyncio
     async def test_process_spec_clarification_response_success(self, agent, mock_conversation_context, sample_chat_response_with_questions):
         """Test successful processing of spec clarification response with questions."""
-        # Mock question identification
+        # Mock question identification with new format
         mock_questions = [
-            {
-                "question": "How is the user authentication currently implemented in the codebase?",
-                "start": 89,
-                "end": 165
-            }
+            "How is the user authentication currently implemented in the codebase?"
         ]
         
         # Mock question processing
         mock_rephrased = "Is it correct that user authentication uses JWT tokens in services/auth.py?"
         
+        # Mock response updating
+        mock_updated_response = "Thanks! I need to know: Is it correct that user authentication uses JWT tokens in services/auth.py?"
+        
         with patch.object(agent, '_identify_codebase_relevant_questions', return_value=mock_questions), \
-             patch.object(agent, '_process_individual_question', return_value=mock_rephrased):
+             patch.object(agent, '_process_individual_question', return_value=mock_rephrased), \
+             patch.object(agent, '_update_response_with_processed_questions', return_value=mock_updated_response):
             
             result = await agent._process_spec_clarification_response(
                 sample_chat_response_with_questions, mock_conversation_context
@@ -390,21 +363,9 @@ class TestSpecClarificationRephrasingIntegration:
         """
         
         mock_questions_identified = [
-            {
-                "question": "What database are you using for user storage?",
-                "start": 45,
-                "end": 95
-            },
-            {
-                "question": "How is user authentication currently implemented?",
-                "start": 97,
-                "end": 155
-            },
-            {
-                "question": "Are there existing user-related API endpoints?",
-                "start": 157,
-                "end": 205
-            }
+            "What database are you using for user storage?",
+            "How is user authentication currently implemented?",
+            "Are there existing user-related API endpoints?"
         ]
         
         mock_code_context_results = [
@@ -432,10 +393,22 @@ class TestSpecClarificationRephrasingIntegration:
             "Are there existing user-related API endpoints?"  # Original question (no code found)
         ]
         
+        # Mock the response updating
+        mock_updated_response = """
+        Great! I need to understand your current setup:
+
+        1. Is it correct that you're using PostgreSQL with a User table in models/user.py?
+        2. Is it correct that authentication uses JWT tokens in services/auth.py?
+        3. Are there existing user-related API endpoints?
+
+        This will help me create the right tasks.
+        """
+        
         with patch.object(agent.gemini_service, 'chat_with_system_prompt', return_value=mock_initial_response), \
              patch.object(agent, '_identify_codebase_relevant_questions', return_value=mock_questions_identified), \
              patch.object(agent.tool_registry, 'execute_tool', side_effect=mock_code_context_results), \
-             patch.object(agent, '_rephrase_question_with_context', side_effect=mock_rephrased_questions):
+             patch.object(agent, '_rephrase_question_with_context', side_effect=mock_rephrased_questions), \
+             patch.object(agent, '_update_response_with_processed_questions', return_value=mock_updated_response):
             
             result = await agent._handle_spec_clarification(message, mock_conversation_context, intent_analysis)
             
@@ -477,11 +450,7 @@ class TestSpecClarificationRephrasingIntegration:
         """
         
         mock_questions_identified = [
-            {
-                "question": "What's the current shopping cart implementation in your codebase?",
-                "start": 45,
-                "end": 105
-            }
+            "What's the current shopping cart implementation in your codebase?"
         ]
         
         mock_code_context_result = {
@@ -493,10 +462,23 @@ class TestSpecClarificationRephrasingIntegration:
         
         mock_rephrased = "Is it correct that you have a simple cart using session storage in models/cart.py?"
         
+        # Mock the response updating
+        mock_updated_response = """
+        Excellent! Let me understand your requirements:
+
+        1. Is it correct that you have a simple cart using session storage in models/cart.py?
+        2. Do you want to support guest checkout?
+        3. What payment methods should be integrated?
+        4. How should inventory be managed during checkout?
+
+        This will help me create the right tasks.
+        """
+        
         with patch.object(agent.gemini_service, 'chat_with_system_prompt', return_value=mock_initial_response), \
              patch.object(agent, '_identify_codebase_relevant_questions', return_value=mock_questions_identified), \
              patch.object(agent.tool_registry, 'execute_tool', return_value=mock_code_context_result), \
-             patch.object(agent, '_rephrase_question_with_context', return_value=mock_rephrased):
+             patch.object(agent, '_rephrase_question_with_context', return_value=mock_rephrased), \
+             patch.object(agent, '_update_response_with_processed_questions', return_value=mock_updated_response):
             
             result = await agent._handle_spec_clarification(message, mock_conversation_context, intent_analysis)
             

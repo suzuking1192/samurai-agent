@@ -1374,8 +1374,8 @@ Show deep understanding of how the specification has evolved throughout the enti
         
         This method:
         1. Identifies questions in the chat_response that are likely answerable from the codebase
-        2. Uses the Agent Code Context Extraction Tool to find answers
-        3. Rephrases questions into confirmation statements using the found information
+        2. Uses the Agent Code Context Extraction Tool to find answers for each question
+        3. Uses LLM to update the original response with better questions
         4. Gracefully handles cases where no relevant code is found
         
         Args:
@@ -1383,7 +1383,7 @@ Show deep understanding of how the specification has evolved throughout the enti
             conversation_context: The conversation context containing project information
             
         Returns:
-            The processed response with rephrased questions where possible
+            The processed response with improved questions where possible
         """
         try:
             # Step 1: Identify codebase-relevant questions in the response
@@ -1395,32 +1395,24 @@ Show deep understanding of how the specification has evolved throughout the enti
             
             logger.info(f"Identified {len(identified_questions)} codebase-relevant questions")
             
-            # Step 2: Process each question and build the final response
-            final_response_parts = []
-            current_position = 0
-            
-            for question_info in identified_questions:
-                # Add text before the question
-                if question_info['start'] > current_position:
-                    final_response_parts.append(chat_response[current_position:question_info['start']])
-                
-                # Process the question
+            # Step 2: Process each question to get better versions
+            processed_questions = []
+            for question in identified_questions:
                 processed_question = await self._process_individual_question(
-                    question_info['question'], 
+                    question, 
                     conversation_context
                 )
-                
-                final_response_parts.append(processed_question)
-                current_position = question_info['end']
+                processed_questions.append({
+                    'original': question,
+                    'processed': processed_question
+                })
             
-            # Add remaining text after the last question
-            if current_position < len(chat_response):
-                final_response_parts.append(chat_response[current_position:])
+            # Step 3: Use LLM to update the original response with better questions
+            final_response = await self._update_response_with_processed_questions(
+                chat_response, processed_questions
+            )
             
-            # Combine all parts
-            final_response = ''.join(final_response_parts)
-            
-            logger.info("Successfully processed spec clarification response with rephrased questions")
+            logger.info("Successfully processed spec clarification response with improved questions")
             return final_response
             
         except Exception as e:
@@ -1428,7 +1420,7 @@ Show deep understanding of how the specification has evolved throughout the enti
             # Return original response if processing fails
             return chat_response
     
-    async def _identify_codebase_relevant_questions(self, chat_response: str) -> List[Dict[str, Any]]:
+    async def _identify_codebase_relevant_questions(self, chat_response: str) -> List[str]:
         """
         Use LLM to identify questions in the response that are likely answerable from the codebase.
         
@@ -1436,7 +1428,7 @@ Show deep understanding of how the specification has evolved throughout the enti
             chat_response: The agent's response text
             
         Returns:
-            List of dictionaries containing question info: {'question': str, 'start': int, 'end': int}
+            List of question strings that are codebase-relevant
         """
         try:
             prompt = f"""
@@ -1458,17 +1450,12 @@ Instructions:
    - About general concepts or explanations
    - About requirements gathering
    
-3. For each identified question, provide:
-   - The exact question text
-   - The start and end character positions in the original message
-   
-Return a JSON array of objects with this structure:
+3. Extract only the exact question text for each identified question.
+
+Return a JSON array of question strings:
 [
-  {{
-    "question": "exact question text",
-    "start": character_position_start,
-    "end": character_position_end
-  }}
+  "exact question text 1",
+  "exact question text 2"
 ]
 
 If no relevant questions are found, return an empty array [].
@@ -1487,20 +1474,11 @@ If no relevant questions are found, return an empty array [].
                 # Try to parse the entire response as JSON
                 questions_data = json.loads(response)
             
-            # Validate the questions are actually in the original text
+            # Validate that we have a list of strings
             validated_questions = []
-            for question_info in questions_data:
-                question_text = question_info.get('question', '')
-                start_pos = question_info.get('start', 0)
-                end_pos = question_info.get('end', 0)
-                
-                # Verify the question text matches what's at the specified position
-                if (start_pos < len(chat_response) and 
-                    end_pos <= len(chat_response) and
-                    chat_response[start_pos:end_pos].strip() == question_text.strip()):
-                    validated_questions.append(question_info)
-                else:
-                    logger.warning(f"Question position mismatch: {question_text}")
+            for question in questions_data:
+                if isinstance(question, str) and question.strip():
+                    validated_questions.append(question.strip())
             
             return validated_questions
             
@@ -1563,6 +1541,63 @@ If no relevant questions are found, return an empty array [].
             logger.error(f"Error processing individual question: {e}")
             return question
     
+    async def _update_response_with_processed_questions(self, original_response: str, processed_questions: List[Dict[str, str]]) -> str:
+        """
+        Use LLM to update the original response by replacing questions with their processed versions.
+        
+        Args:
+            original_response: The original response text
+            processed_questions: List of dicts with 'original' and 'processed' question pairs
+            
+        Returns:
+            The updated response with processed questions
+        """
+        try:
+            # Build the question mapping for the prompt
+            question_mappings = []
+            for pq in processed_questions:
+                question_mappings.append(f"Original: {pq['original']}\nProcessed: {pq['processed']}")
+            
+            question_mappings_text = "\n\n".join(question_mappings)
+            
+            prompt = f"""
+You are updating a response to replace certain questions with better, more specific versions.
+
+Original Response:
+{original_response}
+
+Question Mappings (replace original questions with processed versions):
+{question_mappings_text}
+
+Instructions:
+1. Replace each original question with its corresponding processed version
+2. Maintain the natural flow and tone of the response
+3. Keep all other text exactly the same
+4. Only replace the exact original questions, not similar phrases
+5. If a processed question is the same as the original, keep the original
+6. Ensure the response remains coherent and well-formatted
+
+Updated Response:
+"""
+            
+            response = await self.gemini_service.chat_with_system_prompt("", prompt)
+            
+            # Clean up the response
+            updated_response = response.strip()
+            if updated_response.startswith("Updated Response:"):
+                updated_response = updated_response[len("Updated Response:"):].strip()
+            
+            # Validate the response is reasonable
+            if len(updated_response) < len(original_response) * 0.5 or len(updated_response) > len(original_response) * 2:
+                logger.warning(f"Updated response seems too different in length from original")
+                return original_response
+            
+            return updated_response
+            
+        except Exception as e:
+            logger.error(f"Error updating response with processed questions: {e}")
+            return original_response
+
     async def _rephrase_question_with_context(self, original_question: str, context: str, 
                                             relevant_code: str, file_path: str) -> str:
         """
