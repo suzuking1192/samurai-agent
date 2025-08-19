@@ -1370,23 +1370,17 @@ Show deep understanding of how the specification has evolved throughout the enti
     
     async def _process_spec_clarification_response(self, chat_response: str, conversation_context: ConversationContext) -> str:
         """
-        Process spec_clarification response to identify and rephrase codebase-relevant questions.
-        
-        This method:
-        1. Identifies questions in the chat_response that are likely answerable from the codebase
-        2. Uses the Agent Code Context Extraction Tool to find answers for each question
-        3. Uses LLM to update the original response with better questions
-        4. Gracefully handles cases where no relevant code is found
+        Process spec clarification response to improve questions with codebase context.
         
         Args:
-            chat_response: The initially generated response from the agent
-            conversation_context: The conversation context containing project information
+            chat_response: The agent's response text
+            conversation_context: The conversation context
             
         Returns:
-            The processed response with improved questions where possible
+            The processed response with improved questions
         """
         try:
-            # Step 1: Identify codebase-relevant questions in the response
+            # Step 1: Identify codebase-relevant questions
             identified_questions = await self._identify_codebase_relevant_questions(chat_response)
             
             if not identified_questions:
@@ -1395,17 +1389,11 @@ Show deep understanding of how the specification has evolved throughout the enti
             
             logger.info(f"Identified {len(identified_questions)} codebase-relevant questions")
             
-            # Step 2: Process each question to get better versions
-            processed_questions = []
-            for question in identified_questions:
-                processed_question = await self._process_individual_question(
-                    question, 
-                    conversation_context
-                )
-                processed_questions.append({
-                    'original': question,
-                    'processed': processed_question
-                })
+            # Step 2: Process all questions in a single batch operation
+            processed_questions = await self._process_questions_batch(
+                identified_questions, 
+                conversation_context
+            )
             
             # Step 3: Use LLM to update the original response with better questions
             final_response = await self._update_response_with_processed_questions(
@@ -1486,60 +1474,57 @@ If no relevant questions are found, return an empty array [].
             logger.error(f"Error identifying codebase-relevant questions: {e}")
             return []
     
-    async def _process_individual_question(self, question: str, conversation_context: ConversationContext) -> str:
+    async def _process_questions_batch(self, questions: List[str], conversation_context: ConversationContext) -> List[Dict[str, str]]:
         """
-        Process an individual question by looking up codebase information and rephrasing it.
+        Process a batch of questions efficiently by extracting code context once and processing all questions together.
         
         Args:
-            question: The original question text
-            conversation_context: The conversation context containing project information
+            questions: List of question strings
+            conversation_context: The conversation context
             
         Returns:
-            The rephrased question or the original question if no relevant code is found
+            List of dicts with 'original' and 'processed' question pairs
         """
         try:
-            # Step 1: Use Agent Code Context Extraction Tool to find relevant code
+            # Step 1: Extract codebase path and project info
             codebase_path = conversation_context.project_context.get('codebase_path')
             project_id = conversation_context.project_context.get('id')
             session_id = conversation_context.session_id
             
             if not codebase_path or not project_id:
                 logger.warning("No codebase path or project ID available for code context extraction")
-                return question
+                return [{'original': q, 'processed': q} for q in questions]
             
-            # Call the code context extraction tool
+            # Step 2: Use a single code context extraction call for all questions
+            combined_request = " ".join(questions)
             code_context_result = await self.tool_registry.execute_tool(
                 "extract_code_context",
-                natural_language_request=question,
+                natural_language_request=combined_request,
                 project_id=project_id,
                 session_id=session_id,
                 connected_codebase_path=codebase_path,
-                max_iterations=2  # Use fewer iterations for efficiency
+                max_iterations=3  # Use more iterations since we're processing multiple questions
             )
             
-            # Step 2: Check if relevant code was found
+            # Step 3: Process all questions with the extracted context
             if not code_context_result.get("success"):
-                logger.info(f"No relevant code found for question: {question[:50]}...")
-                return question
+                logger.info("No relevant code found for any questions")
+                return [{'original': q, 'processed': q} for q in questions]
             
-            context = code_context_result.get("context")
-            relevant_code = code_context_result.get("relevant_code")
-            file_path = code_context_result.get("file_path")
+            context = code_context_result.get("context", "")
+            relevant_code = code_context_result.get("relevant_code", "")
+            file_path = code_context_result.get("file_path", "")
             
-            if not context or not relevant_code:
-                logger.info(f"Insufficient code context for question: {question[:50]}...")
-                return question
-            
-            # Step 3: Use LLM to rephrase the question into a confirmation statement
-            rephrased_question = await self._rephrase_question_with_context(
-                question, context, relevant_code, file_path
+            # Step 4: Use LLM to process all questions with the shared context
+            processed_questions = await self._process_questions_with_shared_context(
+                questions, context, relevant_code, file_path
             )
             
-            return rephrased_question
+            return processed_questions
             
         except Exception as e:
-            logger.error(f"Error processing individual question: {e}")
-            return question
+            logger.error(f"Error processing questions batch: {e}")
+            return [{'original': q, 'processed': q} for q in questions]
     
     async def _update_response_with_processed_questions(self, original_response: str, processed_questions: List[Dict[str, str]]) -> str:
         """
@@ -1597,6 +1582,100 @@ Updated Response:
         except Exception as e:
             logger.error(f"Error updating response with processed questions: {e}")
             return original_response
+
+    async def _process_questions_with_shared_context(self, questions: List[str], context: str, 
+                                                   relevant_code: str, file_path: str) -> List[Dict[str, str]]:
+        """
+        Process multiple questions using shared codebase context in a single LLM call.
+        
+        Args:
+            questions: List of original questions
+            context: The context summary from the code context tool
+            relevant_code: The relevant code snippets
+            file_path: The file path where the code was found
+            
+        Returns:
+            List of dicts with 'original' and 'processed' question pairs
+        """
+        try:
+            # Format questions for the prompt
+            questions_text = "\n".join([f"{i+1}. {question}" for i, question in enumerate(questions)])
+            
+            prompt = f"""
+You are helping to improve questions by providing more specific, code-aware versions based on the codebase information.
+
+Codebase Information:
+- Context: {context}
+- Relevant Code: {relevant_code}
+- File Path: {file_path}
+
+Original Questions:
+{questions_text}
+
+Instructions:
+1. For each question, create a more specific version that references the codebase
+2. If the code shows the answer, phrase it as a confirmation: "Is it correct that..." or "Does [file] contain..."
+3. Include specific details from the code (function names, file paths, etc.)
+4. Keep it concise and clear
+5. If the code doesn't provide enough information, keep the original question
+6. Make it a simple yes/no question when possible
+
+Return a JSON array of objects with original and processed questions:
+[
+  {{"original": "original question 1", "processed": "improved question 1"}},
+  {{"original": "original question 2", "processed": "improved question 2"}}
+]
+
+Examples of good processed questions:
+- "Is it correct that the User model has an 'email' field?"
+- "Does the authentication service use JWT tokens?"
+- "Is the API endpoint '/api/users' implemented in the UserController?"
+"""
+            
+            response = await self.gemini_service.chat_with_system_prompt("", prompt)
+            
+            # Extract JSON from response
+            import re
+            import json
+            
+            json_match = re.search(r'\[.*\]', response, re.DOTALL)
+            if json_match:
+                processed_data = json.loads(json_match.group())
+            else:
+                # Try to parse the entire response as JSON
+                processed_data = json.loads(response)
+            
+            # Validate and format the response
+            processed_questions = []
+            for item in processed_data:
+                if isinstance(item, dict) and 'original' in item and 'processed' in item:
+                    processed_questions.append({
+                        'original': item['original'].strip(),
+                        'processed': item['processed'].strip()
+                    })
+                elif isinstance(item, str):
+                    # Fallback: if we get a simple string, use it as processed version
+                    original_idx = len(processed_questions)
+                    if original_idx < len(questions):
+                        processed_questions.append({
+                            'original': questions[original_idx],
+                            'processed': item.strip()
+                        })
+            
+            # Ensure we have all questions covered
+            while len(processed_questions) < len(questions):
+                remaining_idx = len(processed_questions)
+                processed_questions.append({
+                    'original': questions[remaining_idx],
+                    'processed': questions[remaining_idx]  # Keep original if no improvement
+                })
+            
+            return processed_questions
+            
+        except Exception as e:
+            logger.error(f"Error processing questions with shared context: {e}")
+            # Return original questions if processing fails
+            return [{'original': q, 'processed': q} for q in questions]
 
     async def _rephrase_question_with_context(self, original_question: str, context: str, 
                                             relevant_code: str, file_path: str) -> str:

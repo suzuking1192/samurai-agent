@@ -100,9 +100,9 @@ class TestSpecClarificationRephrasing:
             assert len(questions) == 0
 
     @pytest.mark.asyncio
-    async def test_process_individual_question_success(self, agent, mock_conversation_context):
-        """Test successful processing of an individual question with code context found."""
-        question = "How is user authentication implemented?"
+    async def test_process_questions_batch_success(self, agent, mock_conversation_context):
+        """Test successful batch processing of questions with code context found."""
+        questions = ["How is user authentication implemented?"]
         
         # Mock successful code context extraction
         mock_code_context_result = {
@@ -112,20 +112,25 @@ class TestSpecClarificationRephrasing:
             "file_path": "services/auth.py"
         }
         
-        # Mock successful rephrasing
-        mock_rephrased = "Is it correct that user authentication uses JWT tokens in services/auth.py?"
+        # Mock successful batch processing
+        mock_processed_questions = [
+            {
+                "original": "How is user authentication implemented?",
+                "processed": "Is it correct that user authentication uses JWT tokens in services/auth.py?"
+            }
+        ]
         
         with patch.object(agent.tool_registry, 'execute_tool', return_value=mock_code_context_result), \
-             patch.object(agent, '_rephrase_question_with_context', return_value=mock_rephrased):
+             patch.object(agent, '_process_questions_with_shared_context', return_value=mock_processed_questions):
             
-            result = await agent._process_individual_question(question, mock_conversation_context)
+            result = await agent._process_questions_batch(questions, mock_conversation_context)
             
-            assert result == mock_rephrased
+            assert result == mock_processed_questions
 
     @pytest.mark.asyncio
-    async def test_process_individual_question_no_code_context(self, agent, mock_conversation_context):
-        """Test processing when no relevant code context is found."""
-        question = "How is user authentication implemented?"
+    async def test_process_questions_batch_no_code_context(self, agent, mock_conversation_context):
+        """Test batch processing when no relevant code context is found."""
+        questions = ["How is user authentication implemented?"]
         
         # Mock unsuccessful code context extraction
         mock_code_context_result = {
@@ -134,14 +139,14 @@ class TestSpecClarificationRephrasing:
         }
         
         with patch.object(agent.tool_registry, 'execute_tool', return_value=mock_code_context_result):
-            result = await agent._process_individual_question(question, mock_conversation_context)
+            result = await agent._process_questions_batch(questions, mock_conversation_context)
             
-            assert result == question
+            assert result == [{"original": question, "processed": question} for question in questions]
 
     @pytest.mark.asyncio
-    async def test_process_individual_question_missing_codebase_path(self, agent):
-        """Test processing when codebase path is not available."""
-        question = "How is user authentication implemented?"
+    async def test_process_questions_batch_missing_codebase_path(self, agent):
+        """Test batch processing when codebase path is not available."""
+        questions = ["How is user authentication implemented?"]
         
         # Create context without codebase_path
         context_without_path = ConversationContext(
@@ -157,9 +162,9 @@ class TestSpecClarificationRephrasing:
             session_id='test-session-456'
         )
         
-        result = await agent._process_individual_question(question, context_without_path)
+        result = await agent._process_questions_batch(questions, context_without_path)
         
-        assert result == question
+        assert result == [{"original": question, "processed": question} for question in questions]
 
     @pytest.mark.asyncio
     async def test_rephrase_question_with_context_success(self, agent):
@@ -219,14 +224,19 @@ class TestSpecClarificationRephrasing:
             "How is the user authentication currently implemented in the codebase?"
         ]
         
-        # Mock question processing
-        mock_rephrased = "Is it correct that user authentication uses JWT tokens in services/auth.py?"
+        # Mock batch question processing
+        mock_processed_questions = [
+            {
+                "original": "How is the user authentication currently implemented in the codebase?",
+                "processed": "Is it correct that user authentication uses JWT tokens in services/auth.py?"
+            }
+        ]
         
         # Mock response updating
         mock_updated_response = "Thanks! I need to know: Is it correct that user authentication uses JWT tokens in services/auth.py?"
         
         with patch.object(agent, '_identify_codebase_relevant_questions', return_value=mock_questions), \
-             patch.object(agent, '_process_individual_question', return_value=mock_rephrased), \
+             patch.object(agent, '_process_questions_batch', return_value=mock_processed_questions), \
              patch.object(agent, '_update_response_with_processed_questions', return_value=mock_updated_response):
             
             result = await agent._process_spec_clarification_response(
