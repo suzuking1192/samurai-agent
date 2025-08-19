@@ -646,7 +646,7 @@ Return ONLY the intent type: pure_discussion, feature_exploration, spec_clarific
 
             # Send progress update before AI call
             if progress_callback:
-                await progress_callback("ai_call", "🤖 Calling AI service...", "Analyzing your intent with AI")
+                await progress_callback("ai_call", "🤖 Calling AI service...", "Analyzing your intent with AI", {})
             
             intent_response = await self.gemini_service.chat_with_system_prompt(message, intent_system_prompt)
             
