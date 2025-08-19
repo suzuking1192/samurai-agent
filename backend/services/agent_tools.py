@@ -1132,8 +1132,9 @@ Reasoning: [Explain your selection process]
             
             for i, chunk in enumerate(chunks):
                 prompt = f"""
-You are an expert code analyzer. Given a user request and code content from multiple files, extract the most relevant 
-information that would help answer the request.
+You are an expert code analyzer. Given a user request and code content from multiple files, extract comprehensive and detailed 
+information that would help answer the request. Your analysis should be thorough and include all relevant technical details, 
+as this context will be used to generate high-quality responses to user queries.
 
 User Request: {request}
 
@@ -1143,13 +1144,14 @@ Code Content (Chunk {i+1}/{len(chunks)}):
 Instructions:
 1. Analyze the code content in relation to the user request
 2. Extract the most relevant code snippets and context
-3. Provide a concise summary of how this code relates to the request
+3. Provide a comprehensive and detailed analysis of how this code relates to the request, including all relevant technical details, patterns, and implementation specifics
 4. If the code is not relevant to the request, indicate this clearly
-5. Focus on the most important and relevant parts
+5. Focus on providing maximum useful information - it's better to include more details than to miss important context
+6. Consider the code's architecture, design patterns, data flow, error handling, and integration points
 
 Return a JSON object with:
 - "relevance_score": 0-10 (how relevant this chunk is to the request)
-- "context": A brief summary of the relevant code and its purpose
+- "context": A comprehensive and detailed analysis of the relevant code, including its purpose, functionality, key components, data structures, algorithms, dependencies, relationships with other parts of the codebase, and any important implementation details that would be useful for understanding and working with this code
 - "relevant_code": The most relevant code snippets from this chunk (limit to 1000 characters)
 - "file_path": The most relevant file path from this chunk
 
