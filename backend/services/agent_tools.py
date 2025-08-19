@@ -732,7 +732,7 @@ class ExtractCodeContextTool(BaseModel):
             logger.info(f"Scanning codebase at {connected_codebase_path}")
             try:
                 # Remove file limit to ensure we capture all relevant files
-                file_infos = code_parser.scan_codebase(connected_codebase_path, max_files=100000)
+                file_infos = code_parser.scan_codebase(connected_codebase_path, max_files=10000)
                 logger.info(f"Code parser returned {len(file_infos)} files")
             except Exception as e:
                 logger.error(f"Error scanning codebase: {e}")
@@ -804,15 +804,23 @@ class ExtractCodeContextTool(BaseModel):
             from .gemini_service import GeminiService
             gemini_service = GeminiService()
             
-            # Step 1: Get all file names and let LLM identify relevant files
-            logger.info("Step 1: Identifying relevant files from all available files")
-            relevant_files = await self._step1_identify_relevant_files(file_infos, request, gemini_service)
+            total_files = len(file_infos)
+            logger.info(f"Total files in codebase: {total_files}")
             
-            if not relevant_files:
-                logger.info("No relevant files identified in Step 1")
-                return {}
-            
-            logger.info(f"Step 1 identified {len(relevant_files)} relevant files")
+            # Skip Step 1 if we have fewer than 1000 files - Step 2 can handle all files directly
+            if total_files < 1000:
+                logger.info(f"Skipping Step 1 - only {total_files} files, proceeding directly to Step 2")
+                relevant_files = list(file_infos.keys())
+            else:
+                # Step 1: Get all file names and let LLM identify relevant files
+                logger.info("Step 1: Identifying relevant files from all available files")
+                relevant_files = await self._step1_identify_relevant_files(file_infos, request, gemini_service)
+                
+                if not relevant_files:
+                    logger.info("No relevant files identified in Step 1")
+                    return {}
+                
+                logger.info(f"Step 1 identified {len(relevant_files)} relevant files")
             
             # Step 2: For selected files, extract ALL elements and let LLM find relevant ones
             logger.info("Step 2: Extracting all elements from relevant files and identifying specific methods/classes")
