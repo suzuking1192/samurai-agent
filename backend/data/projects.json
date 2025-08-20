@@ -48,14 +48,6 @@
     "codebase_path": null
   },
   {
-    "id": "b856bbf9-8ab7-4f24-8ac9-b780f1289699",
-    "name": "Samurai Agent",
-    "description": "AI vibe coding partner with better memory, better task management",
-    "tech_stack": "Fast API",
-    "created_at": "2025-08-03 09:41:11.790837",
-    "codebase_path": "./samurai-agent"
-  },
-  {
     "id": "410df049-be64-42a9-af31-e490bbf0a11e",
     "name": "Test Codebase Project",
     "description": "A test project to verify codebase path persistence",
@@ -206,5 +198,13 @@
     "tech_stack": "React and Node.js",
     "created_at": "2025-08-17 14:11:56.229082",
     "codebase_path": "./samurai-agent"
+  },
+  {
+    "id": "b856bbf9-8ab7-4f24-8ac9-b780f1289699",
+    "name": "Samurai Agent",
+    "description": "AI vibe coding partner with better memory, better task management",
+    "tech_stack": "Fast API",
+    "created_at": "2025-08-03 09:41:11.790837",
+    "codebase_path": "/Users/yutosuzuki/code/samurai-agent"
   }
 ]
