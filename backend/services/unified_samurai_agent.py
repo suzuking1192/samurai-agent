@@ -1768,8 +1768,22 @@ Rephrased Question:
                 context.session_messages, message
             )
             
-            # Extract code context if mode is not "without code look up"
-            if code_context_mode and code_context_mode != "without code look up":
+            # Extract code context based on mode and intent analysis (same logic as main method)
+            should_extract_code_context = False
+            
+            if code_context_mode == "with code look up":
+                should_extract_code_context = True
+                logger.info("Code context mode is 'with code look up' - forcing code context extraction for task creation")
+            elif code_context_mode == "without code look up":
+                should_extract_code_context = False
+                logger.info("Code context mode is 'without code look up' - skipping code context extraction for task creation")
+            elif code_context_mode == "auto" or code_context_mode is None:
+                # For task creation, we should always extract code context when in auto mode
+                # since task creation benefits from understanding the current codebase
+                should_extract_code_context = True
+                logger.info("Code context mode is 'auto' - extracting code context for task creation")
+            
+            if should_extract_code_context:
                 if progress_callback:
                     await progress_callback("code_context", "🔍 Extracting code context for task creation...", "Scanning codebase for relevant code")
                 
@@ -1800,7 +1814,12 @@ Rephrased Question:
                         logger.info(f"Successfully extracted code context for task creation from {code_context['file_path']}")
                         logger.info(f"Code context details: context={len(code_context['context']) if code_context['context'] else 0} chars, code={len(code_context['relevant_code']) if code_context['relevant_code'] else 0} chars")
                     else:
-                        logger.info(f"No relevant code context found for task creation: {code_context_result.get('message', 'Unknown error')}")
+                        error_message = code_context_result.get('message', 'Unknown error')
+                        logger.info(f"No relevant code context found for task creation: {error_message}")
+                        
+                        # Log specific information when codebase path is missing
+                        if "No codebase path provided" in error_message:
+                            logger.info("Code context extraction skipped - no codebase path configured for this project")
                         
                 except Exception as e:
                     logger.error(f"Error extracting code context for task creation: {e}")
