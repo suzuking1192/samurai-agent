@@ -279,12 +279,22 @@ export interface ChatMessage {
   intent_type?: string
 }
 
+export enum UserIntentEnum {
+  FEATURE_EXPLORATION = "feature_exploration",
+  SPEC_CLARIFICATION = "spec_clarification", 
+  READY_FOR_ACTION = "ready_for_action",
+  PURE_DISCUSSION = "pure_discussion",
+  DIRECT_ACTION = "direct_action",
+  INITIAL_STATE = "initial_state"
+}
+
 export interface Session {
   id: string
   project_id: string
   name: string | null
   created_at: string
   last_activity: string
+  previous_session_intent: UserIntentEnum
 }
 
 // Request/Response interfaces

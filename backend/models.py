@@ -4,6 +4,16 @@ from datetime import datetime
 from enum import Enum
 import uuid
 
+# User Intent Enum for tracking conversation state
+class UserIntentEnum(str, Enum):
+    """Enumeration of possible user intent states in a conversation session."""
+    FEATURE_EXPLORATION = "feature_exploration"
+    SPEC_CLARIFICATION = "spec_clarification"
+    READY_FOR_ACTION = "ready_for_action"
+    PURE_DISCUSSION = "pure_discussion"
+    DIRECT_ACTION = "direct_action"
+    INITIAL_STATE = "initial_state"
+
 class TaskStatus(str, Enum):
     """Enumeration for task status values."""
     PENDING = "pending"
@@ -624,6 +634,7 @@ class Session(BaseModel):
         created_at: Session creation timestamp
         last_activity: Last activity timestamp
         task_context_id: Optional task ID that provides context for this session
+        previous_session_intent: The intent from the previous user turn in this session
     """
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Unique session identifier")
     project_id: str = Field(..., description="Project identifier")
@@ -631,6 +642,7 @@ class Session(BaseModel):
     created_at: datetime = Field(default_factory=datetime.utcnow, description="Session creation timestamp")
     last_activity: datetime = Field(default_factory=datetime.utcnow, description="Last activity timestamp")
     task_context_id: Optional[str] = Field(default=None, description="Task ID providing context for this session")
+    previous_session_intent: UserIntentEnum = Field(default=UserIntentEnum.INITIAL_STATE, description="Intent from the previous user turn")
     
     class Config:
         """Pydantic configuration for JSON serialization."""
@@ -643,7 +655,8 @@ class Session(BaseModel):
                 "project_id": "080e1b81-a37e-4e7a-81a6-cb185bd02e91",
                 "name": "Session 1",
                 "created_at": "2024-01-01T00:00:00Z",
-                "last_activity": "2024-01-01T00:00:00Z"
+                "last_activity": "2024-01-01T00:00:00Z",
+                "previous_session_intent": "initial_state"
             }
         }
         # Add model_config for Pydantic v2 compatibility

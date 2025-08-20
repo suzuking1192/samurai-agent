@@ -317,7 +317,8 @@ async def chat(project_id: str, request: ChatRequest):
             session_id=current_session.id,
             conversation_history=conversation_history,
             progress_callback=None,
-            task_context=None
+            task_context=None,
+            session=current_session
         )
 
         final_response = handle_agent_response(result.get("response", ""))
@@ -465,7 +466,8 @@ async def chat_with_progress(project_id: str, request: ChatRequest):
                     conversation_history=conversation_history,
                     progress_callback=progress_callback,
                     task_context=task_context,
-                    code_context_mode=code_context_mode
+                    code_context_mode=code_context_mode,
+                    session=current_session
                 )
             )
             
@@ -639,7 +641,8 @@ async def chat_stream(project_id: str, request: ChatRequest):
                         session_id=current_session.id,
                         conversation_history=conversation_history,
                         progress_callback=progress_callback,
-                        task_context=task_context
+                        task_context=task_context,
+                        session=current_session
                     )
                     return result
                 finally:
