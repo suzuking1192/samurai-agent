@@ -23,7 +23,7 @@ try:
     from .agent_tools import AgentToolRegistry
     from .response_generator import ResponseGenerator, ResponseContext
     from .code_context_storage import code_context_storage
-    from models import Task, Memory, Project, MemoryCategory, ChatMessage
+    from models import Task, Memory, Project, MemoryCategory, ChatMessage, UserIntentEnum
 except ImportError:
     import sys
     import os
@@ -36,7 +36,7 @@ except ImportError:
     from agent_tools import AgentToolRegistry
     from response_generator import ResponseGenerator, ResponseContext
     from code_context_storage import code_context_storage
-    from models import Task, Memory, Project, MemoryCategory, ChatMessage
+    from models import Task, Memory, Project, MemoryCategory, ChatMessage, UserIntentEnum
 
 logger = logging.getLogger(__name__)
 
@@ -106,7 +106,8 @@ class UnifiedSamuraiAgent:
         conversation_history: List[ChatMessage] = None,
         progress_callback: Optional[Callable[[str, str, str, Dict[str, Any]], None]] = None,
         task_context: Optional[Any] = None,
-        code_context_mode: Optional[str] = None
+        code_context_mode: Optional[str] = None,
+        session: Optional[Any] = None
     ) -> dict:
         """
         Process user message with unified architecture and smart memory management.
@@ -157,9 +158,32 @@ class UnifiedSamuraiAgent:
                 )
             
             intent_analysis = await self._analyze_user_intent(
-                message, conversation_context, progress_callback=progress_callback, code_context_mode=code_context_mode
+                message, conversation_context, progress_callback=progress_callback, code_context_mode=code_context_mode, session=session
             )
             logger.info(f"Intent analysis: {intent_analysis}")
+            
+            # Update session's previous_session_intent for the next turn
+            if session and hasattr(session, 'previous_session_intent'):
+                # Map the intent_type string to UserIntentEnum
+                intent_mapping = {
+                    "pure_discussion": UserIntentEnum.PURE_DISCUSSION,
+                    "feature_exploration": UserIntentEnum.FEATURE_EXPLORATION,
+                    "spec_clarification": UserIntentEnum.SPEC_CLARIFICATION,
+                    "ready_for_action": UserIntentEnum.READY_FOR_ACTION,
+                    "direct_action": UserIntentEnum.DIRECT_ACTION
+                }
+                
+                current_intent_enum = intent_mapping.get(intent_analysis.intent_type, UserIntentEnum.PURE_DISCUSSION)
+                session.previous_session_intent = current_intent_enum
+                logger.info(f"Updated session previous_session_intent to: {current_intent_enum}")
+                
+                # Save the updated session
+                try:
+                    self.file_service.save_session(project_id, session)
+                    logger.info(f"Successfully saved updated session with previous_session_intent: {current_intent_enum}")
+                except Exception as e:
+                    logger.error(f"Failed to save updated session: {e}")
+            
             if progress_callback:
                 await self._send_dynamic_progress_update(
                     progress_callback, "analyzing", "✅ Intent analysis complete", 
@@ -375,7 +399,8 @@ class UnifiedSamuraiAgent:
         message: str, 
         context: ConversationContext,
         progress_callback: Optional[Callable[[str, str, str, Dict[str, Any]], None]] = None,
-        code_context_mode: Optional[str] = None
+        code_context_mode: Optional[str] = None,
+        session: Optional[Any] = None
     ) -> IntentAnalysis:
         """
         Analyze user intent with enhanced understanding using the Samurai Engine prompt.
@@ -641,6 +666,33 @@ Return ONLY the intent type: pure_discussion, feature_exploration, spec_clarific
 **Analysis**: Status update on existing task, direct project management
 **Classification**: direct_action
 
+## CRITICAL GUIDANCE FOR READY_FOR_ACTION CLASSIFICATION
+
+**ONLY classify as ready_for_action if the user EXPLICITLY requests task creation or implementation prompts.**
+
+**EXPLICIT REQUESTS that qualify as ready_for_action:**
+- "Create tasks for..."
+- "Break this down into tasks"
+- "Turn this into tasks"
+- "Generate tasks for..."
+- "Make tasks for..."
+- "Please create a prompt for..."
+- "Give me the prompt for..."
+- "Draft the prompt for..."
+- "I'm ready for implementation tasks"
+- "Let's proceed with this feature"
+- "Break this down"
+
+**DO NOT classify as ready_for_action for:**
+- Detailed specifications without explicit task requests
+- Questions about implementation approaches
+- General feature descriptions
+- Clarification responses
+- Progress updates without task creation requests
+- Questions starting with "How can I..." or "What's the best way to..."
+
+**Remember:** The user must EXPLICITLY ask for task creation or implementation prompts. Detailed specifications alone are spec_clarification, not ready_for_action.
+
 Use this framework to analyze the current message and provide the most accurate intent classification.
 
 Return ONLY the intent type: pure_discussion, feature_exploration, spec_clarification, ready_for_action, or direct_action"""
@@ -704,6 +756,22 @@ Return ONLY the intent type: pure_discussion, feature_exploration, spec_clarific
             except Exception as e:
                 logger.warning(f"Failed to parse intent response: {e}")
                 detected_intent = "pure_discussion"  # Default fallback
+            
+            # Apply previous session intent logic to prevent premature task breakdowns
+            if session and hasattr(session, 'previous_session_intent'):
+                previous_intent = session.previous_session_intent
+                logger.info(f"Previous session intent: {previous_intent}, Current detected intent: {detected_intent}")
+                
+                # Override logic: If previous intent was not feature_exploration or spec_clarification
+                # and current intent is ready_for_action, override to feature_exploration
+                if (previous_intent not in [UserIntentEnum.FEATURE_EXPLORATION, UserIntentEnum.SPEC_CLARIFICATION] and 
+                    detected_intent == "ready_for_action"):
+                    logger.info(f"Overriding ready_for_action to feature_exploration due to previous intent: {previous_intent}")
+                    detected_intent = "spec_clarification"
+                else:
+                    logger.info(f"No override needed. Previous intent: {previous_intent}, Current intent: {detected_intent}")
+            else:
+                logger.info("No session provided or session has no previous_session_intent field")
             
             # Step 2: Code Context Necessity Analysis
             # Skip code context analysis if mode is "without code look up"
