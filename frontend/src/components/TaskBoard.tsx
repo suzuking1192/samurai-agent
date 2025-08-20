@@ -2,6 +2,7 @@ import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { Task, TaskPriority, TaskStatus, TaskCreate } from '../types'
 import { updateTask, createTask } from '../services/api'
 import { useAutoScroll } from '../hooks/useAutoScroll'
+import { useTaskScrollPersistence } from '../hooks/useTaskScrollPersistence'
 import './TaskBoard.css'
 
 /**
@@ -26,6 +27,8 @@ interface TaskBoardProps {
   /** Function to check if a task is expanded */
   isTaskExpanded?: (taskId: string) => boolean
   selectedTask?: Task | null
+  /** Whether to restore scroll position (triggered when returning from detail view) */
+  shouldRestoreScroll?: boolean
 }
 
 /**
@@ -75,8 +78,10 @@ const TaskBoard: React.FC<TaskBoardProps> = ({
   expandedTasks = {},
   toggleTaskExpansion,
   isTaskExpanded = () => false,
-  selectedTask
+  selectedTask,
+  shouldRestoreScroll = false
 }) => {
+
   // Reference to the main scrollable container
   const taskBoardRef = useRef<HTMLDivElement>(null)
   
@@ -91,6 +96,9 @@ const TaskBoard: React.FC<TaskBoardProps> = ({
   // Initialize auto-scroll hook
   const { handleDragOver: handleAutoScrollDragOver, handleDragEnd: handleAutoScrollDragEnd, cleanup } = useAutoScroll(taskBoardRef, autoScrollConfig)
   
+  // Initialize scroll persistence hook
+  const { scrollState, saveScrollPosition, getScrollPosition } = useTaskScrollPersistence(projectId || null)
+  
   const [dragState, setDragState] = useState<DragState>({
     isDragging: false,
     draggedTask: null,
@@ -102,6 +110,33 @@ const TaskBoard: React.FC<TaskBoardProps> = ({
   useEffect(() => {
     return cleanup
   }, [cleanup])
+  
+  // Restore scroll position when component mounts or when returning from detail view
+  useEffect(() => {
+    if (taskBoardRef.current && scrollState.scrollTop > 0 && shouldRestoreScroll) {
+      // Use requestAnimationFrame to ensure DOM is ready
+      requestAnimationFrame(() => {
+        if (taskBoardRef.current) {
+          taskBoardRef.current.scrollTop = scrollState.scrollTop
+          
+          // Highlight the previously selected task if it exists
+          if (scrollState.selectedTaskId) {
+            const taskElement = document.querySelector(`[data-task-id="${scrollState.selectedTaskId}"]`)
+            if (taskElement) {
+              // Scroll the task into view
+              taskElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
+              
+              // Add a temporary highlight effect
+              taskElement.classList.add('previously-selected')
+              setTimeout(() => {
+                taskElement.classList.remove('previously-selected')
+              }, 2000)
+            }
+          }
+        }
+      })
+    }
+  }, [scrollState.scrollTop, scrollState.selectedTaskId, shouldRestoreScroll])
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [showCreateForm, setShowCreateForm] = useState(false)
@@ -286,6 +321,7 @@ const TaskBoard: React.FC<TaskBoardProps> = ({
     return (
       <div
         key={task.id}
+        data-task-id={task.id}
         className={`task-card ${isDragging ? 'dragging' : ''} ${isBeingUpdated ? 'updating' : ''} ${isSelected ? 'selected' : ''}`}
         draggable={!isBeingUpdated}
         onDragStart={(e) => handleDragStart(e, task)}
@@ -293,7 +329,13 @@ const TaskBoard: React.FC<TaskBoardProps> = ({
           // Only handle click if not clicking on interactive elements
           if (e.target === e.currentTarget || 
               (e.target as HTMLElement).closest('.task-card') === e.currentTarget) {
-            console.log('TaskBoard: Clicked task card:', task.id, task.title, 'Parent ID:', task.parent_task_id)
+            
+            // Capture current scroll position before opening task details
+            if (taskBoardRef.current) {
+              const scrollTop = taskBoardRef.current.scrollTop
+              saveScrollPosition(scrollTop, task.id)
+            }
+            
             onTaskClick(task)
           }
         }}
