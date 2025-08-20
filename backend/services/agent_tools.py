@@ -872,7 +872,6 @@ Return format: ["file1.py", "file2.js", "file3.py"]
         try:
             # Create detailed element information for the selected files
             file_elements_summary = self._create_detailed_elements_summary_for_llm(file_infos, relevant_files)
-            logger.info(f"Step 2: Elements summary for LLM:\n{file_elements_summary}")
             
             prompt = f"""
 You are an expert code analyzer. Given a user request and detailed information about specific files with ALL their methods, classes, and functions, 
@@ -1068,34 +1067,22 @@ Reasoning: [Explain your selection process and relevance ordering]
             # Step 2: Combine all code content
             combined_content = "\n\n".join(all_code_content)
             
-            # Step 3: Process in chunks if content is too long
-            max_chunk_size = 100000  # Characters per chunk
-            chunks = self._split_content_into_chunks(combined_content, max_chunk_size)
+            # Step 3: If combined_content is longer than 100000, remove the rest
+            max_content_size = 100000
+            if len(combined_content) > max_content_size:
+                logger.info(f"Combined content length ({len(combined_content)}) exceeds {max_content_size}. Truncating to first {max_content_size} characters.")
+                combined_content = combined_content[:max_content_size] + "\n... (truncated due to length)"
             
-            # Step 4: Analyze chunks - if total content exceeds max_chunk_size, only use the first chunk for efficiency
-            accumulated_context = []
-            accumulated_code = []
-            best_file_path = None
-            total_relevance_score = 0
-            
-            # If we have multiple chunks and total content is large, only process the first chunk
-            # This saves LLM calls and focuses on the most relevant content (which should be first due to relevance ordering)
-            if len(chunks) > 1 and len(combined_content) > max_chunk_size:
-                logger.info(f"Total content length ({len(combined_content)}) exceeds max_chunk_size ({max_chunk_size}). Processing only the first chunk for efficiency.")
-                chunks_to_process = [chunks[0]]
-            else:
-                chunks_to_process = chunks
-            
-            for i, chunk in enumerate(chunks_to_process):
-                prompt = f"""
+            # Step 4: Analyze the content directly without chunking
+            prompt = f"""
 You are an expert code analyzer. Given a user request and code content from multiple files, extract comprehensive and detailed 
 information that would help answer the request. Your analysis should be thorough and include all relevant technical details, 
 as this context will be used to generate high-quality responses to user queries.
 
 User Request: {request}
 
-Code Content (Chunk {i+1}/{len(chunks)}):
-{chunk}
+Code Content:
+{combined_content}
 
 Instructions:
 1. Analyze the code content in relation to the user request
@@ -1106,61 +1093,52 @@ Instructions:
 6. Consider the code's architecture, design patterns, data flow, error handling, and integration points
 
 Return a JSON object with:
-- "relevance_score": 0-10 (how relevant this chunk is to the request)
+- "relevance_score": 0-10 (how relevant this content is to the request)
 - "context": A comprehensive and detailed analysis of the relevant code, including its purpose, functionality, key components, data structures, algorithms, dependencies, relationships with other parts of the codebase, and any important implementation details that would be useful for understanding and working with this code
-- "relevant_code": The most relevant code snippets from this chunk (limit to 1000 characters)
-- "file_path": The most relevant file path from this chunk
+- "relevant_code": The most relevant code snippets from this content (limit to 1000 characters)
+- "file_path": The most relevant file path from this content
 
 If the content is not relevant, set relevance_score to 0.
 """
-                
-                response = await gemini_service.chat_with_system_prompt("", prompt)
-                
-                # Extract JSON from response
-                try:
-                    import re
-                    json_match = re.search(r'\{.*\}', response, re.DOTALL)
-                    if json_match:
-                        analysis = json.loads(json_match.group())
-                    else:
-                        analysis = json.loads(response)
-                    
-                    relevance_score = analysis.get("relevance_score", 0)
-                    
-                    logger.info(f"Chunk {i+1} relevance score: {relevance_score}")
-                    logger.info(f"Chunk {i+1} analysis: {analysis}")
-                    
-                    if relevance_score > 0:
-                        accumulated_context.append(analysis.get("context", ""))
-                        accumulated_code.append(analysis.get("relevant_code", ""))
-                        total_relevance_score += relevance_score
-                        
-                        # Keep track of the best file path
-                        if not best_file_path:
-                            best_file_path = analysis.get("file_path")
-                
-                except json.JSONDecodeError as e:
-                    logger.warning(f"Failed to parse analysis for chunk {i+1}: {e}")
-                    continue
             
-            # Step 5: Combine results
-            if accumulated_context and accumulated_code:
-                final_context = " ".join(accumulated_context)
-                final_code = "\n\n".join(accumulated_code)
-                # Calculate average relevance score based on processed chunks, not total chunks
-                avg_relevance_score = total_relevance_score / len(chunks_to_process) if chunks_to_process else 0
+            response = await gemini_service.chat_with_system_prompt("", prompt)
+            
+            # Extract JSON from response
+            try:
+                import re
+                json_match = re.search(r'\{.*\}', response, re.DOTALL)
+                if json_match:
+                    analysis = json.loads(json_match.group())
+                else:
+                    analysis = json.loads(response)
                 
-                return {
-                    "success": True,
-                    "context": final_context,
-                    "relevant_code": final_code,
-                    "file_path": best_file_path,
-                    "relevance_score": avg_relevance_score
-                }
-            else:
+                relevance_score = analysis.get("relevance_score", 0)
+                
+                logger.info(f"Analysis relevance score: {relevance_score}")
+                logger.info(f"Analysis: {analysis}")
+                
+                if relevance_score > 0:
+                    return {
+                        "success": True,
+                        "context": analysis.get("context", ""),
+                        "relevant_code": analysis.get("relevant_code", ""),
+                        "file_path": analysis.get("file_path"),
+                        "relevance_score": relevance_score
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "message": "❌ No sufficiently relevant code found for the request",
+                        "context": None,
+                        "relevant_code": None,
+                        "file_path": None
+                    }
+            
+            except json.JSONDecodeError as e:
+                logger.warning(f"Failed to parse analysis: {e}")
                 return {
                     "success": False,
-                    "message": "❌ No sufficiently relevant code found for the request",
+                    "message": "❌ Failed to parse code analysis response",
                     "context": None,
                     "relevant_code": None,
                     "file_path": None
@@ -1352,37 +1330,7 @@ If the content is not relevant, set relevance_score to 0.
             logger.warning(f"Error extracting broader context: {e}")
             return None
     
-    def _split_content_into_chunks(self, content: str, max_chunk_size: int) -> List[str]:
-        """Split content into chunks while preserving file boundaries."""
-        if len(content) <= max_chunk_size:
-            return [content]
-        
-        chunks = []
-        current_chunk = ""
-        
-        # Split by file boundaries first
-        file_sections = content.split("=== FILE:")
-        
-        for section in file_sections:
-            if not section.strip():
-                continue
-            
-            # If adding this section would exceed chunk size, start a new chunk
-            if len(current_chunk) + len(section) > max_chunk_size and current_chunk:
-                chunks.append(current_chunk.strip())
-                current_chunk = ""
-            
-            # Add the section to current chunk
-            if current_chunk:
-                current_chunk += "\n\n=== FILE:" + section
-            else:
-                current_chunk = "=== FILE:" + section
-        
-        # Add the last chunk if it has content
-        if current_chunk.strip():
-            chunks.append(current_chunk.strip())
-        
-        return chunks
+
 
 
 class AgentToolRegistry:
