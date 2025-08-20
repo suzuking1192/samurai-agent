@@ -22,7 +22,8 @@ try:
     from .vector_context_service import vector_context_service
     from .agent_tools import AgentToolRegistry
     from .response_generator import ResponseGenerator, ResponseContext
-    from models import Task, Memory, Project, MemoryCategory, ChatMessage
+    from .code_context_storage import code_context_storage
+    from models import Task, Memory, Project, MemoryCategory, ChatMessage, UserIntentEnum
 except ImportError:
     import sys
     import os
@@ -34,7 +35,8 @@ except ImportError:
     from vector_context_service import vector_context_service
     from agent_tools import AgentToolRegistry
     from response_generator import ResponseGenerator, ResponseContext
-    from models import Task, Memory, Project, MemoryCategory, ChatMessage
+    from code_context_storage import code_context_storage
+    from models import Task, Memory, Project, MemoryCategory, ChatMessage, UserIntentEnum
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +50,8 @@ class IntentAnalysis:
     needs_clarification: bool
     clarification_questions: List[str]
     accumulated_specs: Dict[str, Any]
+    new_code_context_necessary: bool = False
+    code_context_request: Optional[str] = None
 
 
 @dataclass
@@ -59,6 +63,8 @@ class ConversationContext:
     project_context: dict
     vector_embedding: Optional[List[float]] = None
     task_context: Optional[Task] = None
+    code_context: Optional[Dict[str, Any]] = None
+    session_id: Optional[str] = None
 
 
 class UnifiedSamuraiAgent:
@@ -99,7 +105,9 @@ class UnifiedSamuraiAgent:
         session_id: str = None, 
         conversation_history: List[ChatMessage] = None,
         progress_callback: Optional[Callable[[str, str, str, Dict[str, Any]], None]] = None,
-        task_context: Optional[Any] = None
+        task_context: Optional[Any] = None,
+        code_context_mode: Optional[str] = None,
+        session: Optional[Any] = None
     ) -> dict:
         """
         Process user message with unified architecture and smart memory management.
@@ -150,8 +158,31 @@ class UnifiedSamuraiAgent:
                 )
             
             intent_analysis = await self._analyze_user_intent(
-                message, conversation_context, progress_callback=progress_callback
+                message, conversation_context, progress_callback=progress_callback, code_context_mode=code_context_mode, session=session
             )
+            logger.info(f"Intent analysis: {intent_analysis}")
+            
+            # Update session's previous_session_intent for the next turn
+            if session and hasattr(session, 'previous_session_intent'):
+                # Map the intent_type string to UserIntentEnum
+                intent_mapping = {
+                    "pure_discussion": UserIntentEnum.PURE_DISCUSSION,
+                    "feature_exploration": UserIntentEnum.FEATURE_EXPLORATION,
+                    "spec_clarification": UserIntentEnum.SPEC_CLARIFICATION,
+                    "ready_for_action": UserIntentEnum.READY_FOR_ACTION,
+                    "direct_action": UserIntentEnum.DIRECT_ACTION
+                }
+                
+                current_intent_enum = intent_mapping.get(intent_analysis.intent_type, UserIntentEnum.PURE_DISCUSSION)
+                session.previous_session_intent = current_intent_enum
+                logger.info(f"Updated session previous_session_intent to: {current_intent_enum}")
+                
+                # Save the updated session
+                try:
+                    self.file_service.save_session(project_id, session)
+                    logger.info(f"Successfully saved updated session with previous_session_intent: {current_intent_enum}")
+                except Exception as e:
+                    logger.error(f"Failed to save updated session: {e}")
             
             if progress_callback:
                 await self._send_dynamic_progress_update(
@@ -159,15 +190,69 @@ class UnifiedSamuraiAgent:
                     f"Identified intent: {intent_analysis.intent_type}", project_context
                 )
             
+            # Step 3.5: Extract code context based on mode and intent analysis
+            should_extract_code_context = False
+            
+            if code_context_mode == "with code look up":
+                should_extract_code_context = True
+                logger.info("Code context mode is 'with code look up' - forcing code context extraction")
+            elif code_context_mode == "without code look up":
+                should_extract_code_context = False
+                logger.info("Code context mode is 'without code look up' - skipping code context extraction")
+            elif code_context_mode == "auto" or code_context_mode is None:
+                should_extract_code_context = intent_analysis.new_code_context_necessary and intent_analysis.code_context_request
+                logger.info(f"Code context mode is 'auto' - using intent analysis: {should_extract_code_context}")
+            
+            if should_extract_code_context and intent_analysis.code_context_request:
+                if progress_callback:
+                    await self._send_dynamic_progress_update(
+                        progress_callback, "code_context", "🔍 Extracting code context...", 
+                        "Scanning codebase for relevant code", project_context
+                    )
+                
+                try:
+                    # Extract code context using the tool
+                    codebase_path = conversation_context.project_context.get('codebase_path')
+                    logger.info(f"Code context extraction - project_id: {project_id}, session_id: {session_id}, codebase_path: {codebase_path}")
+                    
+                    code_context_result = await self.tool_registry.execute_tool(
+                        "extract_code_context",
+                        natural_language_request=intent_analysis.code_context_request,
+                        project_id=project_id,
+                        session_id=session_id,
+                        connected_codebase_path=codebase_path,
+                        max_iterations=3
+                    )
+                    
+                    logger.info(f"Code context extraction result: {code_context_result}")
+                    
+                    if code_context_result.get("success"):
+                        code_context = {
+                            "context": code_context_result.get("context"),
+                            "relevant_code": code_context_result.get("relevant_code"),
+                            "file_path": code_context_result.get("file_path"),
+                            "relevance_score": code_context_result.get("relevance_score", 0)
+                        }
+                        conversation_context.code_context = code_context
+                        logger.info(f"Successfully extracted code context from {code_context['file_path']}")
+                        logger.info(f"Code context details: context={len(code_context['context']) if code_context['context'] else 0} chars, code={len(code_context['relevant_code']) if code_context['relevant_code'] else 0} chars")
+                    else:
+                        logger.info(f"No relevant code context found: {code_context_result.get('message', 'Unknown error')}")
+                        logger.info(f"Code context result: {code_context_result}")
+                        
+                except Exception as e:
+                    logger.error(f"Error extracting code context: {e}")
+            
             # Step 4: Select response path based on intent
             if progress_callback:
                 await self._send_dynamic_progress_update(
                     progress_callback, "processing", "🔄 Processing your request...", 
                     "Executing the appropriate response path", project_context
                 )
-            logger.info(f"Conversation context: {conversation_context}")
+            
+            logger.info(f"Code context: {conversation_context.code_context}")
             response_result = await self._select_and_execute_response_path(
-                message, intent_analysis, conversation_context, project_id, progress_callback
+                message, intent_analysis, conversation_context, project_id, progress_callback, code_context_mode
             )
             
             if progress_callback:
@@ -204,8 +289,12 @@ class UnifiedSamuraiAgent:
                 "intent_analysis": {
                     "intent_type": intent_analysis.intent_type,
                     "confidence": intent_analysis.confidence,
-                    "needs_clarification": intent_analysis.needs_clarification
+                    "needs_clarification": intent_analysis.needs_clarification,
+                    "new_code_context_necessary": intent_analysis.new_code_context_necessary,
+                    "code_context_request": intent_analysis.code_context_request,
+                    "reasoning": intent_analysis.reasoning
                 },
+                "code_context": conversation_context.code_context,
                 "memory_updated": self._is_explicit_memory_request(message)
             }
                 
@@ -280,13 +369,25 @@ class UnifiedSamuraiAgent:
             # Get relevant memories from vector context
             relevant_memories = [memory for memory, _ in vector_context.get("relevant_memories_with_scores", [])]
             
+            # Load existing code context if session_id is provided
+            code_context = None
+            if session_id:
+                try:
+                    code_context = code_context_storage.load_code_context(project_id, session_id)
+                    if code_context:
+                        logger.info(f"Loaded existing code context for session {session_id}")
+                except Exception as e:
+                    logger.warning(f"Failed to load code context for session {session_id}: {e}")
+            
             return ConversationContext(
                 session_messages=session_messages,
                 conversation_summary=conversation_summary,
                 relevant_memories=relevant_memories,
                 project_context=project_context,
                 vector_embedding=vector_context.get("vector_embedding"),
-                task_context=task_context if task_context else None
+                task_context=task_context if task_context else None,
+                code_context=code_context,
+                session_id=session_id
             )
             
         except Exception as e:
@@ -297,11 +398,14 @@ class UnifiedSamuraiAgent:
         self, 
         message: str, 
         context: ConversationContext,
-        progress_callback: Optional[Callable[[str, str, str, Dict[str, Any]], None]] = None
+        progress_callback: Optional[Callable[[str, str, str, Dict[str, Any]], None]] = None,
+        code_context_mode: Optional[str] = None,
+        session: Optional[Any] = None
     ) -> IntentAnalysis:
         """
         Analyze user intent with enhanced understanding using the Samurai Engine prompt.
         """
+
         try:
             # Check if Gemini API key is valid before proceeding
             if not self.gemini_service.is_api_key_valid():
@@ -342,10 +446,11 @@ class UnifiedSamuraiAgent:
                     "- Do not blend unrelated topics; prefer a narrow, implementable scope.\n\n"
                 )
 
-            system_prompt = f"""You are Samurai Engine's intent analysis expert. Your role is to deeply understand developer conversations and classify user intent to enable the perfect "vibe coding partner" response.
+            # Step 1: Intent Analysis
+            intent_system_prompt = f"""You are Samurai Engine's intent analysis expert. Your role is to deeply understand developer conversations and classify user intent to enable the perfect "vibe coding partner" response.
 
 CONVERSATION CONTEXT:
-{active_task_header}{context.conversation_summary}
+{active_task_header}{no_active_task_inference}{context.conversation_summary}
 
 PROJECT CONTEXT:
 - Project: {context.project_context.get('name', 'Unknown')}
@@ -357,6 +462,9 @@ ACTIVE TASK:
 
 RELEVANT MEMORIES:
 {self._format_memories_for_context(context.relevant_memories)}
+
+CODE CONTEXT:
+{self._format_code_context_for_prompt(context.code_context)}
 
 CURRENT MESSAGE: "{message}"
 
@@ -386,11 +494,14 @@ Look for these specific patterns:
 **PURE_DISCUSSION patterns:**
 - Theoretical questions about technology concepts ("How does X work?", "What is Y?")
 - Seeking explanations or learning ("How can I build this?", "What's the best way to...")
+- Questions about system functionality and implementation ("How are projects and tasks persisted?", "How is memory updated?", "How is chat streaming implemented?")
+- Questions about system architecture ("Where is the agent routing defined?", "How does the system pick which agent to run?")
 - Casual conversation without project context
 - General acknowledgments ("thanks", "hello", "got it")
 - Questions about how things work conceptually
 - No reference to their specific project implementation
 - **CRITICAL**: Questions that start with "How can I..." or "What's the best way to..." are typically pure_discussion, NOT ready_for_action
+- **CRITICAL**: Questions that start with "How are..." or "How is..." about system functionality are pure_discussion
 - **CRITICAL**: Even if the message mentions "implementing" or "building", if it's phrased as a question seeking guidance, it's pure_discussion
 
 **FEATURE_EXPLORATION patterns:**
@@ -434,11 +545,12 @@ Consider the conversation progression:
 ### Step 5: Ambiguity Resolution
 When intent is unclear, use these tie-breakers:
 
-1. **Context Priority**: Recent conversation context takes precedence
-2. **Question vs Statement**: Questions lean toward discussion/exploration, statements toward action
-3. **Explicit Action Language**: Only classify as ready_for_action if explicit task creation language is present
-4. **Project Reference**: References to their specific project suggest action-oriented intent
-5. **Implementation Language**: Technical implementation details suggest ready_for_action
+1. **System Functionality Questions**: Questions about how the system works (e.g., "How are projects and tasks persisted?", "How is memory updated?") are ALWAYS pure_discussion
+2. **Context Priority**: Recent conversation context takes precedence
+3. **Question vs Statement**: Questions lean toward discussion/exploration, statements toward action
+4. **Explicit Action Language**: Only classify as ready_for_action if explicit task creation language is present
+5. **Project Reference**: References to their specific project suggest action-oriented intent
+6. **Implementation Language**: Technical implementation details suggest ready_for_action
 
 **CRITICAL DISTINCTION:**
 - **Questions seeking guidance** ("How can I build this?", "What's the best approach?") = pure_discussion
@@ -505,7 +617,7 @@ If any reflection questions suggest a different classification, reconsider your 
 
 ## OUTPUT FORMAT
 
-Return ONLY the category name: pure_discussion, feature_exploration, spec_clarification, ready_for_action, or direct_action
+Return ONLY the intent type: pure_discussion, feature_exploration, spec_clarification, ready_for_action, or direct_action
 
 ## EXAMPLES FOR CALIBRATION
 
@@ -530,8 +642,13 @@ Return ONLY the category name: pure_discussion, feature_exploration, spec_clarif
 **Classification**: spec_clarification
 
 **Message**: "How does JWT authentication work?"
-**Context**: General question, no project implementation context
-**Analysis**: Educational question, seeking concept explanation
+**Context**: General conceptual question, no project implementation context
+**Analysis**: User is asking about the concept of JWT, not about specific code implementation. This can be answered from general knowledge.
+**Classification**: pure_discussion
+
+**Message**: "How is JWT authentication implemented in our codebase?"
+**Context**: Question about code implementation
+**Analysis**: User is asking about specific code implementation in the codebase.
 **Classification**: pure_discussion
 
 **Message**: "I want to talk about implementing a button where users can select local folder and then our agent has access to read those files in the folder any time. How can I build this?"
@@ -539,109 +656,319 @@ Return ONLY the category name: pure_discussion, feature_exploration, spec_clarif
 **Analysis**: Question seeking guidance ("How can I build this?"), not requesting task creation
 **Classification**: pure_discussion
 
+**Message**: "How are projects and tasks persisted and loaded?"
+**Context**: Question about system functionality
+**Analysis**: User is asking about how the system works. This is a theoretical question about system architecture.
+**Classification**: pure_discussion
+
 **Message**: "I finished the login API endpoint task"
 **Context**: Task was previously created and assigned
 **Analysis**: Status update on existing task, direct project management
 **Classification**: direct_action
 
-Use this framework to analyze the current message and provide the most accurate intent classification."""
+## CRITICAL GUIDANCE FOR READY_FOR_ACTION CLASSIFICATION
+
+**ONLY classify as ready_for_action if the user EXPLICITLY requests task creation or implementation prompts.**
+
+**EXPLICIT REQUESTS that qualify as ready_for_action:**
+- "Create tasks for..."
+- "Break this down into tasks"
+- "Turn this into tasks"
+- "Generate tasks for..."
+- "Make tasks for..."
+- "Please create a prompt for..."
+- "Give me the prompt for..."
+- "Draft the prompt for..."
+- "I'm ready for implementation tasks"
+- "Let's proceed with this feature"
+- "Break this down"
+
+**DO NOT classify as ready_for_action for:**
+- Detailed specifications without explicit task requests
+- Questions about implementation approaches
+- General feature descriptions
+- Clarification responses
+- Progress updates without task creation requests
+- Questions starting with "How can I..." or "What's the best way to..."
+
+**Remember:** The user must EXPLICITLY ask for task creation or implementation prompts. Detailed specifications alone are spec_clarification, not ready_for_action.
+
+Use this framework to analyze the current message and provide the most accurate intent classification.
+
+Return ONLY the intent type: pure_discussion, feature_exploration, spec_clarification, ready_for_action, or direct_action"""
 
             # Send progress update before AI call
             if progress_callback:
-                await progress_callback("ai_call", "🤖 Calling AI service...", "Analyzing your intent with AI")
+                await progress_callback("ai_call", "🤖 Calling AI service...", "Analyzing your intent with AI", {})
             
-            response = await self.gemini_service.chat_with_system_prompt(message, system_prompt)
+            intent_response = await self.gemini_service.chat_with_system_prompt(message, intent_system_prompt)
             
-            # Clean and parse response
-            response_clean = response.strip().lower()
+            # Parse intent response
+            try:
+                detected_intent = intent_response.strip().lower()
+                # Map possible variations to standard intents
+                intent_mapping = {
+                    "pure_discussion": "pure_discussion",
+                    "pure discussion": "pure_discussion",
+                    "discussion": "pure_discussion",
+                    "question": "pure_discussion",
+                    
+                    "feature_exploration": "feature_exploration",
+                    "feature exploration": "feature_exploration",
+                    "exploration": "feature_exploration",
+                    "thinking about": "feature_exploration",
+                    "maybe": "feature_exploration",
+                    
+                    "spec_clarification": "spec_clarification",
+                    "spec clarification": "spec_clarification",
+                    "clarification": "spec_clarification",
+                    "details": "spec_clarification",
+                    
+                    "ready_for_action": "ready_for_action",
+                    "ready for action": "ready_for_action",
+                    "create tasks": "ready_for_action",
+                    "turn this into tasks": "ready_for_action",
+                    "add as tasks": "ready_for_action",
+                    "add this as tasks": "ready_for_action",
+                    "break this down into tasks": "ready_for_action",
+                    "generate tasks": "ready_for_action",
+                    "make tasks": "ready_for_action",
+                    "create a prompt": "ready_for_action",
+                    "generate a prompt": "ready_for_action",
+                    "give me the prompt": "ready_for_action",
+                    
+                    "direct_action": "direct_action",
+                    "direct action": "direct_action",
+                    "mark task": "direct_action",
+                    "delete task": "direct_action",
+                    "complete task": "direct_action",
+                    "update task": "direct_action"
+                }
+                
+                # Find matching intent
+                for key, intent in intent_mapping.items():
+                    if key in detected_intent:
+                        detected_intent = intent
+                        break
+                
+                logger.debug(f"Parsed intent: {detected_intent}")
+                
+            except Exception as e:
+                logger.warning(f"Failed to parse intent response: {e}")
+                detected_intent = "pure_discussion"  # Default fallback
             
-            # Map possible variations to standard intents
-            intent_mapping = {
-                "pure_discussion": "pure_discussion",
-                "pure discussion": "pure_discussion",
-                "discussion": "pure_discussion",
-                "question": "pure_discussion",
+            # Apply previous session intent logic to prevent premature task breakdowns
+            if session and hasattr(session, 'previous_session_intent'):
+                previous_intent = session.previous_session_intent
+                logger.info(f"Previous session intent: {previous_intent}, Current detected intent: {detected_intent}")
                 
-                "feature_exploration": "feature_exploration",
-                "feature exploration": "feature_exploration",
-                "exploration": "feature_exploration",
-                "thinking about": "feature_exploration",
-                "maybe": "feature_exploration",
-                
-                "spec_clarification": "spec_clarification",
-                "spec clarification": "spec_clarification",
-                "clarification": "spec_clarification",
-                "details": "spec_clarification",
-                
-                "ready_for_action": "ready_for_action",
-                "ready for action": "ready_for_action",
-                "create tasks": "ready_for_action",
-                "turn this into tasks": "ready_for_action",
-                "add as tasks": "ready_for_action",
-                "add this as tasks": "ready_for_action",
-                "break this down into tasks": "ready_for_action",
-                "generate tasks": "ready_for_action",
-                "make tasks": "ready_for_action",
-                "create a prompt": "ready_for_action",
-                "generate a prompt": "ready_for_action",
-                "give me the prompt": "ready_for_action",
-                
-                "direct_action": "direct_action",
-                "direct action": "direct_action",
-                "mark task": "direct_action",
-                "delete task": "direct_action",
-                "complete task": "direct_action",
-                "update task": "direct_action"
-            }
+                # Override logic: If previous intent was not feature_exploration or spec_clarification
+                # and current intent is ready_for_action, override to feature_exploration
+                if (previous_intent not in [UserIntentEnum.FEATURE_EXPLORATION, UserIntentEnum.SPEC_CLARIFICATION] and 
+                    detected_intent == "ready_for_action"):
+                    logger.info(f"Overriding ready_for_action to feature_exploration due to previous intent: {previous_intent}")
+                    detected_intent = "spec_clarification"
+                else:
+                    logger.info(f"No override needed. Previous intent: {previous_intent}, Current intent: {detected_intent}")
+            else:
+                logger.info("No session provided or session has no previous_session_intent field")
             
-            # Find matching intent
-            detected_intent = "pure_discussion"  # Default fallback
-            for key, intent in intent_mapping.items():
-                if key in response_clean:
-                    detected_intent = intent
-                    break
-            
-            # Additional keyword-based detection if LLM didn't provide clear intent
-            if detected_intent == "pure_discussion":
-                # Check for feature exploration keywords
-                exploration_keywords = ["thinking about", "maybe", "considering", "wondering"]
-                if any(keyword in message.lower() for keyword in exploration_keywords):
-                    detected_intent = "feature_exploration"
+            # Step 2: Code Context Necessity Analysis
+            # Skip code context analysis if mode is "without code look up"
+            if code_context_mode == "without code look up":
+                logger.info("Code context mode is 'without code look up' - skipping code context analysis")
+                new_code_context_necessary = False
+                code_context_request = None
+            else:
+                logger.info(f"Starting Step 2: Code Context Necessity Analysis for message: '{message}'")
+                code_context_system_prompt = f"""You are Samurai Engine's code context necessity expert. Your role is to determine if new code context extraction is needed to provide accurate answers.
+
+CONVERSATION CONTEXT:
+{active_task_header}{no_active_task_inference}{context.conversation_summary}
+
+PROJECT CONTEXT:
+- Project: {context.project_context.get('name', 'Unknown')}
+- Tech Stack: {context.project_context.get('tech_stack', 'Unknown')}
+- Project Stage: {context.project_context.get('stage', 'Development')}
+
+ACTIVE TASK:
+{self._format_tasks_for_context([context.task_context] if context.task_context else [])}
+
+RELEVANT MEMORIES:
+{self._format_memories_for_context(context.relevant_memories)}
+
+CODE CONTEXT:
+{self._format_code_context_for_prompt(context.code_context)}
+
+CURRENT MESSAGE: "{message}"
+DETECTED INTENT: "{detected_intent}"
+
+## CODE CONTEXT NECESSITY ANALYSIS
+
+Your task is to determine if NEW code context extraction is needed to provide an accurate answer.
+
+### ASSESSMENT CRITERIA:
+
+1. **Would more code context be helpful for a better answer?**
+   - If YES → new_code_context_necessary = true
+   - If NO → new_code_context_necessary = false
+
+2. **Does the question ask about ACTUAL CODE implementation?**
+   - If YES → new_code_context_necessary = true
+   - If NO → new_code_context_necessary = false
+
+3. **Is the question about system functionality that would benefit from code analysis?**
+   - If YES → new_code_context_necessary = true
+   - If NO → new_code_context_necessary = false
+
+### DECISION RULES:
+
+**ALWAYS set new_code_context_necessary = true for:**
+- Questions about ACTUAL CODE implementation ("How are projects and tasks persisted?", "How is memory updated?", "How is chat streaming implemented?")
+- Questions about system architecture that need code analysis ("Where is the agent routing defined?", "How does the system pick which agent to run?")
+- Questions about specific implementation details ("How does X work in the code?", "What's the implementation of Y?")
+- Questions that ask "how" something is implemented in the codebase
+- Questions that start with "How are...", "How is...", "Where is...", "How does..." about system functionality
+
+**Set new_code_context_necessary = false for:**
+- Questions that can be answered with current code context 
+- General conceptual questions ("What is JWT?", "How does authentication work conceptually?")
+- Casual conversation ("Hello", "Thanks", "Got it")
+- Task management commands ("Mark task complete", "Delete task")
+- Questions about project requirements or specifications (not implementation)
+
+### DECISION TREE:
+1. Would code context help provide a better, more accurate answer? → new_code_context_necessary = true
+2. Is the user asking about HOW something is implemented in the actual code? → new_code_context_necessary = true
+3. Is the user asking about WHAT something does (conceptually)? → new_code_context_necessary = false
+4. Does the question contain words like "how are", "how is", "where is", "how does" about system functionality? → new_code_context_necessary = true
+5. Can this be answered with current code context only? → new_code_context_necessary = false
+
+### EXAMPLES:
+
+**Message**: "How are projects and tasks persisted and loaded?"
+**Analysis**: User is asking about HOW the system is implemented in code. Code context would provide much better, more accurate answers than just project specifications.
+**Decision**: new_code_context_necessary = true
+**Code Context Request**: "Find project and task persistence code including save/load functions, file storage methods, data serialization, and any database or file system operations for storing and retrieving project and task data"
+
+**Message**: "How does JWT authentication work?"
+**Analysis**: User is asking about the general concept of JWT, not about specific implementation. Code context wouldn't add much value here.
+**Decision**: new_code_context_necessary = false
+**Code Context Request**: null
+
+**Message**: "How is JWT authentication implemented in our codebase?"
+**Analysis**: User is asking about HOW JWT is implemented in the specific codebase. Code context would provide much better, more accurate answers.
+**Decision**: new_code_context_necessary = true
+**Code Context Request**: "Find JWT authentication implementation including token generation, validation, middleware, and user authentication flow"
+
+## OUTPUT FORMAT
+
+Return a JSON object with the following structure:
+{{
+    "new_code_context_necessary": true|false,
+    "code_context_request": "detailed description of what code information is needed" | null,
+    "reasoning": "explanation of why you made this decision"
+}}
+
+### Code Context Request Guidelines:
+If new_code_context_necessary is true, provide a VERY DETAILED description of what code information is needed. This will be used to find relevant files and methods. Be specific about:
+- What types of code you're looking for (functions, classes, modules, etc.)
+- What functionality or features you need to understand
+- What specific methods or components might be relevant
+- What architectural patterns or structures to focus on
+
+If new_code_context_necessary is false, set code_context_request to null.
+
+Return ONLY the JSON object."""
+
+                # Send progress update before AI call
+                if progress_callback:
+                    await progress_callback("ai_call", "🤖 Calling AI service...", "Analyzing code context necessity", {})
                 
-                # Check for ready for action explicit phrases
-                action_phrases = [
-                    "create tasks",
-                    "turn this into tasks",
-                    "add as tasks",
-                    "add this as tasks",
-                    "break this down into tasks",
-                    "generate tasks",
-                    "make tasks",
-                    "create a prompt",
-                    "generate a prompt",
-                    "give me the prompt"
-                ]
-                message_lower = message.lower()
-                if any(phrase in message_lower for phrase in action_phrases):
-                    detected_intent = "ready_for_action"
-                
-                # Check for direct action keywords
-                direct_keywords = ["mark", "delete", "complete", "finish", "update", "close"]
-                if any(keyword in message_lower for keyword in direct_keywords) and any(entity in message_lower for entity in ["task", "tasks", "issue", "ticket"]):
-                    detected_intent = "direct_action"
+                logger.info("Calling Gemini service for code context analysis...")
+                code_context_response = await self.gemini_service.chat_with_system_prompt(message, code_context_system_prompt)
             
+                # Debug: Log the raw LLM response for code context analysis
+                logger.info(f"Raw LLM response for code context analysis: {code_context_response}")
+                
+                # Parse code context response
+                try:
+                    import json
+                    import re
+                    
+                    # Try to extract JSON from the response
+                    json_match = re.search(r'\{.*\}', code_context_response, re.DOTALL)
+                    if json_match:
+                        code_context_result = json.loads(json_match.group())
+                    else:
+                        code_context_result = json.loads(code_context_response)
+                    
+                    new_code_context_necessary = code_context_result.get("new_code_context_necessary", False)
+                    code_context_request = code_context_result.get("code_context_request")
+                    reasoning = code_context_result.get("reasoning", "No reasoning provided")
+                    
+                    logger.info(f"Parsed code context analysis: new_code_context_necessary={new_code_context_necessary}, code_context_request={code_context_request}, reasoning={reasoning}")
+                    
+                except (json.JSONDecodeError, KeyError) as e:
+                    logger.warning(f"Failed to parse code context response as JSON: {e}")
+                    # Fallback: assume no code context needed
+                    new_code_context_necessary = False
+                    code_context_request = None
+            
+
             return IntentAnalysis(
                 intent_type=detected_intent,
                 confidence=0.8 if detected_intent != "pure_discussion" else 0.6,
                 reasoning=f"Detected intent: {detected_intent} based on enhanced analysis",
                 needs_clarification=detected_intent == "feature_exploration",
                 clarification_questions=[],
-                accumulated_specs={}
+                accumulated_specs={},
+                new_code_context_necessary=new_code_context_necessary,
+                code_context_request=code_context_request
             )
                 
         except Exception as e:
             logger.error(f"Error analyzing user intent: {e}")
             return self._create_fallback_intent_analysis(message)
+    
+
+    
+    def _format_code_context_for_prompt(self, code_context: Optional[Dict[str, Any]]) -> str:
+        """
+        Format code context for inclusion in prompts.
+        
+        Args:
+            code_context: The code context dictionary or None
+        
+        Returns:
+            Formatted string for prompt inclusion
+        """
+        if not code_context:
+            return "No relevant code context available."
+        
+        try:
+            context_summary = code_context.get("context", "")
+            relevant_code = code_context.get("relevant_code", "")
+            file_path = code_context.get("file_path", "")
+            relevance_score = code_context.get("relevance_score", 0)
+            
+            formatted_context = f"""Relevant Code Found:
+File: {file_path}
+Relevance Score: {relevance_score}/10
+
+Context Summary:
+{context_summary}
+
+Relevant Code Snippet:
+{relevant_code}
+
+Use this code context to provide more accurate and specific answers about the codebase."""
+            
+            return formatted_context
+            
+        except Exception as e:
+            logger.error(f"Error formatting code context: {e}")
+            return "Code context available but formatting failed."
     
     async def _select_and_execute_response_path(
         self, 
@@ -649,7 +976,8 @@ Use this framework to analyze the current message and provide the most accurate 
         intent_analysis: IntentAnalysis, 
         context: ConversationContext, 
         project_id: str,
-        progress_callback: Optional[Callable[[str, str, str, Dict[str, Any]], None]] = None
+        progress_callback: Optional[Callable[[str, str, str, Dict[str, Any]], None]] = None,
+        code_context_mode: Optional[str] = None
     ) -> dict:
         """
         Select and execute the appropriate response path based on intent analysis.
@@ -678,10 +1006,10 @@ Use this framework to analyze the current message and provide the most accurate 
                 return await self._handle_feature_exploration(message, context, intent_analysis, progress_callback)
             
             elif intent_analysis.intent_type == "spec_clarification":
-                return await self._handle_spec_clarification(message, context, intent_analysis)
+                return await self._handle_spec_clarification(message, context, intent_analysis, code_context_mode)
             
             elif intent_analysis.intent_type == "ready_for_action":
-                return await self._handle_ready_for_action(message, context, project_id, progress_callback)
+                return await self._handle_ready_for_action(message, context, project_id, progress_callback, code_context_mode)
             
             elif intent_analysis.intent_type == "direct_action":
                 return await self._handle_direct_action(message, context, project_id, progress_callback)
@@ -697,10 +1025,19 @@ Use this framework to analyze the current message and provide the most accurate 
     async def _handle_pure_discussion(self, message: str, context: ConversationContext, progress_callback: Optional[Callable] = None) -> dict:
         """Handle pure discussion with comprehensive conversation context awareness."""
         try:
-            # Build enhanced conversation context with 20 message history
-            conversation_context = self._create_conversation_summary_with_smart_truncation(
-                context.session_messages, message
-            )
+            # For system functionality questions, use minimal conversation context to avoid task generation
+            message_lower = message.lower()
+            if any(phrase in message_lower for phrase in [
+                'how are projects and tasks persisted', 'how is memory updated', 
+                'how is chat streaming implemented', 'where is the agent routing defined',
+                'how does the system pick which agent'
+            ]):
+                conversation_context = "This is a direct question about system functionality. Focus on providing a clear, direct answer based on the available context."
+            else:
+                # Build enhanced conversation context with 20 message history
+                conversation_context = self._create_conversation_summary_with_smart_truncation(
+                    context.session_messages, message
+                )
             
             active_task_header = ""
             if context.task_context:
@@ -748,6 +1085,9 @@ Project: {context.project_context.get('name', 'Unknown')} | Tech: {context.proje
 ## CURRENT TASK
 {self._format_tasks_for_context([context.task_context] if context.task_context else [])}
 
+## CODE CONTEXT
+{self._format_code_context_for_prompt(context.code_context)}
+
 ## RESPONSE REQUIREMENTS
 
 1. **ALWAYS reference the conversation history above** - Show deep understanding of the ongoing discussion
@@ -774,6 +1114,16 @@ Project: {context.project_context.get('name', 'Unknown')} | Tech: {context.proje
 - Demonstrate understanding of how discussions have evolved
 - Be their knowledgeable coding partner who remembers the entire conversation
 
+## CRITICAL: HANDLING QUESTIONS
+When the user asks a direct question (especially questions starting with "How are...", "How is...", "What is...", etc.), focus on providing a clear, direct answer based on the available context. 
+
+**IMPORTANT**: 
+- For questions about system functionality, provide a direct answer using the available context (project details, code context, memories)
+- Do NOT generate tasks unless the user explicitly asks for task creation
+- Do NOT continue previous task discussions unless the user explicitly asks for that
+- If the conversation history mentions previous tasks, focus on answering the current question directly rather than continuing the task discussion
+- **CRITICAL**: Even if the conversation history contains previous task discussions, when the user asks a direct question, provide a direct answer rather than continuing the task discussion
+
 Your response:
 """
             
@@ -793,7 +1143,8 @@ Your response:
                     "relevant_memories_count": len(context.relevant_memories),
                     "has_active_task": bool(context.task_context),
                     "conversation_depth": len(context.session_messages)
-                }
+                },
+                "code_context": context.code_context
             }
             
         except Exception as e:
@@ -803,8 +1154,11 @@ Your response:
                 "response": "I'm here to help with your project! What would you like to discuss?",
                 "tool_calls_made": 0,
                 "tool_results": [],
-                "context_used": {}
+                "context_used": {},
+                "code_context": context.code_context
             }
+    
+
     
     async def _handle_feature_exploration(self, message: str, context: ConversationContext, intent_analysis: IntentAnalysis, progress_callback: Optional[Callable] = None) -> dict:
         """Handle feature exploration with comprehensive conversation continuity."""
@@ -843,7 +1197,7 @@ Your response:
 
             
             system_prompt = f"""
-You are Samurai Engine, helping developers explore feature ideas with deep conversation awareness.
+You are Samurai Engine, a helpful AI assistant that engages in natural conversation with developers about their project ideas and features.
 
 {active_task_header}{no_active_task_inference}
 
@@ -854,39 +1208,66 @@ You are Samurai Engine, helping developers explore feature ideas with deep conve
 Project: {context.project_context.get('name', 'Unknown')} | Tech: {context.project_context.get('tech_stack', 'Unknown')}
 \nPROJECT DETAIL SPEC (if available):\n{context.project_context.get('project_detail', '')}
 
-
 ## RELEVANT PROJECT KNOWLEDGE
 {self._format_memories_for_context(context.relevant_memories)}
 
 ## CURRENT TASK
 {self._format_tasks_for_context([context.task_context] if context.task_context else [])}
 
-## YOUR RESPONSE APPROACH WITH EXTENDED CONTEXT
+## CODE CONTEXT
+{self._format_code_context_for_prompt(context.code_context)}
 
-1. **Analyze the full conversation arc** - understand how this feature idea relates to everything discussed
-2. **Reference multiple conversation threads** - connect to various topics explored earlier
-3. **Show awareness of conversation evolution** - how ideas have developed over multiple exchanges
-4. **Connect to earlier planning or decisions** made in the conversation
-5. **Ask questions that build on the comprehensive context**
+## CONVERSATION APPROACH - NATURAL DIALOGUE ONLY
 
-## FEATURE EXPLORATION WITH CONVERSATION DEPTH
-- Reference features or approaches discussed earlier in the conversation
-- Build on clarifications or decisions made several messages ago
-- Show understanding of how this new idea fits into the broader conversation
-- Connect to multiple aspects of their project discussed over time
+**CRITICAL: You are having a natural conversation, NOT creating tasks or providing implementation details.**
 
-## QUESTION STRATEGY WITH EXTENDED CONTEXT
-- Reference specific technical discussions from earlier in the conversation
-- Build questions on decisions or preferences mentioned previously
-- Show awareness of constraints or requirements established earlier
-- Connect to multiple features or systems discussed throughout the conversation
+Your role is to:
+1. **Engage in thoughtful discussion** about the feature idea
+2. **Ask clarifying questions** to understand their vision better
+3. **Share relevant insights** from the conversation history
+4. **Explore the implications** of their idea within their project context
+5. **Help them think through** the feature from different angles
 
-## EXAMPLES OF DEEP CONTEXT INTEGRATION
-- "This new feature idea connects interesting with both the [system A] we discussed earlier and the [approach B] you mentioned for [previous topic]..."
-- "Given the conversation we've had about [multiple topics], I'm curious how this would integrate with..."
-- "Building on the [technical decision] we established and the [user flow] we explored..."
+## RESPONSE STYLE GUIDELINES
 
-Your response should demonstrate deep understanding of the entire conversation, not just recent exchanges.
+**DO:**
+- Respond conversationally and naturally
+- Ask thoughtful questions about their feature idea
+- Reference relevant parts of your conversation history
+- Share insights about how this fits with their project
+- Help them explore different aspects of the feature
+- Use phrases like "That's an interesting idea!", "I'm curious about...", "How do you envision...", "What's your thinking on..."
+
+**DO NOT:**
+- Create or list tasks
+- Provide implementation details
+- Give step-by-step instructions
+- Use formal or technical language
+- Structure responses as task breakdowns
+- Mention task creation unless they explicitly ask for it
+
+## CONVERSATION EXAMPLES
+
+**Good responses:**
+- "That's a really interesting feature idea! I'm curious how you envision users interacting with this - would it be a new page, or integrated into an existing workflow?"
+- "This connects nicely with the authentication system we discussed earlier. How do you think this would work with your current user roles?"
+- "I like the direction you're thinking! What's your vision for the user experience - should this be something users actively seek out, or more of a background enhancement?"
+
+**Avoid responses like:**
+- "Here are the tasks needed to implement this feature: 1. Create database schema 2. Build API endpoints..."
+- "To implement this, you'll need to: - Set up authentication - Create user interface..."
+- "Implementation steps: 1. Backend changes 2. Frontend components..."
+
+## QUESTION STRATEGY
+
+Ask natural, conversational questions that help them explore their idea:
+- "What problem are you trying to solve with this feature?"
+- "How do you see users discovering or accessing this functionality?"
+- "What's your vision for the user experience?"
+- "How does this fit into your overall product roadmap?"
+- "Are there any specific constraints or requirements you have in mind?"
+
+Remember: You're having a friendly conversation about their project ideas, not providing technical implementation guidance.
 """
             
             # Send progress update before AI call
@@ -904,7 +1285,8 @@ Your response should demonstrate deep understanding of the entire conversation, 
                     "conversation_summary": conversation_context,
                     "conversation_depth": len(context.session_messages),
                     "clarification_questions": intent_analysis.clarification_questions
-                }
+                },
+                "code_context": context.code_context
             }
             
         except Exception as e:
@@ -914,10 +1296,11 @@ Your response should demonstrate deep understanding of the entire conversation, 
                 "response": "That's an interesting idea! Could you tell me more about what you want to build?",
                 "tool_calls_made": 0,
                 "tool_results": [],
-                "context_used": {}
+                "context_used": {},
+                "code_context": context.code_context
             }
     
-    async def _handle_spec_clarification(self, message: str, context: ConversationContext, intent_analysis: IntentAnalysis) -> dict:
+    async def _handle_spec_clarification(self, message: str, context: ConversationContext, intent_analysis: IntentAnalysis, code_context_mode: Optional[str] = None) -> dict:
         """Handle specification clarification with comprehensive conversation awareness."""
         try:
             # Build enhanced conversation context with full history
@@ -969,6 +1352,9 @@ Project: {context.project_context.get('name', 'Unknown')} | Tech: {context.proje
 
 ## CURRENT TASK
 {self._format_tasks_for_context([context.task_context] if context.task_context else [])}
+
+## CODE CONTEXT
+{self._format_code_context_for_prompt(context.code_context)}
 
 ## SPECIFICATION GATHERING WITH EXTENDED CONTEXT
 
@@ -1037,20 +1423,31 @@ Consider the full conversation arc:
 - Are there any gaps that need addressing despite the comprehensive discussion?
 
 Show deep understanding of how the specification has evolved throughout the entire conversation.
+
+
 """
             
             response = await self.gemini_service.chat_with_system_prompt(message, system_prompt)
             
+            # Step 4: Process spec_clarification response for codebase-relevant questions
+            # Only process if code context mode allows it
+            if code_context_mode == "without code look up":
+                processed_response = response.strip()
+                logger.info("Code context mode is 'without code look up' - skipping spec clarification response processing")
+            else:
+                processed_response = await self._process_spec_clarification_response(response.strip(), context)
+            
             return {
                 "type": "spec_clarification_response",
-                "response": response.strip(),
+                "response": processed_response,
                 "tool_calls_made": 0,
                 "tool_results": [],
                 "context_used": {
                     "conversation_summary": conversation_context,
                     "conversation_depth": len(context.session_messages),
                     "accumulated_specs": intent_analysis.accumulated_specs
-                }
+                },
+                "code_context": context.code_context
             }
             
         except Exception as e:
@@ -1060,10 +1457,378 @@ Show deep understanding of how the specification has evolved throughout the enti
                 "response": "Thanks for those details! Would you like me to create tasks for this feature?",
                 "tool_calls_made": 0,
                 "tool_results": [],
-                "context_used": {}
+                "context_used": {},
+                "code_context": context.code_context
             }
     
-    async def _handle_ready_for_action(self, message: str, context: ConversationContext, project_id: str, progress_callback: Optional[Callable] = None) -> dict:
+    async def _process_spec_clarification_response(self, chat_response: str, conversation_context: ConversationContext) -> str:
+        """
+        Process spec clarification response to improve questions with codebase context.
+        
+        Args:
+            chat_response: The agent's response text
+            conversation_context: The conversation context
+            
+        Returns:
+            The processed response with improved questions
+        """
+        try:
+            # Step 1: Identify codebase-relevant questions
+            identified_questions = await self._identify_codebase_relevant_questions(chat_response)
+            
+            if not identified_questions:
+                logger.info("No codebase-relevant questions identified in spec clarification response")
+                return chat_response
+            
+            logger.info(f"Identified {len(identified_questions)} codebase-relevant questions")
+            
+            # Step 2: Process all questions in a single batch operation
+            processed_questions = await self._process_questions_batch(
+                identified_questions, 
+                conversation_context
+            )
+            
+            # Step 3: Use LLM to update the original response with better questions
+            final_response = await self._update_response_with_processed_questions(
+                chat_response, processed_questions
+            )
+            
+            logger.info("Successfully processed spec clarification response with improved questions")
+            return final_response
+            
+        except Exception as e:
+            logger.error(f"Error processing spec clarification response: {e}")
+            # Return original response if processing fails
+            return chat_response
+    
+    async def _identify_codebase_relevant_questions(self, chat_response: str) -> List[str]:
+        """
+        Use LLM to identify questions in the response that are likely answerable from the codebase.
+        
+        Args:
+            chat_response: The agent's response text
+            
+        Returns:
+            List of question strings that are codebase-relevant
+        """
+        try:
+            prompt = f"""
+Given the following user-facing message from an AI assistant, identify any questions that directly ask about current code implementation details or facts that could be found in a codebase.
+
+Message: {chat_response}
+
+Instructions:
+1. Look for questions that ask about:
+   - How something is implemented in the code
+   - What files, functions, or classes exist
+   - Current code structure or architecture
+   - Specific implementation details
+   - Configuration or setup details
+   
+2. Ignore questions that are:
+   - About user preferences or decisions
+   - About future implementation plans
+   - About general concepts or explanations
+   - About requirements gathering
+   
+3. Extract only the exact question text for each identified question.
+
+Return a JSON array of question strings:
+[
+  "exact question text 1",
+  "exact question text 2"
+]
+
+If no relevant questions are found, return an empty array [].
+"""
+            
+            response = await self.gemini_service.chat_with_system_prompt("", prompt)
+            
+            # Extract JSON from response
+            import re
+            import json
+            
+            json_match = re.search(r'\[.*\]', response, re.DOTALL)
+            if json_match:
+                questions_data = json.loads(json_match.group())
+            else:
+                # Try to parse the entire response as JSON
+                questions_data = json.loads(response)
+            
+            # Validate that we have a list of strings
+            validated_questions = []
+            for question in questions_data:
+                if isinstance(question, str) and question.strip():
+                    validated_questions.append(question.strip())
+            
+            return validated_questions
+            
+        except Exception as e:
+            logger.error(f"Error identifying codebase-relevant questions: {e}")
+            return []
+    
+    async def _process_questions_batch(self, questions: List[str], conversation_context: ConversationContext) -> List[Dict[str, str]]:
+        """
+        Process a batch of questions efficiently by extracting code context once and processing all questions together.
+        
+        Args:
+            questions: List of question strings
+            conversation_context: The conversation context
+            
+        Returns:
+            List of dicts with 'original' and 'processed' question pairs
+        """
+        try:
+            # Step 1: Extract codebase path and project info
+            codebase_path = conversation_context.project_context.get('codebase_path')
+            project_id = conversation_context.project_context.get('id')
+            session_id = conversation_context.session_id
+            
+            if not codebase_path or not project_id:
+                logger.warning("No codebase path or project ID available for code context extraction")
+                return [{'original': q, 'processed': q} for q in questions]
+            
+            # Step 2: Use a single code context extraction call for all questions
+            combined_request = " ".join(questions)
+            code_context_result = await self.tool_registry.execute_tool(
+                "extract_code_context",
+                natural_language_request=combined_request,
+                project_id=project_id,
+                session_id=session_id,
+                connected_codebase_path=codebase_path,
+                max_iterations=3  # Use more iterations since we're processing multiple questions
+            )
+            
+            # Step 3: Process all questions with the extracted context
+            if not code_context_result.get("success"):
+                logger.info("No relevant code found for any questions")
+                return [{'original': q, 'processed': q} for q in questions]
+            
+            context = code_context_result.get("context", "")
+            relevant_code = code_context_result.get("relevant_code", "")
+            file_path = code_context_result.get("file_path", "")
+            
+            # Step 4: Use LLM to process all questions with the shared context
+            processed_questions = await self._process_questions_with_shared_context(
+                questions, context, relevant_code, file_path
+            )
+            
+            return processed_questions
+            
+        except Exception as e:
+            logger.error(f"Error processing questions batch: {e}")
+            return [{'original': q, 'processed': q} for q in questions]
+    
+    async def _update_response_with_processed_questions(self, original_response: str, processed_questions: List[Dict[str, str]]) -> str:
+        """
+        Use LLM to update the original response by replacing questions with their processed versions.
+        
+        Args:
+            original_response: The original response text
+            processed_questions: List of dicts with 'original' and 'processed' question pairs
+            
+        Returns:
+            The updated response with processed questions
+        """
+        try:
+            # Build the question mapping for the prompt
+            question_mappings = []
+            for pq in processed_questions:
+                question_mappings.append(f"Original: {pq['original']}\nProcessed: {pq['processed']}")
+            
+            question_mappings_text = "\n\n".join(question_mappings)
+            
+            prompt = f"""
+You are updating a response to replace certain questions with better, more specific versions.
+
+Original Response:
+{original_response}
+
+Question Mappings (replace original questions with processed versions):
+{question_mappings_text}
+
+Instructions:
+1. Replace each original question with its corresponding processed version
+2. Maintain the natural flow and tone of the response
+3. Keep all other text exactly the same
+4. Only replace the exact original questions, not similar phrases
+5. If a processed question is the same as the original, keep the original
+6. Ensure the response remains coherent and well-formatted
+
+Updated Response:
+"""
+            
+            response = await self.gemini_service.chat_with_system_prompt("", prompt)
+            
+            # Clean up the response
+            updated_response = response.strip()
+            if updated_response.startswith("Updated Response:"):
+                updated_response = updated_response[len("Updated Response:"):].strip()
+            
+            # Validate the response is reasonable
+            if len(updated_response) < len(original_response) * 0.5 or len(updated_response) > len(original_response) * 2:
+                logger.warning(f"Updated response seems too different in length from original")
+                return original_response
+            
+            return updated_response
+            
+        except Exception as e:
+            logger.error(f"Error updating response with processed questions: {e}")
+            return original_response
+
+    async def _process_questions_with_shared_context(self, questions: List[str], context: str, 
+                                                   relevant_code: str, file_path: str) -> List[Dict[str, str]]:
+        """
+        Process multiple questions using shared codebase context in a single LLM call.
+        
+        Args:
+            questions: List of original questions
+            context: The context summary from the code context tool
+            relevant_code: The relevant code snippets
+            file_path: The file path where the code was found
+            
+        Returns:
+            List of dicts with 'original' and 'processed' question pairs
+        """
+        try:
+            # Format questions for the prompt
+            questions_text = "\n".join([f"{i+1}. {question}" for i, question in enumerate(questions)])
+            
+            prompt = f"""
+You are helping to improve questions by providing more specific, code-aware versions based on the codebase information.
+
+Codebase Information:
+- Context: {context}
+- Relevant Code: {relevant_code}
+- File Path: {file_path}
+
+Original Questions:
+{questions_text}
+
+Instructions:
+1. For each question, create a more specific version that references the codebase
+2. If the code shows the answer, phrase it as a confirmation: "Is it correct that..." or "Does [file] contain..."
+3. Include specific details from the code (function names, file paths, etc.)
+4. Keep it concise and clear
+5. If the code doesn't provide enough information, keep the original question
+6. Make it a simple yes/no question when possible
+
+Return a JSON array of objects with original and processed questions:
+[
+  {{"original": "original question 1", "processed": "improved question 1"}},
+  {{"original": "original question 2", "processed": "improved question 2"}}
+]
+
+Examples of good processed questions:
+- "Is it correct that the User model has an 'email' field?"
+- "Does the authentication service use JWT tokens?"
+- "Is the API endpoint '/api/users' implemented in the UserController?"
+"""
+            
+            response = await self.gemini_service.chat_with_system_prompt("", prompt)
+            
+            # Extract JSON from response
+            import re
+            import json
+            
+            json_match = re.search(r'\[.*\]', response, re.DOTALL)
+            if json_match:
+                processed_data = json.loads(json_match.group())
+            else:
+                # Try to parse the entire response as JSON
+                processed_data = json.loads(response)
+            
+            # Validate and format the response
+            processed_questions = []
+            for item in processed_data:
+                if isinstance(item, dict) and 'original' in item and 'processed' in item:
+                    processed_questions.append({
+                        'original': item['original'].strip(),
+                        'processed': item['processed'].strip()
+                    })
+                elif isinstance(item, str):
+                    # Fallback: if we get a simple string, use it as processed version
+                    original_idx = len(processed_questions)
+                    if original_idx < len(questions):
+                        processed_questions.append({
+                            'original': questions[original_idx],
+                            'processed': item.strip()
+                        })
+            
+            # Ensure we have all questions covered
+            while len(processed_questions) < len(questions):
+                remaining_idx = len(processed_questions)
+                processed_questions.append({
+                    'original': questions[remaining_idx],
+                    'processed': questions[remaining_idx]  # Keep original if no improvement
+                })
+            
+            return processed_questions
+            
+        except Exception as e:
+            logger.error(f"Error processing questions with shared context: {e}")
+            # Return original questions if processing fails
+            return [{'original': q, 'processed': q} for q in questions]
+
+    async def _rephrase_question_with_context(self, original_question: str, context: str, 
+                                            relevant_code: str, file_path: str) -> str:
+        """
+        Use LLM to rephrase a question into a confirmation statement using codebase information.
+        
+        Args:
+            original_question: The original question
+            context: The context summary from the code context tool
+            relevant_code: The relevant code snippets
+            file_path: The file path where the code was found
+            
+        Returns:
+            The rephrased question as a confirmation statement
+        """
+        try:
+            prompt = f"""
+Rephrase this question into a concise yes/no or confirmation question, using the provided codebase information.
+
+Original Question: {original_question}
+
+Codebase Information:
+- Context: {context}
+- Relevant Code: {relevant_code}
+- File Path: {file_path}
+
+Instructions:
+1. Use the codebase information to create a confirmation question
+2. Make it a simple yes/no question when possible
+3. Include specific details from the code (function names, file paths, etc.)
+4. Keep it concise and clear
+5. If the code shows the answer, phrase it as "Is it correct that..." or "Does [file] contain..."
+
+Examples:
+- "Is it correct that the User model has an 'email' field?"
+- "Does the authentication service use JWT tokens?"
+- "Is the API endpoint '/api/users' implemented in the UserController?"
+
+Rephrased Question:
+"""
+            
+            response = await self.gemini_service.chat_with_system_prompt("", prompt)
+            
+            # Clean up the response
+            rephrased = response.strip()
+            if rephrased.startswith("Rephrased Question:"):
+                rephrased = rephrased[len("Rephrased Question:"):].strip()
+            
+            # Validate the rephrased question is reasonable
+            if len(rephrased) < 10 or len(rephrased) > 200:
+                logger.warning(f"Rephrased question seems too short or too long: {rephrased}")
+                return original_question
+            
+            return rephrased
+            
+        except Exception as e:
+            logger.error(f"Error rephrasing question with context: {e}")
+            return original_question
+    
+    async def _handle_ready_for_action(self, message: str, context: ConversationContext, project_id: str, progress_callback: Optional[Callable] = None, code_context_mode: Optional[str] = None) -> dict:
         """Handle ready for action with comprehensive conversation context for task creation."""
         try:
             # Build enhanced conversation context for comprehensive task generation
@@ -1071,11 +1836,83 @@ Show deep understanding of how the specification has evolved throughout the enti
                 context.session_messages, message
             )
             
+            # Extract code context based on mode and intent analysis (same logic as main method)
+            should_extract_code_context = False
+            
+            if code_context_mode == "with code look up":
+                should_extract_code_context = True
+                logger.info("Code context mode is 'with code look up' - forcing code context extraction for task creation")
+            elif code_context_mode == "without code look up":
+                should_extract_code_context = False
+                logger.info("Code context mode is 'without code look up' - skipping code context extraction for task creation")
+            elif code_context_mode == "auto" or code_context_mode is None:
+                # For task creation, we should always extract code context when in auto mode
+                # since task creation benefits from understanding the current codebase
+                should_extract_code_context = True
+                logger.info("Code context mode is 'auto' - extracting code context for task creation")
+            
+            if should_extract_code_context:
+                if progress_callback:
+                    await progress_callback("code_context", "🔍 Extracting code context for task creation...", "Scanning codebase for relevant code")
+                
+                try:
+                    # Extract code context using conversation_context as the user request
+                    codebase_path = context.project_context.get('codebase_path')
+                    logger.info(f"Code context extraction for task creation - project_id: {project_id}, codebase_path: {codebase_path}")
+                    
+                    code_context_result = await self.tool_registry.execute_tool(
+                        "extract_code_context",
+                        natural_language_request=conversation_context,
+                        project_id=project_id,
+                        session_id=context.session_id,
+                        connected_codebase_path=codebase_path,
+                        max_iterations=3
+                    )
+                    
+                    logger.info(f"Code context extraction result for task creation: {code_context_result}")
+                    
+                    if code_context_result.get("success"):
+                        code_context = {
+                            "context": code_context_result.get("context"),
+                            "relevant_code": code_context_result.get("relevant_code"),
+                            "file_path": code_context_result.get("file_path"),
+                            "relevance_score": code_context_result.get("relevance_score", 0)
+                        }
+                        context.code_context = code_context
+                        logger.info(f"Successfully extracted code context for task creation from {code_context['file_path']}")
+                        logger.info(f"Code context details: context={len(code_context['context']) if code_context['context'] else 0} chars, code={len(code_context['relevant_code']) if code_context['relevant_code'] else 0} chars")
+                    else:
+                        error_message = code_context_result.get('message', 'Unknown error')
+                        logger.info(f"No relevant code context found for task creation: {error_message}")
+                        
+                        # Log specific information when codebase path is missing
+                        if "No codebase path provided" in error_message:
+                            logger.info("Code context extraction skipped - no codebase path configured for this project")
+                        
+                except Exception as e:
+                    logger.error(f"Error extracting code context for task creation: {e}")
+            
             if progress_callback:
                 await progress_callback("planning", "📋 Creating task breakdown...", "Analyzing comprehensive conversation context and requirements")
             
             # Generate task breakdown with full conversation context
-            task_breakdown = await self._generate_task_breakdown_with_extended_context(message, context, conversation_context)
+            try:
+                logger.info(f"Generating task breakdown for message: {message[:100]}...")
+                task_breakdown = await self._generate_task_breakdown_with_extended_context(message, context, conversation_context)
+                logger.info(f"Generated task breakdown with {len(task_breakdown)} tasks")
+                logger.info(f"Task breakdown: {task_breakdown}")
+            except Exception as e:
+                logger.error(f"Error generating task breakdown: {e}")
+                import traceback
+                logger.error(f"Task breakdown error traceback: {traceback.format_exc()}")
+                return {
+                    "type": "error",
+                    "response": f"I encountered an error while creating tasks: {str(e)}",
+                    "tool_calls_made": 0,
+                    "tool_results": [],
+                    "context_used": {},
+                    "code_context": context.code_context
+                }
             
             if progress_callback:
                 await progress_callback("execution", "⚙️ Creating tasks...", "Executing task creation with conversation insights")
@@ -1086,17 +1923,33 @@ Show deep understanding of how the specification has evolved throughout the enti
                 # Force all created tasks to be children of the active task
                 parent_override = getattr(context.task_context, 'id')
 
-            tool_results = await self._execute_task_creation(
-                task_breakdown,
-                project_id,
-                parent_task_id_override=parent_override,
-            )
+            try:
+                tool_results = await self._execute_task_creation(
+                    task_breakdown,
+                    project_id,
+                    parent_task_id_override=parent_override,
+                )
+                logger.info(f"Task creation completed with {len(tool_results)} results")
+            except Exception as e:
+                logger.error(f"Error executing task creation: {e}")
+                return {
+                    "type": "error",
+                    "response": f"I encountered an error while creating tasks: {str(e)}",
+                    "tool_calls_made": 0,
+                    "tool_results": [],
+                    "context_used": {},
+                    "code_context": context.code_context
+                }
             
             if progress_callback:
                 await progress_callback("execution", "✅ Tasks created", f"Successfully created {len(tool_results)} tasks from comprehensive discussion")
             
             # Generate response with comprehensive conversation awareness
-            response = self._generate_comprehensive_task_creation_response(tool_results, task_breakdown, conversation_context)
+            try:
+                response = await self._generate_task_creation_response(tool_results, task_breakdown, context)
+            except Exception as e:
+                logger.error(f"Error generating task creation response: {e}")
+                response = f"✅ I've created {len([r for r in tool_results if r.get('success', False)])} tasks for you!"
             
             return {
                 "type": "task_creation_response",
@@ -1107,7 +1960,8 @@ Show deep understanding of how the specification has evolved throughout the enti
                     "conversation_summary": conversation_context,
                     "conversation_depth": len(context.session_messages),
                     "task_breakdown": task_breakdown
-                }
+                },
+                "code_context": context.code_context
             }
             
         except Exception as e:
@@ -1140,7 +1994,8 @@ Show deep understanding of how the specification has evolved throughout the enti
                     "conversation_summary": conversation_context,
                     "conversation_depth": len(context.session_messages),
                     "action_type": action_result.get("action_type", "unknown")
-                }
+                },
+                "code_context": context.code_context
             }
             
         except Exception as e:
@@ -1150,7 +2005,8 @@ Show deep understanding of how the specification has evolved throughout the enti
                 "response": "I encountered an issue processing your request. Could you try again?",
                 "tool_calls_made": 0,
                 "tool_results": [],
-                "context_used": {}
+                "context_used": {},
+                "code_context": context.code_context
             }
     
     def _is_explicit_memory_request(self, message: str) -> bool:
@@ -1689,6 +2545,9 @@ Tech Stack: {context.project_context.get('tech_stack', 'Unknown')}
 
 ## RELEVANT PROJECT KNOWLEDGE
 {self._format_memories_for_context(context.relevant_memories)}
+
+## CODE CONTEXT
+{self._format_code_context_for_prompt(context.code_context)}
 
 ## SCOPE: SOFTWARE ENGINEERING TASKS ONLY
 - Include only tasks that produce concrete changes to: application code, tests, configuration, CI/CD pipelines, infrastructure-as-code, database schemas/migrations, APIs, security/hardening, performance tuning, or developer documentation inside the repository that is directly tied to code changes (e.g., updating `README.md` after implementing a feature).

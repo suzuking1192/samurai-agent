@@ -81,6 +81,28 @@
   }
 }
 
+/* Previously selected task highlight effect */
+.task-card.previously-selected {
+  animation: previouslySelectedPulse 2s ease-in-out;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+}
+
+@keyframes previouslySelectedPulse {
+  0% {
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(59, 130, 246, 0.2);
+    transform: scale(1.02);
+  }
+  100% {
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+    transform: scale(1);
+  }
+}
+
 /* Responsive design for narrow screens */
 @media (max-width: 768px) {
   .task-board {

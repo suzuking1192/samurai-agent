@@ -4,6 +4,16 @@ from datetime import datetime
 from enum import Enum
 import uuid
 
+# User Intent Enum for tracking conversation state
+class UserIntentEnum(str, Enum):
+    """Enumeration of possible user intent states in a conversation session."""
+    FEATURE_EXPLORATION = "feature_exploration"
+    SPEC_CLARIFICATION = "spec_clarification"
+    READY_FOR_ACTION = "ready_for_action"
+    PURE_DISCUSSION = "pure_discussion"
+    DIRECT_ACTION = "direct_action"
+    INITIAL_STATE = "initial_state"
+
 class TaskStatus(str, Enum):
     """Enumeration for task status values."""
     PENDING = "pending"
@@ -15,6 +25,12 @@ class TaskPriority(str, Enum):
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
+
+class CodeContextMode(str, Enum):
+    """Enumeration for code context mode selection."""
+    AUTO = "auto"
+    WITH_CODE_LOOKUP = "with code look up"
+    WITHOUT_CODE_LOOKUP = "without code look up"
 
 class TaskWarning(BaseModel):
     """
@@ -262,12 +278,14 @@ class Project(BaseModel):
         description: Project description
         tech_stack: Technology stack used in the project
         created_at: Timestamp when the project was created
+        codebase_path: Optional path to the local codebase folder
     """
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Unique project identifier")
     name: str = Field(..., min_length=1, max_length=100, description="Project name")
     description: str = Field(..., max_length=500, description="Project description")
     tech_stack: str = Field(..., max_length=200, description="Technology stack")
     created_at: datetime = Field(default_factory=datetime.utcnow, description="Creation timestamp")
+    codebase_path: Optional[str] = Field(None, description="Path to the local codebase folder")
 
     class Config:
         """Pydantic configuration for JSON serialization."""
@@ -349,7 +367,7 @@ class Task(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Unique task identifier")
     project_id: str = Field(..., description="Project identifier")
     title: str = Field(..., min_length=1, max_length=200, description="Task title")
-    description: str = Field(..., max_length=5000, description="Task description (serves as the implementation prompt for Cursor)")
+    description: str = Field(..., max_length=20000, description="Task description (serves as the implementation prompt for Cursor)")
     status: str = Field(default="pending", pattern="^(pending|in_progress|completed)$", description="Task status")
     priority: str = Field(default="medium", pattern="^(low|medium|high)$", description="Task priority")
     completed: bool = Field(default=False, description="Task completion status (legacy)")
@@ -436,17 +454,20 @@ class ProjectCreateRequest(BaseModel):
         name: Project name
         description: Project description
         tech_stack: Technology stack
+        codebase_path: Optional path to the local codebase folder
     """
     name: str = Field(..., min_length=1, max_length=100, description="Project name")
     description: str = Field(..., max_length=500, description="Project description")
     tech_stack: str = Field(..., max_length=200, description="Technology stack")
+    codebase_path: Optional[str] = Field(None, description="Optional path to the local codebase folder")
 
     class Config:
         json_schema_extra = {
             "example": {
                 "name": "E-commerce Platform",
                 "description": "A modern e-commerce platform with React frontend",
-                "tech_stack": "React, Node.js, PostgreSQL"
+                "tech_stack": "React, Node.js, PostgreSQL",
+                "codebase_path": "/path/to/codebase"
             }
         }
 
@@ -457,15 +478,18 @@ class ChatRequest(BaseModel):
     Attributes:
         message: User message content
         task_context_id: Optional task ID to use as context for this chat
+        code_context_mode: Optional code context mode for this chat
     """
     message: str = Field(..., min_length=1, max_length=100000, description="User message")
     task_context_id: Optional[str] = Field(default=None, description="Task ID to use as context for this chat")
+    code_context_mode: CodeContextMode = Field(default=CodeContextMode.AUTO, description="Code context mode for this chat")
 
     class Config:
         json_schema_extra = {
             "example": {
                 "message": "Help me implement user authentication",
-                "task_context_id": "abc123"
+                "task_context_id": "abc123",
+                "code_context_mode": "auto"
             }
         }
 
@@ -489,6 +513,7 @@ class ChatResponse(BaseModel):
     intent_analysis: Optional[Dict[str, Any]] = Field(default=None, description="Intent analysis from unified agent")
     memory_updated: Optional[bool] = Field(default=False, description="Whether memory was updated")
     task_context: Optional[Task] = Field(default=None, description="Task used as context for this response")
+    code_context: Optional[Dict[str, Any]] = Field(default=None, description="Code context extracted for this response")
 
     class Config:
         json_schema_extra = {
@@ -609,6 +634,7 @@ class Session(BaseModel):
         created_at: Session creation timestamp
         last_activity: Last activity timestamp
         task_context_id: Optional task ID that provides context for this session
+        previous_session_intent: The intent from the previous user turn in this session
     """
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Unique session identifier")
     project_id: str = Field(..., description="Project identifier")
@@ -616,6 +642,7 @@ class Session(BaseModel):
     created_at: datetime = Field(default_factory=datetime.utcnow, description="Session creation timestamp")
     last_activity: datetime = Field(default_factory=datetime.utcnow, description="Last activity timestamp")
     task_context_id: Optional[str] = Field(default=None, description="Task ID providing context for this session")
+    previous_session_intent: UserIntentEnum = Field(default=UserIntentEnum.INITIAL_STATE, description="Intent from the previous user turn")
     
     class Config:
         """Pydantic configuration for JSON serialization."""
@@ -628,7 +655,8 @@ class Session(BaseModel):
                 "project_id": "080e1b81-a37e-4e7a-81a6-cb185bd02e91",
                 "name": "Session 1",
                 "created_at": "2024-01-01T00:00:00Z",
-                "last_activity": "2024-01-01T00:00:00Z"
+                "last_activity": "2024-01-01T00:00:00Z",
+                "previous_session_intent": "initial_state"
             }
         }
         # Add model_config for Pydantic v2 compatibility

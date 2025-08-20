@@ -9,7 +9,8 @@ import {
   TaskCreate,
   TaskUpdate,
   MemoryCreate,
-  Session
+  Session,
+  CodeContextMode
 } from '../types'
 
 const API_BASE_URL = 'http://localhost:8000'
@@ -448,4 +449,34 @@ export async function dismissSuggestion(): Promise<{ status: string }> {
   return apiRequest<{ status: string }>(`/api/user/suggestion-dismiss`, {
     method: 'POST'
   })
+}
+
+// Codebase connection API functions
+export interface CodebaseConnectRequest {
+  path: string
+  project_id: string
+}
+
+export interface CodebaseConnectResponse {
+  success: boolean
+  message: string
+  project_id: string
+  codebase_path: string
+}
+
+export async function connectCodebase(request: CodebaseConnectRequest): Promise<CodebaseConnectResponse> {
+  return apiRequest<CodebaseConnectResponse>('/api/codebase/connect', {
+    method: 'POST',
+    body: JSON.stringify(request),
+  })
+}
+
+// Mode selection API functions
+export interface ModeSelectionResponse {
+  project_id: string
+  code_context_mode: string
+}
+
+export async function getProjectModeSelection(projectId: string): Promise<ModeSelectionResponse> {
+  return apiRequest<ModeSelectionResponse>(`/projects/${projectId}/mode-selection`)
 }

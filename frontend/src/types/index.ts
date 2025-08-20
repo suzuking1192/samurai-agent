@@ -47,6 +47,12 @@ export enum MemoryCategory {
   GENERAL = 'general'
 }
 
+export enum CodeContextMode {
+  AUTO = 'auto',
+  WITH_CODE_LOOKUP = 'with code look up',
+  WITHOUT_CODE_LOOKUP = 'without code look up'
+}
+
 // Category configuration for better UX
 export const CATEGORY_CONFIG = {
   // Technical Categories
@@ -231,6 +237,7 @@ export interface Project {
   tech_stack: string
   created_at: string
   updated_at?: string
+  codebase_path?: string
 }
 
 export interface TaskWarning {
@@ -272,18 +279,30 @@ export interface ChatMessage {
   intent_type?: string
 }
 
+export enum UserIntentEnum {
+  FEATURE_EXPLORATION = "feature_exploration",
+  SPEC_CLARIFICATION = "spec_clarification", 
+  READY_FOR_ACTION = "ready_for_action",
+  PURE_DISCUSSION = "pure_discussion",
+  DIRECT_ACTION = "direct_action",
+  INITIAL_STATE = "initial_state"
+}
+
 export interface Session {
   id: string
   project_id: string
   name: string | null
   created_at: string
   last_activity: string
+  previous_session_intent: UserIntentEnum
 }
 
 // Request/Response interfaces
 export interface ChatRequest {
   project_id?: string
   message: string
+  task_context_id?: string
+  code_context_mode?: CodeContextMode
 }
 
 export interface ChatResponse {
@@ -296,6 +315,7 @@ export interface ProjectCreate {
   name: string
   description: string
   tech_stack: string
+  codebase_path?: string
 }
 
 export interface TaskCreate {

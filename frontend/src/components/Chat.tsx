@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
-import { ChatMessage, Session, Task } from '../types'
+import { ChatMessage, Session, Task, CodeContextMode } from '../types'
 import { sendChatMessageWithProgress, createSession, getCurrentSession, getSessionMessages, endSessionWithConsolidation, SessionEndDetailedResponse, getTaskContext, clearTaskContext, getSuggestionStatus, dismissSuggestion } from '../services/api'
 import ProgressDisplay from './ProgressDisplay'
 import ProactiveSuggestion from './ProactiveSuggestion'
 import CreateTasksButton from './CreateTasksButton'
+import ModeSelectionDropdown from './ModeSelectionDropdown'
 
 interface ChatProps {
   projectId?: string
@@ -30,6 +31,7 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrig
   const [currentSession, setCurrentSession] = useState<Session | null>(null)
   const [taskContext, setTaskContext] = useState<Task | null>(null)
   const [showProactiveSuggestion, setShowProactiveSuggestion] = useState<boolean>(false)
+  const [codeContextMode, setCodeContextMode] = useState<CodeContextMode>(CodeContextMode.AUTO)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const chatMessagesRef = useRef<HTMLDivElement>(null)
   const lastAgentMessageRef = useRef<HTMLDivElement>(null)
@@ -370,7 +372,7 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrig
     try {
       // Send message with progress tracking
       await sendChatMessageWithProgress(
-        { message: userMessage, project_id: projectId },
+        { message: userMessage, project_id: projectId, code_context_mode: codeContextMode },
         (progress) => {
           // Add timestamp to progress
           const progressWithTimestamp = {
@@ -478,7 +480,7 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrig
     
     try {
       await sendChatMessageWithProgress(
-        { message: createTasksMessage, project_id: projectId },
+        { message: createTasksMessage, project_id: projectId, code_context_mode: codeContextMode },
         (progress) => {
           const progressWithTimestamp = {
             ...progress,
@@ -810,13 +812,21 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrig
           className="input"
           rows={3}
         />
-        <button
-          type="submit"
-          disabled={!inputMessage.trim() || isLoading || !projectId}
-          className="button"
-        >
-          {isLoading ? 'Sending...' : 'Send'}
-        </button>
+        <div className="chat-input-controls">
+          <ModeSelectionDropdown
+            projectId={projectId}
+            selectedMode={codeContextMode}
+            onModeChange={setCodeContextMode}
+            disabled={isLoading || !projectId}
+          />
+          <button
+            type="submit"
+            disabled={!inputMessage.trim() || isLoading || !projectId}
+            className="button"
+          >
+            {isLoading ? 'Sending...' : 'Send'}
+          </button>
+        </div>
       </form>
     </div>
   )

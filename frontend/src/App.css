@@ -1157,6 +1157,13 @@ body {
   opacity: 0.6;
 }
 
+.chat-input-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
 /* Task and Memory card styles */
 .task-card,
 .memory-card {
@@ -1659,8 +1666,10 @@ body {
   display: flex;
   flex-direction: column;
   height: 100%;
+  max-height: 90vh;
   padding: 24px;
   background: var(--surface);
+  overflow-y: auto;
 }
 
 .project-detail-header {
@@ -1729,12 +1738,22 @@ body {
   margin-top: 12px;
   flex: 1;
   min-height: 0;
+  overflow-y: auto;
+}
+
+.project-detail-textarea-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex-shrink: 0;
 }
 
 .project-detail-textarea {
   width: 100%;
-  flex: 1;
-  min-height: 50vh;
+  flex: 0 0 auto;
+  height: 200px;
+  min-height: 200px;
+  max-height: 300px;
   padding: 16px;
   border: 2px solid var(--border);
   border-radius: 12px;
@@ -1744,6 +1763,7 @@ body {
   color: var(--text-primary);
   outline: none;
   transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+  resize: vertical;
 }
 
 .project-detail-textarea:focus {
@@ -1761,10 +1781,10 @@ body {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
-  padding-top: 12px;
-  margin-top: auto;
-  border-top: 1px solid var(--border);
-  background: linear-gradient(to bottom, transparent, rgba(0,0,0,0.01));
+  padding: 12px 0;
+  background: var(--surface);
+  flex-shrink: 0;
+  border: none;
 }
 
 /* Improve focus states */
@@ -1792,6 +1812,7 @@ body {
 @media (max-width: 768px) {
   .project-detail-modal {
     padding: 16px;
+    max-height: 95vh;
   }
   .project-detail-title {
     font-size: 1.25rem;
@@ -1799,6 +1820,194 @@ body {
   .project-detail-tabs {
     width: 100%;
     justify-content: space-between;
+  }
+  .project-detail-textarea {
+    height: 150px;
+    min-height: 150px;
+  }
+  .project-detail-footer {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .project-detail-footer .modal-button {
+    width: 100%;
+  }
+}
+
+/* Codebase Integration Section Styles */
+.codebase-integration-section {
+  margin-top: 20px;
+  padding: 20px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  border-left: 4px solid #3b82f6;
+  flex-shrink: 0;
+}
+
+.codebase-section-title {
+  margin: 0 0 12px 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.codebase-section-title::before {
+  content: "🔗";
+  font-size: 1.2rem;
+}
+
+.codebase-section-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.codebase-explainer {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  background: rgba(59, 130, 246, 0.05);
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(59, 130, 246, 0.1);
+}
+
+.codebase-connect-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.codebase-browser-warning {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #fef3c7;
+  border: 1px solid #f59e0b;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  color: #92400e;
+  line-height: 1.3;
+}
+
+.codebase-browser-warning .warning-icon {
+  font-size: 0.9rem;
+  flex-shrink: 0;
+}
+
+.codebase-connect-button {
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  color: white;
+  border: none;
+  padding: 12px 20px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);
+  align-self: flex-start;
+}
+
+.codebase-connect-button:hover:not(:disabled) {
+  background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(59, 130, 246, 0.3);
+}
+
+.codebase-connect-button:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.codebase-connected-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+}
+
+.codebase-path-display {
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  word-break: break-all;
+  line-height: 1.4;
+}
+
+.codebase-access-note {
+  font-size: 0.85rem;
+  color: #059669;
+  font-style: italic;
+  margin-top: 4px;
+}
+
+.codebase-change-path-button {
+  background: #f3f4f6;
+  color: var(--text-primary);
+  border: 1px solid #d1d5db;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-weight: 500;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  align-self: flex-start;
+}
+
+.codebase-change-path-button:hover {
+  background: #e5e7eb;
+  border-color: #9ca3af;
+}
+
+.codebase-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  color: #dc2626;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.error-icon {
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+/* Responsive adjustments for codebase section */
+@media (max-width: 768px) {
+  .codebase-integration-section {
+    margin-top: 16px;
+    padding: 16px;
+  }
+  
+  .codebase-connected-section {
+    padding: 12px;
+  }
+  
+  .codebase-connect-button,
+  .codebase-change-path-button {
+    width: 100%;
+    justify-content: center;
+  }
+  
+  .codebase-browser-warning {
+    font-size: 0.75rem;
+    padding: 6px 10px;
   }
 }
 

@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Optional
 import os
 import asyncio
@@ -36,6 +36,7 @@ from services.context_service import context_service
 from services.response_service import handle_agent_response, handle_validation_error
 from services.intelligent_memory_consolidation import IntelligentMemoryConsolidationService
 from services.project_detail_service import project_detail_service
+from services.project_settings_service import ProjectSettingsService
 
 
 # Load environment variables
@@ -63,10 +64,12 @@ async def _perform_session_end_background_tasks(pid: str, sid: str) -> None:
             logger.warning(f"Background task: project not found for {pid}")
             return
         project_context = {
+            "id": pid,
             "name": proj.name,
             "description": proj.description,
             "tech_stack": proj.tech_stack,
-            "project_detail": file_service.load_project_detail(pid)
+            "project_detail": file_service.load_project_detail(pid),
+            "codebase_path": proj.codebase_path
         }
 
         # Perform intelligent memory consolidation
@@ -136,6 +139,7 @@ app.add_middleware(
 file_service = FileService()
 gemini_service = GeminiService()
 memory_consolidation_service = IntelligentMemoryConsolidationService()
+project_settings_service = ProjectSettingsService()
 
 # Global exception handler
 @app.exception_handler(Exception)
@@ -254,7 +258,8 @@ async def create_project(request: ProjectCreateRequest):
             name=request.name,
             description=request.description,
             tech_stack=request.tech_stack,
-            created_at=datetime.now()
+            created_at=datetime.now(),
+            codebase_path=request.codebase_path
         )
         
         file_service.save_project(project)
@@ -289,10 +294,12 @@ async def chat(project_id: str, request: ChatRequest):
             raise HTTPException(status_code=404, detail="Project not found")
 
         project_context = {
+            "id": project_id,
             "name": project.name,
             "description": project.description,
             "tech_stack": project.tech_stack,
-            "project_detail": file_service.load_project_detail(project_id)
+            "project_detail": file_service.load_project_detail(project_id),
+            "codebase_path": project.codebase_path
         }
 
         # Get or create current session
@@ -310,7 +317,8 @@ async def chat(project_id: str, request: ChatRequest):
             session_id=current_session.id,
             conversation_history=conversation_history,
             progress_callback=None,
-            task_context=None
+            task_context=None,
+            session=current_session
         )
 
         final_response = handle_agent_response(result.get("response", ""))
@@ -335,7 +343,8 @@ async def chat(project_id: str, request: ChatRequest):
             type=result.get("type", "chat"),
             intent_analysis=result.get("intent_analysis"),
             memory_updated=result.get("memory_updated", False),
-            task_context=None
+            task_context=None,
+            code_context=result.get("code_context")
         )
 
     except HTTPException:
@@ -377,10 +386,12 @@ async def chat_with_progress(project_id: str, request: ChatRequest):
             
             # 2. Convert project to context dict
             project_context = {
+                "id": project_id,
                 "name": project.name,
                 "description": project.description,
                 "tech_stack": project.tech_stack,
-                "project_detail": file_service.load_project_detail(project_id)
+                "project_detail": file_service.load_project_detail(project_id),
+                "codebase_path": project.codebase_path
             }
             
             # 3. Get or create current session
@@ -413,7 +424,19 @@ async def chat_with_progress(project_id: str, request: ChatRequest):
                     file_service.save_session(project_id, current_session)
                     logger.info(f"Cleared invalid task context: {current_session.task_context_id}")
             
-            # 5. Get conversation history for planning-first agent (current session only)
+            # 5. Handle code context mode from request or persistent storage
+            code_context_mode = None
+            if request.code_context_mode:
+                # Use the mode from the request and persist it
+                code_context_mode = request.code_context_mode.value
+                project_settings_service.set_code_context_mode(project_id, request.code_context_mode)
+                logger.info(f"Using code context mode from request: {code_context_mode}")
+            else:
+                # Get the mode from persistent storage
+                code_context_mode = project_settings_service.get_code_context_mode(project_id).value
+                logger.info(f"Using code context mode from storage: {code_context_mode}")
+            
+            # 6. Get conversation history for planning-first agent (current session only)
             conversation_history = file_service.load_chat_messages_by_session(project_id, current_session.id)
             
             # 5. Create a progress queue for real-time updates
@@ -433,7 +456,7 @@ async def chat_with_progress(project_id: str, request: ChatRequest):
                 }
                 await progress_queue.put(progress_data)
             logger.info(f"Task context: {task_context}")
-            # 6. Start unified agent processing in background
+            # 7. Start unified agent processing in background
             processing_task = asyncio.create_task(
                 unified_samurai_agent.process_message(
                     message=request.message,
@@ -442,11 +465,13 @@ async def chat_with_progress(project_id: str, request: ChatRequest):
                     session_id=current_session.id,
                     conversation_history=conversation_history,
                     progress_callback=progress_callback,
-                    task_context=task_context
+                    task_context=task_context,
+                    code_context_mode=code_context_mode,
+                    session=current_session
                 )
             )
             
-            # 7. Stream progress updates immediately as they arrive
+            # 8. Stream progress updates immediately as they arrive
             progress_events = []
             last_event_count = 0
             
@@ -468,14 +493,14 @@ async def chat_with_progress(project_id: str, request: ChatRequest):
                     logger.error(f"Error in progress streaming: {e}")
                     break
             
-            # 8. Get final result
+            # 9. Get final result
             result = await processing_task
             
-            # 9. Handle long responses seamlessly
+            # 10. Handle long responses seamlessly
             final_response = result.get("response", "I'm sorry, I couldn't process that request.")
             final_response = handle_agent_response(final_response)
             
-            # 10. Save chat message
+            # 11. Save chat message
             chat_message = ChatMessage(
                 id=str(uuid.uuid4()),
                 project_id=project_id,
@@ -487,10 +512,10 @@ async def chat_with_progress(project_id: str, request: ChatRequest):
             )
             file_service.save_chat_message(project_id, chat_message)
             
-            # 11. Update session activity
+            # 12. Update session activity
             file_service.update_session_activity(project_id, current_session.id)
             
-            # 12. Send final response with intent_type
+            # 13. Send final response with intent_type
             yield f"data: {json.dumps({'type': 'complete', 'response': final_response, 'intent_type': result.get('intent_analysis', {}).get('intent_type', 'unknown')})}\n\n"
             
         except Exception as e:
@@ -508,6 +533,30 @@ async def chat_with_progress(project_id: str, request: ChatRequest):
         }
     )
 
+@app.get("/projects/{project_id}/mode-selection")
+async def get_project_mode_selection(project_id: str):
+    """
+    Get the current code context mode for a project.
+    """
+    try:
+        # Verify project exists
+        project = file_service.get_project_by_id(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Get the current mode from persistent storage
+        mode = project_settings_service.get_code_context_mode(project_id)
+        
+        return {
+            "project_id": project_id,
+            "code_context_mode": mode.value
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting mode selection for project {project_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get mode selection: {str(e)}")
+
 @app.post("/projects/{project_id}/chat-stream")
 async def chat_stream(project_id: str, request: ChatRequest):
     """
@@ -523,10 +572,12 @@ async def chat_stream(project_id: str, request: ChatRequest):
             
             # 2. Setup context
             project_context = {
+                "id": project_id,
                 "name": project.name,
                 "description": project.description,
                 "tech_stack": project.tech_stack,
-                "project_detail": file_service.load_project_detail(project_id)
+                "project_detail": file_service.load_project_detail(project_id),
+                "codebase_path": project.codebase_path
             }
             
             current_session = file_service.get_latest_session(project_id)
@@ -590,7 +641,8 @@ async def chat_stream(project_id: str, request: ChatRequest):
                         session_id=current_session.id,
                         conversation_history=conversation_history,
                         progress_callback=progress_callback,
-                        task_context=task_context
+                        task_context=task_context,
+                        session=current_session
                     )
                     return result
                 finally:
@@ -1070,10 +1122,12 @@ async def complete_session(project_id: str, session_id: str):
         
         # 3. Convert project to context dict
         project_context = {
+            "id": project_id,
             "name": project.name,
             "description": project.description,
             "tech_stack": project.tech_stack,
-            "project_detail": file_service.load_project_detail(project_id)
+            "project_detail": file_service.load_project_detail(project_id),
+            "codebase_path": project.codebase_path
         }
         
         # 4. Perform session completion with unified agent
@@ -1265,8 +1319,73 @@ async def get_task_context(project_id: str, session_id: str):
         logger.error(f"Error getting task context: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get task context: {str(e)}")
 
+# Codebase connection endpoint
+class CodebaseConnectRequest(BaseModel):
+    path: str = Field(..., description="Local folder path for the codebase")
+    project_id: str = Field(..., description="Project ID to associate with the codebase")
 
- 
+@app.post("/api/codebase/connect")
+async def connect_codebase(request: CodebaseConnectRequest):
+    """
+    Connect a local codebase folder to a project.
+    This endpoint registers the codebase path for future code analysis and lookup.
+    """
+    try:
+        logger.info(f"Connecting codebase for project {request.project_id} at path: {request.path}")
+        
+        # 1. Validate project exists
+        project = file_service.get_project_by_id(request.project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # 2. Validate path is a string and not empty
+        if not request.path or not isinstance(request.path, str):
+            raise HTTPException(status_code=400, detail="Path must be a non-empty string")
+        
+        # 3. Convert relative paths to absolute paths and validate
+        absolute_path = request.path
+        if not os.path.isabs(request.path):
+            # For relative paths, we need to be smarter about resolution
+            # First, try resolving relative to the user's home directory
+            home_resolved = os.path.expanduser(f"~/{request.path}")
+            if os.path.exists(home_resolved):
+                absolute_path = os.path.abspath(home_resolved)
+            else:
+                # Try resolving relative to the parent directory of the project root
+                # This handles cases where the folder is a sibling of the project
+                project_parent = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                parent_resolved = os.path.join(os.path.dirname(project_parent), request.path)
+                if os.path.exists(parent_resolved):
+                    absolute_path = os.path.abspath(parent_resolved)
+                else:
+                    # Fallback: try current working directory (original behavior)
+                    absolute_path = os.path.abspath(request.path)
+        
+        # 4. Validate the absolute path exists and is a directory
+        if not os.path.exists(absolute_path):
+            raise HTTPException(status_code=400, detail=f"Path does not exist: {absolute_path}")
+        
+        if not os.path.isdir(absolute_path):
+            raise HTTPException(status_code=400, detail=f"Path is not a directory: {absolute_path}")
+        
+        # 5. Store the absolute codebase path in the project data
+        project.codebase_path = absolute_path
+        file_service.save_project(project)
+        
+        logger.info(f"Codebase connected successfully for project {request.project_id}")
+        
+        return {
+            "success": True,
+            "message": "Codebase connected successfully",
+            "project_id": request.project_id,
+            "codebase_path": absolute_path
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error connecting codebase: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to connect codebase: {str(e)}")
 
 
 if __name__ == "__main__":

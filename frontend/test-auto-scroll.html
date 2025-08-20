@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auto-Scroll Drag & Drop Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: #3b82f6;
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        
+        .scrollable-area {
+            height: 400px;
+            overflow-y: auto;
+            padding: 20px;
+            border: 2px solid #e5e7eb;
+            margin: 20px;
+            background: #f9fafb;
+            position: relative;
+        }
+        
+        .task-item {
+            background: white;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            padding: 12px;
+            margin-bottom: 8px;
+            cursor: grab;
+            transition: all 0.2s ease;
+            user-select: none;
+        }
+        
+        .task-item:hover {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            transform: translateY(-1px);
+        }
+        
+        .task-item:active {
+            cursor: grabbing;
+        }
+        
+        .task-item.dragging {
+            opacity: 0.5;
+            transform: rotate(2deg);
+        }
+        
+        .drop-zone {
+            border: 2px dashed #3b82f6;
+            border-radius: 6px;
+            padding: 20px;
+            margin: 10px 0;
+            text-align: center;
+            background: rgba(59, 130, 246, 0.05);
+            transition: all 0.2s ease;
+        }
+        
+        .drop-zone.drag-over {
+            background: rgba(59, 130, 246, 0.1);
+            border-color: #2563eb;
+        }
+        
+        .hot-zone-indicator {
+            position: absolute;
+            left: 0;
+            right: 0;
+            height: 60px;
+            background: rgba(255, 0, 0, 0.1);
+            pointer-events: none;
+            z-index: 10;
+        }
+        
+        .hot-zone-indicator.top {
+            top: 0;
+        }
+        
+        .hot-zone-indicator.bottom {
+            bottom: 0;
+        }
+        
+        .status {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #10b981;
+            color: white;
+            padding: 10px 15px;
+            border-radius: 6px;
+            font-size: 14px;
+            z-index: 1000;
+        }
+        
+        .instructions {
+            background: #f3f4f6;
+            padding: 15px;
+            margin: 20px;
+            border-radius: 6px;
+            border-left: 4px solid #3b82f6;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🥷 Auto-Scroll Drag & Drop Test</h1>
+            <p>Test the auto-scrolling functionality during drag operations</p>
+        </div>
+        
+        <div class="instructions">
+            <h3>How to test:</h3>
+            <ol>
+                <li>Drag any task item from the list below</li>
+                <li>Move the cursor near the top or bottom edge of the scrollable area (red zones)</li>
+                <li>The list should automatically scroll in that direction</li>
+                <li>Move the cursor away from the edges to stop scrolling</li>
+                <li>Drop the task in one of the drop zones</li>
+            </ol>
+        </div>
+        
+        <div class="scrollable-area" id="scrollableArea">
+            <div class="hot-zone-indicator top"></div>
+            <div class="hot-zone-indicator bottom"></div>
+            
+            <div class="task-item" draggable="true" data-task-id="1">
+                <strong>Task 1:</strong> High priority task that needs immediate attention
+            </div>
+            <div class="task-item" draggable="true" data-task-id="2">
+                <strong>Task 2:</strong> Medium priority task for this week
+            </div>
+            <div class="task-item" draggable="true" data-task-id="3">
+                <strong>Task 3:</strong> Low priority task for later
+            </div>
+            <div class="task-item" draggable="true" data-task-id="4">
+                <strong>Task 4:</strong> Another important task
+            </div>
+            <div class="task-item" draggable="true" data-task-id="5">
+                <strong>Task 5:</strong> Task with detailed description
+            </div>
+            <div class="task-item" draggable="true" data-task-id="6">
+                <strong>Task 6:</strong> Quick task to complete
+            </div>
+            <div class="task-item" draggable="true" data-task-id="7">
+                <strong>Task 7:</strong> Long-term project task
+            </div>
+            <div class="task-item" draggable="true" data-task-id="8">
+                <strong>Task 8:</strong> Bug fix task
+            </div>
+            <div class="task-item" draggable="true" data-task-id="9">
+                <strong>Task 9:</strong> Feature implementation task
+            </div>
+            <div class="task-item" draggable="true" data-task-id="10">
+                <strong>Task 10:</strong> Documentation update task
+            </div>
+            <div class="task-item" draggable="true" data-task-id="11">
+                <strong>Task 11:</strong> Code review task
+            </div>
+            <div class="task-item" draggable="true" data-task-id="12">
+                <strong>Task 12:</strong> Testing task
+            </div>
+            <div class="task-item" draggable="true" data-task-id="13">
+                <strong>Task 13:</strong> Deployment task
+            </div>
+            <div class="task-item" draggable="true" data-task-id="14">
+                <strong>Task 14:</strong> Monitoring task
+            </div>
+            <div class="task-item" draggable="true" data-task-id="15">
+                <strong>Task 15:</strong> Maintenance task
+            </div>
+        </div>
+        
+        <div class="drop-zone" id="dropZone1">
+            <h3>Drop Zone 1</h3>
+            <p>Drop tasks here</p>
+        </div>
+        
+        <div class="drop-zone" id="dropZone2">
+            <h3>Drop Zone 2</h3>
+            <p>Drop tasks here</p>
+        </div>
+    </div>
+    
+    <div class="status" id="status">Ready to test</div>
+
+    <script>
+        class AutoScrollManager {
+            constructor(container, config = {}) {
+                this.container = container;
+                this.config = {
+                    hotZoneSize: config.hotZoneSize || 60,
+                    baseScrollSpeed: config.baseScrollSpeed || 8,
+                    maxScrollSpeed: config.maxScrollSpeed || 25,
+                    accelerationFactor: config.accelerationFactor || 1.5,
+                    ...config
+                };
+                
+                this.isScrolling = false;
+                this.scrollDirection = null;
+                this.scrollSpeed = this.config.baseScrollSpeed;
+                this.animationFrame = null;
+                
+                this.setupEventListeners();
+            }
+            
+            setupEventListeners() {
+                // Task drag events
+                const taskItems = this.container.querySelectorAll('.task-item');
+                taskItems.forEach(item => {
+                    item.addEventListener('dragstart', this.handleDragStart.bind(this));
+                    item.addEventListener('dragend', this.handleDragEnd.bind(this));
+                });
+                
+                // Container drag events
+                this.container.addEventListener('dragover', this.handleDragOver.bind(this));
+                this.container.addEventListener('dragleave', this.handleDragLeave.bind(this));
+                
+                // Drop zone events
+                const dropZones = document.querySelectorAll('.drop-zone');
+                dropZones.forEach(zone => {
+                    zone.addEventListener('dragover', this.handleDropZoneDragOver.bind(this));
+                    zone.addEventListener('drop', this.handleDrop.bind(this));
+                });
+            }
+            
+            handleDragStart(e) {
+                e.target.classList.add('dragging');
+                this.updateStatus('Drag started');
+            }
+            
+            handleDragEnd(e) {
+                e.target.classList.remove('dragging');
+                this.stopAutoScroll();
+                this.updateStatus('Drag ended');
+            }
+            
+            handleDragOver(e) {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                
+                const containerRect = this.container.getBoundingClientRect();
+                const cursorY = e.clientY;
+                
+                // Check if cursor is in hot zone
+                const hotZoneDirection = this.isInHotZone(cursorY, containerRect);
+                
+                if (hotZoneDirection) {
+                    const scrollSpeed = this.calculateScrollSpeed(cursorY, containerRect);
+                    this.startAutoScroll(hotZoneDirection, scrollSpeed);
+                    this.updateStatus(`Auto-scrolling ${hotZoneDirection} (speed: ${Math.round(scrollSpeed)})`);
+                } else {
+                    this.stopAutoScroll();
+                    this.updateStatus('Cursor in safe zone');
+                }
+            }
+            
+            handleDragLeave(e) {
+                // Only stop if leaving the container entirely
+                if (!this.container.contains(e.relatedTarget)) {
+                    this.stopAutoScroll();
+                    this.updateStatus('Left container');
+                }
+            }
+            
+            handleDropZoneDragOver(e) {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                e.currentTarget.classList.add('drag-over');
+            }
+            
+            handleDrop(e) {
+                e.preventDefault();
+                e.currentTarget.classList.remove('drag-over');
+                
+                const draggedTaskId = e.dataTransfer.getData('text/plain');
+                const taskElement = document.querySelector(`[data-task-id="${draggedTaskId}"]`);
+                
+                if (taskElement) {
+                    e.currentTarget.appendChild(taskElement);
+                    this.updateStatus(`Task ${draggedTaskId} dropped in ${e.currentTarget.querySelector('h3').textContent}`);
+                }
+            }
+            
+            isInHotZone(cursorY, containerRect) {
+                const distanceFromTop = cursorY - containerRect.top;
+                const distanceFromBottom = containerRect.bottom - cursorY;
+                
+                if (distanceFromTop < this.config.hotZoneSize) {
+                    return 'up';
+                } else if (distanceFromBottom < this.config.hotZoneSize) {
+                    return 'down';
+                }
+                
+                return null;
+            }
+            
+            calculateScrollSpeed(cursorY, containerRect) {
+                const distanceFromTop = cursorY - containerRect.top;
+                const distanceFromBottom = containerRect.bottom - cursorY;
+                
+                let speed = this.config.baseScrollSpeed;
+                
+                if (distanceFromTop < this.config.hotZoneSize) {
+                    const proximity = 1 - (distanceFromTop / this.config.hotZoneSize);
+                    speed = this.config.baseScrollSpeed + 
+                           (this.config.maxScrollSpeed - this.config.baseScrollSpeed) * 
+                           proximity * this.config.accelerationFactor;
+                } else if (distanceFromBottom < this.config.hotZoneSize) {
+                    const proximity = 1 - (distanceFromBottom / this.config.hotZoneSize);
+                    speed = this.config.baseScrollSpeed + 
+                           (this.config.maxScrollSpeed - this.config.baseScrollSpeed) * 
+                           proximity * this.config.accelerationFactor;
+                }
+                
+                return Math.min(speed, this.config.maxScrollSpeed);
+            }
+            
+            startAutoScroll(direction, speed) {
+                if (this.isScrolling && this.scrollDirection === direction) {
+                    this.scrollSpeed = speed;
+                    return;
+                }
+                
+                this.stopAutoScroll();
+                
+                this.isScrolling = true;
+                this.scrollDirection = direction;
+                this.scrollSpeed = speed;
+                
+                this.animationFrame = requestAnimationFrame(this.performScroll.bind(this));
+            }
+            
+            performScroll() {
+                if (!this.isScrolling) return;
+                
+                if (this.scrollDirection === 'up') {
+                    this.container.scrollTop -= this.scrollSpeed;
+                } else if (this.scrollDirection === 'down') {
+                    this.container.scrollTop += this.scrollSpeed;
+                }
+                
+                if (this.isScrolling) {
+                    this.animationFrame = requestAnimationFrame(this.performScroll.bind(this));
+                }
+            }
+            
+            stopAutoScroll() {
+                if (this.animationFrame) {
+                    cancelAnimationFrame(this.animationFrame);
+                    this.animationFrame = null;
+                }
+                
+                this.isScrolling = false;
+                this.scrollDirection = null;
+                this.scrollSpeed = this.config.baseScrollSpeed;
+            }
+            
+            updateStatus(message) {
+                const statusElement = document.getElementById('status');
+                if (statusElement) {
+                    statusElement.textContent = message;
+                }
+            }
+        }
+        
+        // Initialize auto-scroll when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            const scrollableArea = document.getElementById('scrollableArea');
+            const autoScroll = new AutoScrollManager(scrollableArea, {
+                hotZoneSize: 80,
+                baseScrollSpeed: 8,
+                maxScrollSpeed: 25,
+                accelerationFactor: 1.5
+            });
+            
+            console.log('Auto-scroll manager initialized');
+        });
+    </script>
+</body>
+</html>
