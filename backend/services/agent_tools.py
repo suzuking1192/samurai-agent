@@ -616,51 +616,33 @@ class ExtractCodeContextTool(BaseModel):
     
     def _validate_and_canonicalize_path(self, project_id: str, provided_path: str) -> Tuple[bool, str, str]:
         """
-        Securely validate and canonicalize a provided path against the project's configured codebase_path.
+        Validate and canonicalize a provided path for code context extraction.
+        
+        Since this is OSS, users should have the freedom to access any directory they choose.
+        This method focuses on ensuring the path is valid and accessible for code extraction.
         
         Args:
-            project_id: The project identifier
-            provided_path: The path to validate
+            project_id: The project identifier (for logging purposes)
+            provided_path: The path to validate and canonicalize
             
         Returns:
             Tuple of (is_valid, canonicalized_path, error_message)
         """
         try:
-            # Get the project to validate against its configured codebase_path
-            from .file_service import file_service
-            project = file_service.get_project_by_id(project_id)
-            
-            if not project:
-                return False, "", f"❌ Project {project_id} not found"
-            
-            if not project.codebase_path:
-                return False, "", f"❌ No codebase path configured for project {project_id}. Please connect a codebase first."
-            
-            # Canonicalize both paths to resolve any symlinks and normalize
+            # Canonicalize the provided path to resolve any symlinks and normalize
             try:
-                canonicalized_provided = os.path.realpath(provided_path)
-                canonicalized_project = os.path.realpath(project.codebase_path)
+                canonicalized_path = os.path.realpath(provided_path)
             except (OSError, ValueError) as e:
                 return False, "", f"❌ Invalid path provided: {str(e)}"
             
             # Check if the provided path is a directory
-            if not os.path.isdir(canonicalized_provided):
-                return False, "", f"❌ Provided path is not a directory: {canonicalized_provided}"
+            if not os.path.isdir(canonicalized_path):
+                return False, "", f"❌ Provided path is not a directory: {canonicalized_path}"
             
-            # Use safe common path comparison to ensure the provided path is within the project's codebase
-            try:
-                # Get the common prefix between the two paths
-                common_prefix = os.path.commonpath([canonicalized_provided, canonicalized_project])
-                
-                # The provided path should be either equal to or a subpath of the project's codebase_path
-                if common_prefix != canonicalized_project:
-                    return False, "", f"❌ Provided path is outside the project's codebase. Project codebase: {canonicalized_project}, Provided: {canonicalized_provided}"
-                
-            except ValueError:
-                # This can happen if paths are on different drives (Windows) or have no common prefix
-                return False, "", f"❌ Provided path is outside the project's codebase. Project codebase: {canonicalized_project}, Provided: {canonicalized_provided}"
+            # Log the path being accessed for transparency
+            logger.info(f"Code context extraction - project_id: {project_id}, path: {canonicalized_path}")
             
-            return True, canonicalized_provided, ""
+            return True, canonicalized_path, ""
             
         except Exception as e:
             logger.error(f"Error validating path for project {project_id}: {e}")
@@ -674,8 +656,8 @@ class ExtractCodeContextTool(BaseModel):
         
         Args:
             natural_language_request: The user's request in natural language
-            project_id: The project identifier
-            connected_codebase_path: Path to the codebase (optional, will use project path if not provided)
+            project_id: The project identifier (for logging and persistence)
+            connected_codebase_path: Path to the codebase to analyze (required)
             session_id: The chat session identifier for persistence
             max_iterations: Maximum number of LLM iterations for file selection
         
@@ -683,35 +665,17 @@ class ExtractCodeContextTool(BaseModel):
             Dictionary containing extracted code context
         """
         try:
-            # Determine and validate codebase path
+            # Validate that a codebase path is provided
             if not connected_codebase_path:
-                # Try to get the project's codebase_path from the database
-                try:
-                    from .file_service import file_service
-                    project = file_service.get_project_by_id(project_id)
-                    if project and project.codebase_path:
-                        connected_codebase_path = project.codebase_path
-                    else:
-                        # No codebase path set for this project - return error
-                        return {
-                            "success": False,
-                            "message": f"❌ No codebase path configured for project {project_id}. Please connect a codebase first.",
-                            "context": None,
-                            "relevant_code": None,
-                            "file_path": None
-                        }
-                except Exception as e:
-                    logger.warning(f"Failed to get project codebase_path: {e}")
-                    # Return error if we can't determine the codebase path
-                    return {
-                        "success": False,
-                        "message": f"❌ Failed to determine codebase path for project {project_id}: {str(e)}",
-                        "context": None,
-                        "relevant_code": None,
-                        "file_path": None
-                    }
+                return {
+                    "success": False,
+                    "message": f"❌ No codebase path provided. Please specify a path to analyze.",
+                    "context": None,
+                    "relevant_code": None,
+                    "file_path": None
+                }
             
-            # Securely validate and canonicalize the provided path
+            # Validate and canonicalize the provided path
             is_valid, canonicalized_path, error_message = self._validate_and_canonicalize_path(
                 project_id, connected_codebase_path
             )
