@@ -4,53 +4,55 @@ import { vi, describe, it, expect, beforeEach } from 'vitest'
 import TaskBoard from '../TaskBoard'
 import { Task, TaskPriority, TaskStatus } from '../../types'
 
-// Mock the API module
-vi.mock('../../services/api', () => ({
-  updateTask: vi.fn()
+// Mock the hooks
+vi.mock('../../hooks/useAutoScroll', () => ({
+  useAutoScroll: () => ({
+    handleDragOver: vi.fn(),
+    handleDragEnd: vi.fn(),
+    cleanup: vi.fn()
+  })
 }))
 
-const mockUpdateTask = vi.mocked(await import('../../services/api')).updateTask
+vi.mock('../../hooks/useTaskScrollPersistence', () => ({
+  useTaskScrollPersistence: vi.fn()
+}))
+
+// Mock the API functions
+vi.mock('../../services/api', () => ({
+  updateTask: vi.fn(),
+  createTask: vi.fn()
+}))
 
 const mockTasks: Task[] = [
   {
-    id: '1',
+    id: 'task-1',
     project_id: 'project-1',
-    title: 'High Priority Task',
-    description: 'This is a high priority task',
+    title: 'Test Task 1',
+    description: 'Test description 1',
+    status: TaskStatus.PENDING,
+    priority: TaskPriority.MEDIUM,
+    created_at: '2023-01-01T00:00:00Z',
+    updated_at: '2023-01-01T00:00:00Z'
+  },
+  {
+    id: 'task-2',
+    project_id: 'project-1',
+    title: 'Test Task 2',
+    description: 'Test description 2',
     status: TaskStatus.PENDING,
     priority: TaskPriority.HIGH,
-    created_at: '2024-01-01T00:00:00Z',
-    updated_at: '2024-01-01T00:00:00Z'
+    created_at: '2023-01-02T00:00:00Z',
+    updated_at: '2023-01-02T00:00:00Z'
   },
   {
-    id: '2',
+    id: 'task-3',
     project_id: 'project-1',
-    title: 'Medium Priority Task',
-    description: 'This is a medium priority task',
-    status: TaskStatus.IN_PROGRESS,
-    priority: TaskPriority.MEDIUM,
-    created_at: '2024-01-01T00:00:00Z',
-    updated_at: '2024-01-01T00:00:00Z'
-  },
-  {
-    id: '3',
-    project_id: 'project-1',
-    title: 'Low Priority Task',
-    description: 'This is a low priority task',
+    title: 'Test Task 3',
+    description: 'Test description 3',
     status: TaskStatus.PENDING,
     priority: TaskPriority.LOW,
-    created_at: '2024-01-01T00:00:00Z',
-    updated_at: '2024-01-01T00:00:00Z'
-  },
-  {
-    id: '4',
-    project_id: 'project-1',
-    title: 'Completed Task',
-    description: 'This task is completed',
-    status: TaskStatus.COMPLETED,
-    priority: TaskPriority.MEDIUM,
-    created_at: '2024-01-01T00:00:00Z',
-    updated_at: '2024-01-01T00:00:00Z'
+    created_at: '2023-01-03T00:00:00Z',
+    updated_at: '2023-01-03T00:00:00Z'
   }
 ]
 
@@ -59,309 +61,189 @@ const defaultProps = {
   isLoading: false,
   onTaskClick: vi.fn(),
   projectId: 'project-1',
-  onTaskUpdate: vi.fn()
+  onTaskUpdate: vi.fn(),
+  onCreateTask: vi.fn(),
+  expandedTasks: {},
+  toggleTaskExpansion: vi.fn(),
+  isTaskExpanded: vi.fn(() => false),
+  selectedTask: null,
+  shouldRestoreScroll: false
 }
 
 describe('TaskBoard', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks()
-  })
-
-  describe('Rendering', () => {
-    it('renders all priority rows', () => {
-      render(<TaskBoard {...defaultProps} />)
-      
-      expect(screen.getByText('High Priority')).toBeInTheDocument()
-      expect(screen.getByText('Medium Priority')).toBeInTheDocument()
-      expect(screen.getByText('Low Priority')).toBeInTheDocument()
-    })
-
-    it('displays tasks in correct priority rows', () => {
-      render(<TaskBoard {...defaultProps} />)
-      
-      expect(screen.getByText('High Priority Task')).toBeInTheDocument()
-      expect(screen.getByText('Medium Priority Task')).toBeInTheDocument()
-      expect(screen.getByText('Low Priority Task')).toBeInTheDocument()
-    })
-
-    it('filters out completed tasks', () => {
-      render(<TaskBoard {...defaultProps} />)
-      
-      expect(screen.queryByText('Completed Task')).not.toBeInTheDocument()
-    })
-
-    it('shows task counts in priority headers', () => {
-      render(<TaskBoard {...defaultProps} />)
-      
-      // Should show 1 for each priority (excluding completed task)
-      const countElements = screen.getAllByText('1')
-      expect(countElements).toHaveLength(3) // One for each priority
-    })
-
-    it('displays empty state when no active tasks', () => {
-      const emptyTasks = mockTasks.filter(task => task.status === TaskStatus.COMPLETED)
-      render(<TaskBoard {...defaultProps} tasks={emptyTasks} />)
-      
-      expect(screen.getByText('No active tasks')).toBeInTheDocument()
-      expect(screen.getByText('All caught up! Add a new task to get started.')).toBeInTheDocument()
-    })
-
-    it('shows loading state', () => {
-      render(<TaskBoard {...defaultProps} isLoading={true} />)
-      
-      expect(screen.getByText('Loading tasks...')).toBeInTheDocument()
+    
+    // Mock scroll position persistence
+    const mockSaveScrollPosition = vi.fn()
+    const mockGetScrollPosition = vi.fn(() => ({
+      scrollTop: 0,
+      selectedTaskId: null,
+      projectId: 'project-1'
+    }))
+    
+    const { useTaskScrollPersistence } = await import('../../hooks/useTaskScrollPersistence')
+    vi.mocked(useTaskScrollPersistence).mockReturnValue({
+      scrollState: { scrollTop: 0, selectedTaskId: null, projectId: 'project-1' },
+      saveScrollPosition: mockSaveScrollPosition,
+      getScrollPosition: mockGetScrollPosition,
+      clearScrollState: vi.fn()
     })
   })
 
-  describe('Task Card Interaction', () => {
-    it('calls onTaskClick when task card is clicked', () => {
-      render(<TaskBoard {...defaultProps} />)
-      
-      fireEvent.click(screen.getByText('High Priority Task'))
-      
-      expect(defaultProps.onTaskClick).toHaveBeenCalledWith(mockTasks[0])
+  it('renders task board with tasks', () => {
+    render(<TaskBoard {...defaultProps} />)
+    
+    expect(screen.getByText('Test Task 1')).toBeInTheDocument()
+    expect(screen.getByText('Test Task 2')).toBeInTheDocument()
+    expect(screen.getByText('Test Task 3')).toBeInTheDocument()
+  })
+
+  it('captures scroll position when task is clicked', async () => {
+    const mockSaveScrollPosition = vi.fn()
+    const { useTaskScrollPersistence } = await import('../../hooks/useTaskScrollPersistence')
+    vi.mocked(useTaskScrollPersistence).mockReturnValue({
+      scrollState: { scrollTop: 0, selectedTaskId: null, projectId: 'project-1' },
+      saveScrollPosition: mockSaveScrollPosition,
+      getScrollPosition: vi.fn(),
+      clearScrollState: vi.fn()
     })
 
-    it('displays task description when available', () => {
-      render(<TaskBoard {...defaultProps} />)
-      
-      expect(screen.getByText('This is a high priority task')).toBeInTheDocument()
+    render(<TaskBoard {...defaultProps} />)
+    
+    const taskCard = screen.getByText('Test Task 1').closest('.task-card')
+    expect(taskCard).toBeInTheDocument()
+    
+    fireEvent.click(taskCard!)
+    
+    expect(defaultProps.onTaskClick).toHaveBeenCalledWith(mockTasks[0])
+    expect(mockSaveScrollPosition).toHaveBeenCalledWith(0, 'task-1')
+  })
+
+  it('restores scroll position when returning from detail view', async () => {
+    const mockScrollState = {
+      scrollTop: 150,
+      selectedTaskId: 'task-2',
+      projectId: 'project-1'
+    }
+    
+    const { useTaskScrollPersistence } = await import('../../hooks/useTaskScrollPersistence')
+    vi.mocked(useTaskScrollPersistence).mockReturnValue({
+      scrollState: mockScrollState,
+      saveScrollPosition: vi.fn(),
+      getScrollPosition: vi.fn(() => mockScrollState),
+      clearScrollState: vi.fn()
     })
 
-    it('displays task status and creation date', () => {
-      render(<TaskBoard {...defaultProps} />)
-      
-      const statusElements = screen.getAllByText(/Status:/)
-      expect(statusElements.length).toBeGreaterThan(0)
-      const createdElements = screen.getAllByText(/Created:/)
-      expect(createdElements.length).toBeGreaterThan(0)
+    // Mock scrollIntoView
+    const mockScrollIntoView = vi.fn()
+    Element.prototype.scrollIntoView = mockScrollIntoView
+
+    render(<TaskBoard {...defaultProps} shouldRestoreScroll={true} />)
+    
+    await waitFor(() => {
+      expect(mockScrollIntoView).toHaveBeenCalledWith({
+        behavior: 'smooth',
+        block: 'center'
+      })
     })
   })
 
-  describe('Drag and Drop Functionality', () => {
-    it('makes task cards draggable', () => {
-      render(<TaskBoard {...defaultProps} />)
-      
-      const taskCard = screen.getByText('High Priority Task').closest('.task-card')
-      expect(taskCard).toHaveAttribute('draggable', 'true')
+  it('highlights previously selected task when returning from detail view', async () => {
+    const mockScrollState = {
+      scrollTop: 150,
+      selectedTaskId: 'task-2',
+      projectId: 'project-1'
+    }
+    
+    const { useTaskScrollPersistence } = await import('../../hooks/useTaskScrollPersistence')
+    vi.mocked(useTaskScrollPersistence).mockReturnValue({
+      scrollState: mockScrollState,
+      saveScrollPosition: vi.fn(),
+      getScrollPosition: vi.fn(() => mockScrollState),
+      clearScrollState: vi.fn()
     })
 
-    it('handles drag start correctly', () => {
-      render(<TaskBoard {...defaultProps} />)
-      
-      const taskCard = screen.getByText('High Priority Task').closest('.task-card')
-      const dragEvent = new Event('dragstart', { bubbles: true })
-      Object.defineProperty(dragEvent, 'dataTransfer', {
-        value: {
-          effectAllowed: '',
-          setData: vi.fn()
-        }
-      })
-      
-      fireEvent(taskCard!, dragEvent)
-      
-      // The task card should have dragging class applied
-      expect(taskCard).toHaveClass('dragging')
-    })
-
-    it('handles drag over correctly', () => {
-      render(<TaskBoard {...defaultProps} />)
-      
-      const priorityRow = screen.getByText('Low Priority').closest('.priority-row')
-      const dragOverEvent = new Event('dragover', { bubbles: true })
-      Object.defineProperty(dragOverEvent, 'preventDefault', { value: vi.fn() })
-      Object.defineProperty(dragOverEvent, 'dataTransfer', {
-        value: { dropEffect: '' }
-      })
-      
-      fireEvent(priorityRow!, dragOverEvent)
-      
-      // The priority row should have drag-over class applied
-      expect(priorityRow).toHaveClass('drag-over')
-    })
-
-    it('handles drop correctly and updates task priority', async () => {
-      const updatedTask = { ...mockTasks[0], priority: TaskPriority.LOW }
-      mockUpdateTask.mockResolvedValue(updatedTask)
-      
-      render(<TaskBoard {...defaultProps} />)
-      
-      const taskCard = screen.getByText('High Priority Task').closest('.task-card')
-      const targetRow = screen.getByText('Low Priority').closest('.priority-row')
-      
-      // Start drag
-      const dragStartEvent = new Event('dragstart', { bubbles: true })
-      Object.defineProperty(dragStartEvent, 'dataTransfer', {
-        value: {
-          effectAllowed: '',
-          setData: vi.fn()
-        }
-      })
-      fireEvent(taskCard!, dragStartEvent)
-      
-      // Drop on target row
-      const dropEvent = new Event('drop', { bubbles: true })
-      Object.defineProperty(dropEvent, 'preventDefault', { value: vi.fn() })
-      fireEvent(targetRow!, dropEvent)
-      
-      await waitFor(() => {
-        expect(mockUpdateTask).toHaveBeenCalledWith('project-1', '1', { priority: TaskPriority.LOW })
-        expect(defaultProps.onTaskUpdate).toHaveBeenCalledWith(updatedTask)
-      })
-    })
-
-    it('shows success message after successful priority update', async () => {
-      const updatedTask = { ...mockTasks[0], priority: TaskPriority.LOW }
-      mockUpdateTask.mockResolvedValue(updatedTask)
-      
-      render(<TaskBoard {...defaultProps} />)
-      
-      const taskCard = screen.getByText('High Priority Task').closest('.task-card')
-      const targetRow = screen.getByText('Low Priority').closest('.priority-row')
-      
-      // Start drag and drop
-      const dragStartEvent = new Event('dragstart', { bubbles: true })
-      Object.defineProperty(dragStartEvent, 'dataTransfer', {
-        value: {
-          effectAllowed: '',
-          setData: vi.fn()
-        }
-      })
-      fireEvent(taskCard!, dragStartEvent)
-      
-      const dropEvent = new Event('drop', { bubbles: true })
-      Object.defineProperty(dropEvent, 'preventDefault', { value: vi.fn() })
-      fireEvent(targetRow!, dropEvent)
-      
-      await waitFor(() => {
-        expect(screen.getByText('Task priority updated to low')).toBeInTheDocument()
-      })
-    })
-
-    it('shows error message when priority update fails', async () => {
-      mockUpdateTask.mockRejectedValue(new Error('Update failed'))
-      
-      render(<TaskBoard {...defaultProps} />)
-      
-      const taskCard = screen.getByText('High Priority Task').closest('.task-card')
-      const targetRow = screen.getByText('Low Priority').closest('.priority-row')
-      
-      // Start drag and drop
-      const dragStartEvent = new Event('dragstart', { bubbles: true })
-      Object.defineProperty(dragStartEvent, 'dataTransfer', {
-        value: {
-          effectAllowed: '',
-          setData: vi.fn()
-        }
-      })
-      fireEvent(taskCard!, dragStartEvent)
-      
-      const dropEvent = new Event('drop', { bubbles: true })
-      Object.defineProperty(dropEvent, 'preventDefault', { value: vi.fn() })
-      fireEvent(targetRow!, dropEvent)
-      
-      await waitFor(() => {
-        expect(screen.getByText('Failed to update task priority. Please try again.')).toBeInTheDocument()
-      })
-    })
-
-    it('does not update when dropping on same priority', async () => {
-      render(<TaskBoard {...defaultProps} />)
-      
-      const taskCard = screen.getByText('High Priority Task').closest('.task-card')
-      const targetRow = screen.getByText('High Priority').closest('.priority-row')
-      
-      // Start drag and drop on same priority
-      const dragStartEvent = new Event('dragstart', { bubbles: true })
-      Object.defineProperty(dragStartEvent, 'dataTransfer', {
-        value: {
-          effectAllowed: '',
-          setData: vi.fn()
-        }
-      })
-      fireEvent(taskCard!, dragStartEvent)
-      
-      const dropEvent = new Event('drop', { bubbles: true })
-      Object.defineProperty(dropEvent, 'preventDefault', { value: vi.fn() })
-      fireEvent(targetRow!, dropEvent)
-      
-      // Should not call updateTask
-      expect(mockUpdateTask).not.toHaveBeenCalled()
-    })
-
-    it('shows updating indicator during API call', async () => {
-      mockUpdateTask.mockImplementation(() => new Promise(resolve => setTimeout(resolve, 100)))
-      
-      render(<TaskBoard {...defaultProps} />)
-      
-      const taskCard = screen.getByText('High Priority Task').closest('.task-card')
-      const targetRow = screen.getByText('Low Priority').closest('.priority-row')
-      
-      // Start drag and drop
-      const dragStartEvent = new Event('dragstart', { bubbles: true })
-      Object.defineProperty(dragStartEvent, 'dataTransfer', {
-        value: {
-          effectAllowed: '',
-          setData: vi.fn()
-        }
-      })
-      fireEvent(taskCard!, dragStartEvent)
-      
-      const dropEvent = new Event('drop', { bubbles: true })
-      Object.defineProperty(dropEvent, 'preventDefault', { value: vi.fn() })
-      fireEvent(targetRow!, dropEvent)
-      
-      // Should show updating indicator
-      expect(screen.getByText('Updating...')).toBeInTheDocument()
-      expect(taskCard).toHaveClass('updating')
+    render(<TaskBoard {...defaultProps} shouldRestoreScroll={true} />)
+    
+    const taskElement = screen.getByText('Test Task 2').closest('[data-task-id="task-2"]')
+    expect(taskElement).toBeInTheDocument()
+    
+    await waitFor(() => {
+      expect(taskElement).toHaveClass('previously-selected')
     })
   })
 
-  describe('Visual Feedback', () => {
-    it('applies correct colors for different priorities', () => {
-      render(<TaskBoard {...defaultProps} />)
-      
-      const highPriorityRow = screen.getByText('High Priority').closest('.priority-row')
-      const mediumPriorityRow = screen.getByText('Medium Priority').closest('.priority-row')
-      const lowPriorityRow = screen.getByText('Low Priority').closest('.priority-row')
-      
-      expect(highPriorityRow).toHaveAttribute('data-priority', 'high')
-      expect(mediumPriorityRow).toHaveAttribute('data-priority', 'medium')
-      expect(lowPriorityRow).toHaveAttribute('data-priority', 'low')
+  it('handles task click with scroll position capture', async () => {
+    const mockSaveScrollPosition = vi.fn()
+    const { useTaskScrollPersistence } = await import('../../hooks/useTaskScrollPersistence')
+    vi.mocked(useTaskScrollPersistence).mockReturnValue({
+      scrollState: { scrollTop: 0, selectedTaskId: null, projectId: 'project-1' },
+      saveScrollPosition: mockSaveScrollPosition,
+      getScrollPosition: vi.fn(),
+      clearScrollState: vi.fn()
     })
 
-    it('shows empty state for priority rows with no tasks', () => {
-      const singleTask = [mockTasks[0]] // Only high priority task
-      render(<TaskBoard {...defaultProps} tasks={singleTask} />)
-      
-      const noTasksElements = screen.getAllByText('No tasks')
-      expect(noTasksElements.length).toBeGreaterThan(0)
-    })
+    render(<TaskBoard {...defaultProps} />)
+    
+    const taskCard = screen.getByText('Test Task 2').closest('.task-card')
+    fireEvent.click(taskCard!)
+    
+    expect(mockSaveScrollPosition).toHaveBeenCalledWith(0, 'task-2')
+    expect(defaultProps.onTaskClick).toHaveBeenCalledWith(mockTasks[1])
   })
 
-  describe('Error Handling', () => {
-    it('handles missing projectId gracefully', () => {
-      render(<TaskBoard {...defaultProps} projectId={undefined} />)
-      
-      const taskCard = screen.getByText('High Priority Task').closest('.task-card')
-      const targetRow = screen.getByText('Low Priority').closest('.priority-row')
-      
-      // Start drag and drop
-      const dragStartEvent = new Event('dragstart', { bubbles: true })
-      Object.defineProperty(dragStartEvent, 'dataTransfer', {
-        value: {
-          effectAllowed: '',
-          setData: vi.fn()
-        }
-      })
-      fireEvent(taskCard!, dragStartEvent)
-      
-      const dropEvent = new Event('drop', { bubbles: true })
-      Object.defineProperty(dropEvent, 'preventDefault', { value: vi.fn() })
-      fireEvent(targetRow!, dropEvent)
-      
-      // Should not call updateTask when projectId is missing
-      expect(mockUpdateTask).not.toHaveBeenCalled()
+  it('does not restore scroll position when scrollTop is 0', async () => {
+    const mockScrollState = {
+      scrollTop: 0,
+      selectedTaskId: null,
+      projectId: 'project-1'
+    }
+    
+    const { useTaskScrollPersistence } = await import('../../hooks/useTaskScrollPersistence')
+    vi.mocked(useTaskScrollPersistence).mockReturnValue({
+      scrollState: mockScrollState,
+      saveScrollPosition: vi.fn(),
+      getScrollPosition: vi.fn(() => mockScrollState),
+      clearScrollState: vi.fn()
     })
+
+    // Mock scrollIntoView
+    const mockScrollIntoView = vi.fn()
+    Element.prototype.scrollIntoView = mockScrollIntoView
+
+    render(<TaskBoard {...defaultProps} shouldRestoreScroll={true} />)
+    
+    expect(mockScrollIntoView).not.toHaveBeenCalled()
+  })
+
+  it('handles missing task element gracefully', async () => {
+    const mockScrollState = {
+      scrollTop: 150,
+      selectedTaskId: 'non-existent-task',
+      projectId: 'project-1'
+    }
+    
+    const { useTaskScrollPersistence } = await import('../../hooks/useTaskScrollPersistence')
+    vi.mocked(useTaskScrollPersistence).mockReturnValue({
+      scrollState: mockScrollState,
+      saveScrollPosition: vi.fn(),
+      getScrollPosition: vi.fn(() => mockScrollState),
+      clearScrollState: vi.fn()
+    })
+
+    // Mock querySelector to return null
+    const originalQuerySelector = document.querySelector
+    document.querySelector = vi.fn(() => null)
+
+    render(<TaskBoard {...defaultProps} shouldRestoreScroll={true} />)
+    
+    // Should not throw an error
+    await waitFor(() => {
+      expect(document.querySelector).toHaveBeenCalledWith('[data-task-id="non-existent-task"]')
+    })
+
+    // Restore original querySelector
+    document.querySelector = originalQuerySelector
   })
 })

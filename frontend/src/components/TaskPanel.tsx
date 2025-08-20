@@ -20,6 +20,7 @@ const TaskPanel: React.FC<TaskPanelProps> = ({ projectId, refreshTrigger, onTask
   const [isLoading, setIsLoading] = useState(false)
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [taskPanelView, setTaskPanelView] = useState<'list' | 'details'>('list')
+  const [shouldRestoreScroll, setShouldRestoreScroll] = useState(false)
 
   // Task expansion persistence
   const {
@@ -171,6 +172,12 @@ const TaskPanel: React.FC<TaskPanelProps> = ({ projectId, refreshTrigger, onTask
   const handleBackToList = () => {
     setSelectedTask(null)
     setTaskPanelView('list')
+    setShouldRestoreScroll(true)
+    
+    // Reset the flag after a short delay to prevent multiple restorations
+    setTimeout(() => {
+      setShouldRestoreScroll(false)
+    }, 100)
   }
 
   const showNotification = (message: string, type: 'success' | 'error') => {
@@ -231,6 +238,7 @@ const TaskPanel: React.FC<TaskPanelProps> = ({ projectId, refreshTrigger, onTask
               toggleTaskExpansion={toggleTaskExpansion}
               isTaskExpanded={isTaskExpanded}
               selectedTask={selectedTask}
+              shouldRestoreScroll={shouldRestoreScroll}
             />
           </>
         ) : (
