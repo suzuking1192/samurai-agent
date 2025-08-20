@@ -27,7 +27,7 @@ export const CodebaseIntegrationSection: React.FC<CodebaseIntegrationSectionProp
     const files = event.target.files
     if (!files || files.length === 0) return
 
-    // Extract the folder name from the first file's webkitRelativePath
+    // Extract the folder path from the first file's webkitRelativePath
     // When using webkitdirectory, the path format is "folderName/filePath"
     const file = files[0]
     let folderPath = ''
@@ -36,18 +36,19 @@ export const CodebaseIntegrationSection: React.FC<CodebaseIntegrationSectionProp
       // Extract the folder name from the relative path
       const pathParts = file.webkitRelativePath.split('/')
       if (pathParts.length > 0) {
-        folderPath = `./${pathParts[0]}` // Use relative path format
+        // Use the folder name as the path - this will be resolved to absolute by the backend
+        folderPath = pathParts[0]
       } else {
         setError('Invalid folder selection. Please try selecting a folder again.')
         return
       }
     } else {
       // Fallback to file name if webkitRelativePath is not available
-      folderPath = `./${file.name}`
+      folderPath = file.name
     }
     
     // Validate that we have a proper folder path
-    if (!folderPath || folderPath === './') {
+    if (!folderPath) {
       setError('Invalid folder selection. Please try selecting a folder again.')
       return
     }
@@ -67,8 +68,9 @@ export const CodebaseIntegrationSection: React.FC<CodebaseIntegrationSectionProp
       const response = await connectCodebase(request)
       
       if (response.success) {
-        setSelectedPath(folderPath)
-        onCodebaseConnected?.(folderPath)
+        // Use the absolute path returned from the backend
+        setSelectedPath(response.codebase_path)
+        onCodebaseConnected?.(response.codebase_path)
         setError(null)
       } else {
         setError('Failed to grant access to codebase. Please try again.')

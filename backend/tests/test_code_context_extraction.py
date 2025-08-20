@@ -296,7 +296,8 @@ def generate_token(user_id):
         """Test code context extraction when no relevant files are found."""
         with patch('services.gemini_service.GeminiService') as mock_gemini_class:
             mock_service = Mock()
-            mock_service.generate_response = AsyncMock(return_value='[]')
+            mock_service.generate_response = AsyncMock(return_value='{}')
+            mock_service.chat_with_system_prompt = AsyncMock(return_value='{}')
             mock_gemini_class.return_value = mock_service
             
             result = await self.tool.execute(
@@ -320,7 +321,7 @@ def generate_token(user_id):
         )
         
         assert result["success"] is False
-        assert "Codebase path not found" in result["message"]
+        assert "Codebase path does not exist" in result["message"]
 
 
 class TestUnifiedSamuraiAgentIntegration:

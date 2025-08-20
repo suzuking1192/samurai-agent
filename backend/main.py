@@ -1339,14 +1339,34 @@ async def connect_codebase(request: CodebaseConnectRequest):
         if not request.path or not isinstance(request.path, str):
             raise HTTPException(status_code=400, detail="Path must be a non-empty string")
         
-        # 3. Basic path validation (check if it's a valid path format)
-        if not os.path.isabs(request.path) and not request.path.startswith('./'):
-            raise HTTPException(status_code=400, detail="Path must be an absolute path or relative path starting with './'")
+        # 3. Convert relative paths to absolute paths and validate
+        absolute_path = request.path
+        if not os.path.isabs(request.path):
+            # For relative paths, we need to be smarter about resolution
+            # First, try resolving relative to the user's home directory
+            home_resolved = os.path.expanduser(f"~/{request.path}")
+            if os.path.exists(home_resolved):
+                absolute_path = os.path.abspath(home_resolved)
+            else:
+                # Try resolving relative to the parent directory of the project root
+                # This handles cases where the folder is a sibling of the project
+                project_parent = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                parent_resolved = os.path.join(os.path.dirname(project_parent), request.path)
+                if os.path.exists(parent_resolved):
+                    absolute_path = os.path.abspath(parent_resolved)
+                else:
+                    # Fallback: try current working directory (original behavior)
+                    absolute_path = os.path.abspath(request.path)
         
-        # 4. Store the codebase path in the project data
-        # For now, we'll store it in a simple way - in a real implementation,
-        # you might want to store this in a database or configuration file
-        project.codebase_path = request.path
+        # 4. Validate the absolute path exists and is a directory
+        if not os.path.exists(absolute_path):
+            raise HTTPException(status_code=400, detail=f"Path does not exist: {absolute_path}")
+        
+        if not os.path.isdir(absolute_path):
+            raise HTTPException(status_code=400, detail=f"Path is not a directory: {absolute_path}")
+        
+        # 5. Store the absolute codebase path in the project data
+        project.codebase_path = absolute_path
         file_service.save_project(project)
         
         logger.info(f"Codebase connected successfully for project {request.project_id}")
@@ -1355,7 +1375,7 @@ async def connect_codebase(request: CodebaseConnectRequest):
             "success": True,
             "message": "Codebase connected successfully",
             "project_id": request.project_id,
-            "codebase_path": request.path
+            "codebase_path": absolute_path
         }
         
     except HTTPException:

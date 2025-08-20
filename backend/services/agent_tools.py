@@ -614,39 +614,7 @@ class ExtractCodeContextTool(BaseModel):
     name: str = "extract_code_context"
     description: str = "Extract relevant code context from the local codebase based on a natural language request"
     
-    def _validate_and_canonicalize_path(self, project_id: str, provided_path: str) -> Tuple[bool, str, str]:
-        """
-        Validate and canonicalize a provided path for code context extraction.
-        
-        Since this is OSS, users should have the freedom to access any directory they choose.
-        This method focuses on ensuring the path is valid and accessible for code extraction.
-        
-        Args:
-            project_id: The project identifier (for logging purposes)
-            provided_path: The path to validate and canonicalize
-            
-        Returns:
-            Tuple of (is_valid, canonicalized_path, error_message)
-        """
-        try:
-            # Canonicalize the provided path to resolve any symlinks and normalize
-            try:
-                canonicalized_path = os.path.realpath(provided_path)
-            except (OSError, ValueError) as e:
-                return False, "", f"❌ Invalid path provided: {str(e)}"
-            
-            # Check if the provided path is a directory
-            if not os.path.isdir(canonicalized_path):
-                return False, "", f"❌ Provided path is not a directory: {canonicalized_path}"
-            
-            # Log the path being accessed for transparency
-            logger.info(f"Code context extraction - project_id: {project_id}, path: {canonicalized_path}")
-            
-            return True, canonicalized_path, ""
-            
-        except Exception as e:
-            logger.error(f"Error validating path for project {project_id}: {e}")
-            return False, "", f"❌ Failed to validate path: {str(e)}"
+
 
     async def execute(self, natural_language_request: str, project_id: str, 
                      connected_codebase_path: Optional[str] = None, session_id: Optional[str] = None,
@@ -675,22 +643,27 @@ class ExtractCodeContextTool(BaseModel):
                     "file_path": None
                 }
             
-            # Validate and canonicalize the provided path
-            is_valid, canonicalized_path, error_message = self._validate_and_canonicalize_path(
-                project_id, connected_codebase_path
-            )
-            
-            if not is_valid:
+            # Validate that the path exists and is a directory
+            if not os.path.exists(connected_codebase_path):
                 return {
                     "success": False,
-                    "message": error_message,
+                    "message": f"❌ Codebase path does not exist: {connected_codebase_path}",
                     "context": None,
                     "relevant_code": None,
                     "file_path": None
                 }
             
-            # Use the canonicalized path for all subsequent operations
-            connected_codebase_path = canonicalized_path
+            if not os.path.isdir(connected_codebase_path):
+                return {
+                    "success": False,
+                    "message": f"❌ Codebase path is not a directory: {connected_codebase_path}",
+                    "context": None,
+                    "relevant_code": None,
+                    "file_path": None
+                }
+            
+            # Log the path being accessed for transparency
+            logger.info(f"Code context extraction - project_id: {project_id}, path: {connected_codebase_path}")
             
             # Step 1: Scan the codebase for files and methods (no file limit for comprehensive coverage)
             logger.info(f"Scanning codebase at {connected_codebase_path}")
