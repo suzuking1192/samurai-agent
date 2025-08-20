@@ -241,3 +241,99 @@ class TestCodeContextTaskCreation:
         
         # Verify the result is successful
         assert result["type"] == "task_creation_response"
+
+    @pytest.mark.asyncio
+    async def test_auto_mode_behavior_with_no_codebase_path(self, mock_agent, mock_context):
+        """Test that 'auto' mode fails gracefully when no codebase path is configured."""
+        # Arrange
+        message = "Create tasks for implementing a new feature"
+        project_id = "test-project"
+        code_context_mode = "auto"
+        
+        # Mock the project context to have no codebase_path
+        mock_context.project_context = {
+            "id": project_id,
+            "name": "Test Project",
+            "codebase_path": None  # No codebase path configured
+        }
+        
+        # Mock the tool to return failure when no codebase path
+        mock_agent.tool_registry.execute_tool.return_value = {
+            "success": False,
+            "message": "❌ No codebase path provided. Please specify a path to analyze.",
+            "context": None,
+            "relevant_code": None,
+            "file_path": None
+        }
+        
+        # Act
+        result = await mock_agent._handle_ready_for_action(
+            message, mock_context, project_id, 
+            progress_callback=None, code_context_mode=code_context_mode
+        )
+        
+        # Assert
+        # Verify code context extraction was called (auto mode should attempt extraction)
+        mock_agent.tool_registry.execute_tool.assert_called_once()
+        
+        # Verify the tool was called with None codebase_path
+        call_args = mock_agent.tool_registry.execute_tool.call_args
+        assert call_args[1]['connected_codebase_path'] is None
+        
+        # Verify code context remains None (not set on failure)
+        assert mock_context.code_context is None
+        
+        # Verify task generation was still called
+        mock_agent._generate_task_breakdown_with_extended_context.assert_called_once()
+        
+        # Verify the result is successful
+        assert result["type"] == "task_creation_response"
+
+    @pytest.mark.asyncio
+    async def test_auto_mode_always_extracts_code_context_for_task_creation(self, mock_agent, mock_context):
+        """Test that 'auto' mode always extracts code context for task creation, regardless of intent analysis."""
+        # Arrange
+        message = "Create tasks for implementing a new feature"
+        project_id = "test-project"
+        code_context_mode = "auto"
+        
+        # Mock the project context to have a codebase_path
+        mock_context.project_context = {
+            "id": project_id,
+            "name": "Test Project",
+            "codebase_path": "/test/path"  # Has codebase path configured
+        }
+        
+        # Mock successful code context extraction
+        mock_agent.tool_registry.execute_tool.return_value = {
+            "success": True,
+            "context": "Test context summary",
+            "relevant_code": "def test_function():\n    pass",
+            "file_path": "/test/path/test_file.py",
+            "relevance_score": 8
+        }
+        
+        # Act
+        result = await mock_agent._handle_ready_for_action(
+            message, mock_context, project_id, 
+            progress_callback=None, code_context_mode=code_context_mode
+        )
+        
+        # Assert
+        # Verify code context extraction was called (auto mode should always extract for task creation)
+        mock_agent.tool_registry.execute_tool.assert_called_once()
+        
+        # Verify the tool was called with the correct codebase_path
+        call_args = mock_agent.tool_registry.execute_tool.call_args
+        assert call_args[1]['connected_codebase_path'] == "/test/path"
+        
+        # Verify code context was set in the context
+        assert mock_context.code_context is not None
+        assert mock_context.code_context["context"] == "Test context summary"
+        assert mock_context.code_context["relevant_code"] == "def test_function():\n    pass"
+        
+        # Verify task generation was called
+        mock_agent._generate_task_breakdown_with_extended_context.assert_called_once()
+        
+        # Verify the result is successful
+        assert result["type"] == "task_creation_response"
