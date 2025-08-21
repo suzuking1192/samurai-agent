@@ -926,38 +926,129 @@ Reasoning: [Explain your selection process and relevance ordering]
             try:
                 json_match = re.search(r'\{.*\}', response, re.DOTALL)
                 if json_match:
-                    file_methods_map = json.loads(json_match.group())
+                    json_str = json_match.group()
+                    # Handle potential JSON parsing issues with backslashes
+                    try:
+                        file_methods_map = json.loads(json_str)
+                    except json.JSONDecodeError as json_err:
+                        # If JSON parsing fails, try to fix common issues
+                        logger.warning(f"Initial JSON parsing failed: {json_err}")
+                        # Try to fix backslash issues in Windows paths
+                        fixed_json = json_str.replace('\\', '\\\\')
+                        try:
+                            file_methods_map = json.loads(fixed_json)
+                        except json.JSONDecodeError:
+                            # If still failing, try a more aggressive fix
+                            # Replace single backslashes with forward slashes for path compatibility
+                            fixed_json = json_str.replace('\\', '/')
+                            file_methods_map = json.loads(fixed_json)
                 else:
                     # Fallback: try to parse the entire response as JSON
-                    file_methods_map = json.loads(response)
+                    try:
+                        file_methods_map = json.loads(response)
+                    except json.JSONDecodeError as json_err:
+                        logger.warning(f"Fallback JSON parsing failed: {json_err}")
+                        # Try to fix the entire response
+                        fixed_response = response.replace('\\', '/')
+                        file_methods_map = json.loads(fixed_response)
                 
                 # Validate that returned paths exist and methods are valid
                 valid_file_methods = {}
                 for file_path, methods in file_methods_map.items():
-                    # Handle both full paths and just filenames
-                    actual_file_path = None
-                    if file_path in file_infos:
-                        actual_file_path = file_path
-                    else:
-                        # Check if it's just a filename by matching against basenames
-                        for full_path in file_infos.keys():
-                            if os.path.basename(full_path) == file_path:
-                                actual_file_path = full_path
-                                break
+                    # Handle multiple path formats: full paths, relative paths, and just filenames
+                    matched_files = []
                     
-                    if actual_file_path:
+                    # First, try exact match
+                    if file_path in file_infos:
+                        matched_files.append(file_path)
+                    else:
+                        # Try to match against basenames (filename only)
+                        for full_path in file_infos.keys():
+                            if os.path.basename(full_path) == os.path.basename(file_path):
+                                matched_files.append(full_path)
+                        
+                        # If still no matches, try to resolve relative paths
+                        if not matched_files:
+                            # Normalize path separators for comparison
+                            normalized_file_path = file_path.replace('\\', '/')
+                            
+                            for full_path in file_infos.keys():
+                                normalized_full_path = full_path.replace('\\', '/')
+                                
+                                # Try multiple path matching strategies
+                                try:
+                                    # Strategy 1: Try to make the full path relative to current working directory
+                                    rel_path = os.path.relpath(full_path)
+                                    normalized_rel_path = rel_path.replace('\\', '/')
+                                    
+                                    if normalized_rel_path == normalized_file_path:
+                                        matched_files.append(full_path)
+                                        continue
+                                    
+                                    # Strategy 2: Check if the file path is a suffix of the full path
+                                    if normalized_full_path.endswith('/' + normalized_file_path.lstrip('/')):
+                                        matched_files.append(full_path)
+                                        continue
+                                    
+                                    # Strategy 3: Direct suffix matching
+                                    if normalized_full_path.endswith(normalized_file_path):
+                                        matched_files.append(full_path)
+                                        continue
+                                    
+                                    # Strategy 4: Split paths and compare components
+                                    file_parts = [p for p in normalized_file_path.split('/') if p]
+                                    full_parts = [p for p in normalized_full_path.split('/') if p]
+                                    
+                                    # Check if file_parts is a suffix of full_parts
+                                    if len(file_parts) <= len(full_parts):
+                                        if full_parts[-len(file_parts):] == file_parts:
+                                            matched_files.append(full_path)
+                                            continue
+                                    
+                                    # Strategy 5: Cross-platform path resolution
+                                    # Handle cases where one path is Windows-style and the other is Unix-style
+                                    # Extract the meaningful part of the path (ignoring drive letters, etc.)
+                                    if ':' in normalized_file_path:  # Likely a Windows absolute path
+                                        # Extract path after drive letter
+                                        meaningful_file_path = normalized_file_path.split(':', 1)[1].lstrip('/')
+                                        if normalized_full_path.endswith(meaningful_file_path):
+                                            matched_files.append(full_path)
+                                            continue
+                                        
+                                        # Also try component-wise matching
+                                        meaningful_parts = [p for p in meaningful_file_path.split('/') if p]
+                                        if len(meaningful_parts) <= len(full_parts):
+                                            if full_parts[-len(meaningful_parts):] == meaningful_parts:
+                                                matched_files.append(full_path)
+                                                continue
+                                    
+                                except ValueError:
+                                    # If we can't make it relative, continue with other strategies
+                                    continue
+                    
+                    # Process all matched files
+                    for actual_file_path in matched_files:
+                        if actual_file_path in valid_file_methods:
+                            # If file already processed, merge methods
+                            existing_methods = set(valid_file_methods[actual_file_path])
+                        else:
+                            existing_methods = set()
+                        
                         # Validate that the methods exist in the file's elements
                         file_info = file_infos[actual_file_path]
-                        valid_methods = []
+                        valid_methods = list(existing_methods)
+                        
                         for method in methods:
-                            logger.info(f"Step 2: Looking for method '{method}' in file {actual_file_path}")
-                            # Check if method exists in the file's elements
-                            for element in file_info.elements:
-                                logger.info(f"Step 2: Checking element '{element.name}' against method '{method}'")
-                                if element.name.lower() == method.lower():
-                                    logger.info(f"Step 2: Found match! Adding '{element.name}' for method '{method}'")
-                                    valid_methods.append(element.name)
-                                    break
+                            if method not in existing_methods:  # Avoid duplicates
+                                logger.info(f"Step 2: Looking for method '{method}' in file {actual_file_path}")
+                                # Check if method exists in the file's elements
+                                for element in file_info.elements:
+                                    logger.info(f"Step 2: Checking element '{element.name}' against method '{method}'")
+                                    if element.name.lower() == method.lower():
+                                        logger.info(f"Step 2: Found match! Adding '{element.name}' for method '{method}'")
+                                        valid_methods.append(element.name)
+                                        break
+                        
                         if valid_methods:
                             valid_file_methods[actual_file_path] = valid_methods
                 
