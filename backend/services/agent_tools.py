@@ -13,6 +13,7 @@ try:
     from .file_service import FileService
     from .code_parser import code_parser
     from .code_context_storage import code_context_storage
+    from .utils import parse_ai_json_response, clean_ai_json_response, extract_json_from_ai_response
     from models import Task, Memory, Project
 except ImportError:
     import sys
@@ -925,38 +926,129 @@ Reasoning: [Explain your selection process and relevance ordering]
             try:
                 json_match = re.search(r'\{.*\}', response, re.DOTALL)
                 if json_match:
-                    file_methods_map = json.loads(json_match.group())
+                    json_str = json_match.group()
+                    # Handle potential JSON parsing issues with backslashes
+                    try:
+                        file_methods_map = json.loads(json_str)
+                    except json.JSONDecodeError as json_err:
+                        # If JSON parsing fails, try to fix common issues
+                        logger.warning(f"Initial JSON parsing failed: {json_err}")
+                        # Try to fix backslash issues in Windows paths
+                        fixed_json = json_str.replace('\\', '\\\\')
+                        try:
+                            file_methods_map = json.loads(fixed_json)
+                        except json.JSONDecodeError:
+                            # If still failing, try a more aggressive fix
+                            # Replace single backslashes with forward slashes for path compatibility
+                            fixed_json = json_str.replace('\\', '/')
+                            file_methods_map = json.loads(fixed_json)
                 else:
                     # Fallback: try to parse the entire response as JSON
-                    file_methods_map = json.loads(response)
+                    try:
+                        file_methods_map = json.loads(response)
+                    except json.JSONDecodeError as json_err:
+                        logger.warning(f"Fallback JSON parsing failed: {json_err}")
+                        # Try to fix the entire response
+                        fixed_response = response.replace('\\', '/')
+                        file_methods_map = json.loads(fixed_response)
                 
                 # Validate that returned paths exist and methods are valid
                 valid_file_methods = {}
                 for file_path, methods in file_methods_map.items():
-                    # Handle both full paths and just filenames
-                    actual_file_path = None
-                    if file_path in file_infos:
-                        actual_file_path = file_path
-                    else:
-                        # Check if it's just a filename by matching against basenames
-                        for full_path in file_infos.keys():
-                            if os.path.basename(full_path) == file_path:
-                                actual_file_path = full_path
-                                break
+                    # Handle multiple path formats: full paths, relative paths, and just filenames
+                    matched_files = []
                     
-                    if actual_file_path:
+                    # First, try exact match
+                    if file_path in file_infos:
+                        matched_files.append(file_path)
+                    else:
+                        # Try to match against basenames (filename only)
+                        for full_path in file_infos.keys():
+                            if os.path.basename(full_path) == os.path.basename(file_path):
+                                matched_files.append(full_path)
+                        
+                        # If still no matches, try to resolve relative paths
+                        if not matched_files:
+                            # Normalize path separators for comparison
+                            normalized_file_path = file_path.replace('\\', '/')
+                            
+                            for full_path in file_infos.keys():
+                                normalized_full_path = full_path.replace('\\', '/')
+                                
+                                # Try multiple path matching strategies
+                                try:
+                                    # Strategy 1: Try to make the full path relative to current working directory
+                                    rel_path = os.path.relpath(full_path)
+                                    normalized_rel_path = rel_path.replace('\\', '/')
+                                    
+                                    if normalized_rel_path == normalized_file_path:
+                                        matched_files.append(full_path)
+                                        continue
+                                    
+                                    # Strategy 2: Check if the file path is a suffix of the full path
+                                    if normalized_full_path.endswith('/' + normalized_file_path.lstrip('/')):
+                                        matched_files.append(full_path)
+                                        continue
+                                    
+                                    # Strategy 3: Direct suffix matching
+                                    if normalized_full_path.endswith(normalized_file_path):
+                                        matched_files.append(full_path)
+                                        continue
+                                    
+                                    # Strategy 4: Split paths and compare components
+                                    file_parts = [p for p in normalized_file_path.split('/') if p]
+                                    full_parts = [p for p in normalized_full_path.split('/') if p]
+                                    
+                                    # Check if file_parts is a suffix of full_parts
+                                    if len(file_parts) <= len(full_parts):
+                                        if full_parts[-len(file_parts):] == file_parts:
+                                            matched_files.append(full_path)
+                                            continue
+                                    
+                                    # Strategy 5: Cross-platform path resolution
+                                    # Handle cases where one path is Windows-style and the other is Unix-style
+                                    # Extract the meaningful part of the path (ignoring drive letters, etc.)
+                                    if ':' in normalized_file_path:  # Likely a Windows absolute path
+                                        # Extract path after drive letter
+                                        meaningful_file_path = normalized_file_path.split(':', 1)[1].lstrip('/')
+                                        if normalized_full_path.endswith(meaningful_file_path):
+                                            matched_files.append(full_path)
+                                            continue
+                                        
+                                        # Also try component-wise matching
+                                        meaningful_parts = [p for p in meaningful_file_path.split('/') if p]
+                                        if len(meaningful_parts) <= len(full_parts):
+                                            if full_parts[-len(meaningful_parts):] == meaningful_parts:
+                                                matched_files.append(full_path)
+                                                continue
+                                    
+                                except ValueError:
+                                    # If we can't make it relative, continue with other strategies
+                                    continue
+                    
+                    # Process all matched files
+                    for actual_file_path in matched_files:
+                        if actual_file_path in valid_file_methods:
+                            # If file already processed, merge methods
+                            existing_methods = set(valid_file_methods[actual_file_path])
+                        else:
+                            existing_methods = set()
+                        
                         # Validate that the methods exist in the file's elements
                         file_info = file_infos[actual_file_path]
-                        valid_methods = []
+                        valid_methods = list(existing_methods)
+                        
                         for method in methods:
-                            logger.info(f"Step 2: Looking for method '{method}' in file {actual_file_path}")
-                            # Check if method exists in the file's elements
-                            for element in file_info.elements:
-                                logger.info(f"Step 2: Checking element '{element.name}' against method '{method}'")
-                                if element.name.lower() == method.lower():
-                                    logger.info(f"Step 2: Found match! Adding '{element.name}' for method '{method}'")
-                                    valid_methods.append(element.name)
-                                    break
+                            if method not in existing_methods:  # Avoid duplicates
+                                logger.info(f"Step 2: Looking for method '{method}' in file {actual_file_path}")
+                                # Check if method exists in the file's elements
+                                for element in file_info.elements:
+                                    logger.info(f"Step 2: Checking element '{element.name}' against method '{method}'")
+                                    if element.name.lower() == method.lower():
+                                        logger.info(f"Step 2: Found match! Adding '{element.name}' for method '{method}'")
+                                        valid_methods.append(element.name)
+                                        break
+                        
                         if valid_methods:
                             valid_file_methods[actual_file_path] = valid_methods
                 
@@ -1067,6 +1159,9 @@ Reasoning: [Explain your selection process and relevance ordering]
             # Step 2: Combine all code content
             combined_content = "\n\n".join(all_code_content)
             
+            # Escape curly braces in combined_content to prevent format() from interpreting them as placeholders
+            combined_content = combined_content.replace("{", "{{").replace("}", "}}")
+            
             # Step 3: If combined_content is longer than 100000, remove the rest
             max_content_size = 100000
             if len(combined_content) > max_content_size:
@@ -1074,7 +1169,7 @@ Reasoning: [Explain your selection process and relevance ordering]
                 combined_content = combined_content[:max_content_size] + "\n... (truncated due to length)"
             
             # Step 4: Analyze the content directly without chunking
-            prompt = f"""
+            prompt = """
 You are an expert code analyzer. Given a user request and code content from multiple files, extract comprehensive and detailed 
 information that would help answer the request. Your analysis should be thorough and include all relevant technical details, 
 as this context will be used to generate high-quality responses to user queries.
@@ -1092,6 +1187,8 @@ Instructions:
 5. Focus on providing maximum useful information - it's better to include more details than to miss important context
 6. Consider the code's architecture, design patterns, data flow, error handling, and integration points
 
+IMPORTANT: You must respond with ONLY a valid JSON object. Do not include any other text, explanations, or formatting outside the JSON.
+
 Return a JSON object with:
 - "relevance_score": 0-10 (how relevant this content is to the request)
 - "context": A comprehensive and detailed analysis of the relevant code, including its purpose, functionality, key components, data structures, algorithms, dependencies, relationships with other parts of the codebase, and any important implementation details that would be useful for understanding and working with this code
@@ -1099,46 +1196,51 @@ Return a JSON object with:
 - "file_path": The most relevant file path from this content
 
 If the content is not relevant, set relevance_score to 0.
-"""
+
+Example response format:
+{{
+  "relevance_score": 8,
+  "context": "This code implements...",
+  "relevant_code": "def example_function():...",
+  "file_path": "path/to/file.py"
+}}
+""".format(request=request, combined_content=combined_content)
             
             response = await gemini_service.chat_with_system_prompt("", prompt)
             
-            # Extract JSON from response
-            try:
-                import re
-                json_match = re.search(r'\{.*\}', response, re.DOTALL)
-                if json_match:
-                    analysis = json.loads(json_match.group())
-                else:
-                    analysis = json.loads(response)
-                
-                relevance_score = analysis.get("relevance_score", 0)
-                
-                logger.info(f"Analysis relevance score: {relevance_score}")
-                logger.info(f"Analysis: {analysis}")
-                
-                if relevance_score > 0:
-                    return {
-                        "success": True,
-                        "context": analysis.get("context", ""),
-                        "relevant_code": analysis.get("relevant_code", ""),
-                        "file_path": analysis.get("file_path"),
-                        "relevance_score": relevance_score
-                    }
-                else:
-                    return {
-                        "success": False,
-                        "message": "❌ No sufficiently relevant code found for the request",
-                        "context": None,
-                        "relevant_code": None,
-                        "file_path": None
-                    }
+            # Parse AI response using robust utility function
+            # Use the utility function to parse the AI response
+            expected_fields = ["relevance_score", "context", "relevant_code", "file_path"]
+            analysis = parse_ai_json_response(response, expected_fields)
             
-            except json.JSONDecodeError as e:
-                logger.warning(f"Failed to parse analysis: {e}")
+            # Check if parsing failed
+            if "error" in analysis:
+                logger.warning(f"Failed to parse AI response: {analysis.get('message', 'Unknown error')}")
                 return {
                     "success": False,
                     "message": "❌ Failed to parse code analysis response",
+                    "context": None,
+                    "relevant_code": None,
+                    "file_path": None
+                }
+            
+            relevance_score = analysis.get("relevance_score", 0)
+            
+            logger.info(f"Analysis relevance score: {relevance_score}")
+            logger.info(f"Analysis: {analysis}")
+            
+            if relevance_score > 0:
+                return {
+                    "success": True,
+                    "context": analysis.get("context", ""),
+                    "relevant_code": analysis.get("relevant_code", ""),
+                    "file_path": analysis.get("file_path"),
+                    "relevance_score": relevance_score
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": "❌ No sufficiently relevant code found for the request",
                     "context": None,
                     "relevant_code": None,
                     "file_path": None
@@ -1329,6 +1431,7 @@ If the content is not relevant, set relevance_score to 0.
         except Exception as e:
             logger.warning(f"Error extracting broader context: {e}")
             return None
+
     
 
 

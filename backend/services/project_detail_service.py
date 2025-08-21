@@ -21,135 +21,159 @@ class ProjectDetailService:
         self.gemini = gemini_service or GeminiService()
 
     async def ingest_project_detail(self, project_id: str, raw_text: str, mode: str = "merge") -> str:
+        """
+        Ingest new insights into project detail with sophisticated merge logic.
+        
+        This method addresses the issue where project_detail updates overemphasize recent conversations
+        by implementing granular merge rules that preserve existing content while intelligently
+        incorporating new insights.
+        """
         raw_text = (raw_text or "").strip()
         if not raw_text:
             return ""
 
-        # 1) Chunk raw input for LLM limits
-        max_chunk_chars = 8000
-        chunks: List[str] = [raw_text[i:i + max_chunk_chars] for i in range(0, len(raw_text), max_chunk_chars)]
-
-        # 2) Summarize chunks individually
-        partial_summaries: List[str] = []
-        chunk_system_prompt = (
-            """
-            You are a senior software architect creating comprehensive, reader-friendly documentation for engineers
-            and product/project managers. Digest the provided text and extract ONLY facts that are explicitly stated.
-            Do NOT infer, guess, extrapolate, or invent any details.
-
-            Principles:
-            - Be comprehensive yet concise: capture all explicit, useful facts for understanding the product goal and
-              planning implementation, but avoid fluff.
-            - Use consistent terminology exactly as written in the source; include aliases only if explicitly provided.
-            - If a detail is missing or ambiguous, write 'Not specified' or add a question to 'Open Questions' without
-              proposing an answer.
-
-            Output a concise, structured summary using these exact sections (omit sections with no info):
-            - Project Overview: primary goal/value proposition, and the 3–5 main features/value points if explicitly
-              present. Exclude implementation details. Include target users only if explicitly stated.
-            - Features: only user-visible capabilities that are clearly and explicitly described. Omit vague items.
-            - Tech Stack: as explicitly stated.
-            - Architecture: as explicitly stated.
-            - Key APIs: only explicitly named endpoints (methods/paths if present); do not invent.
-            - Data Models: only database schema elements (tables/collections, fields, types if provided, relationships).
-              Exclude DTOs/payload shapes/runtime objects unless the text explicitly marks them as schema.
-            - Workflows: only main end-to-end flows at a high level (roughly 3–8 steps); exclude micro-interactions.
-            - Constraints
-            - Non-Functional Requirements
-            - Open Questions
-            Formatting: Use bullet points, crisp language, and avoid internal jargon where possible (unless it appears
-            verbatim in the text).
-            """
-        )
-        for chunk in chunks:
-            summary = await self.gemini.chat_with_system_prompt(chunk, chunk_system_prompt)
-            partial_summaries.append((summary or "").strip())
-
-        # 3) Semantic merge synthesis with existing content
-        synthesis_input = "\n\n".join(partial_summaries)
-        existing_detail = file_service.load_project_detail(project_id)
+        # Step 1: Load the complete existing project_detail content
+        existing_project_detail_content = file_service.load_project_detail(project_id)
+        new_insight_raw_text = raw_text
+        
+        # Step 2: Prepare inputs for LLM processing
+        # Ensure we have both the existing content and new insights available
+        if not existing_project_detail_content:
+            existing_project_detail_content = ""
+        
+        # Step 3: Construct structured input for LLM with explicit merge rules
         mode_normalized = (mode or "merge").lower()
-
-        # append => concatenate then perform semantic merge to dedupe and update
-        if mode_normalized == "append" and existing_detail:
-            synthesis_input = existing_detail.strip() + "\n\n" + synthesis_input
-            mode_for_prompt = "merge"
-        else:
-            mode_for_prompt = mode_normalized
-
-        if mode_for_prompt == "merge" and existing_detail:
-            merge_system_prompt = (
-                """
-                You are updating an existing software project specification to be comprehensive and easy to understand
-                for engineers and product/project managers. Perform a STRICT, FACTS-ONLY, CONSERVATIVE SEMANTIC MERGE of
-                the EXISTING SPEC with the NEW INSIGHTS.
-
-                Preservation-first merge policy:
-                - Preserve existing content by default. Do not delete, weaken, rename, or downgrade existing items unless
-                  the NEW INSIGHTS explicitly deprecate, replace, or correct that exact item.
-                - When NEW INSIGHTS add detail to an existing item, augment the existing item with the additional detail.
-                - If NEW INSIGHTS conflict ambiguously with existing content, keep the original and add the conflicting
-                  statement under 'Open Questions' as a question to resolve; do not choose a side.
-                - Never infer, guess, or invent any details (APIs, endpoints, parameters, models, fields, services,
-                  libraries, versions, or architectural components). Include ONLY items explicitly present in either the
-                  existing spec or the new insights text.
-                - Comprehensiveness: do not drop explicit facts from either source. If a fact does not neatly fit a
-                  section but is relevant, place it under 'Constraints' or 'Open Questions' rather than omitting it.
-
-                Section rules (optimize for understanding the goal and major capabilities):
-                - Project Overview: include only the primary goal and 3–5 main features/value propositions. Exclude
-                  implementation details, APIs, workflows, tech stack, constraints, or minor specifics.
-                - Features: include only user-visible capabilities that are explicitly and clearly described. If an item
-                  is vague or unclear, omit it from this section. Each item should be a short action/result statement
-                  (e.g., "Users can … to …").
-                - Tech Stack and Architecture: list exactly as explicitly stated; do not infer or rename.
-                - Key APIs: include only endpoints explicitly named (methods/paths if provided). Omit examples and
-                  payload minutiae unless explicitly present.
-                - Data Models: include only database schema elements (tables/collections, fields, types if provided,
-                  and relationships). Exclude runtime objects, DTOs, API payload shapes, and memory categories. If types
-                  are not stated, note "type: Not specified".
-                - Workflows: capture only main end-to-end flows at a high level (roughly 3–8 steps). Exclude UI micro-
-                  interactions, edge cases, error/status code details, and payload/response examples.
-                - Constraints and Non-Functional Requirements: include only what is explicitly stated.
-                - Open Questions: list gaps, ambiguities, and conflicts.
-
-                Clarity and formatting for a broad audience:
-                - Use bullet points and short, direct sentences.
-                - Prefer clear phrasing without internal shorthand. Keep original domain terms but avoid unexplained jargon.
-                - If a section lacks explicit information, write 'Not specified'.
-                - Normalize duplicates; prefer stable canonical names present in the existing spec when possible.
-
-                Output a single concise 'Project Detail Specification' with these exact sections:
-                Project Overview, Features, Tech Stack, Architecture, Key APIs, Data Models, Workflows, Constraints,
-                Non-Functional Requirements, Open Questions.
-                """
-            )
-            merge_input = f"EXISTING SPEC:\n{existing_detail}\n\nNEW INSIGHTS (summaries):\n{synthesis_input}"
+        
+        if mode_normalized == "merge" and existing_project_detail_content:
+            # Use sophisticated merge prompt with granular rules
+            merge_system_prompt = self._build_merge_system_prompt()
+            merge_input = self._build_merge_input(existing_project_detail_content, new_insight_raw_text)
+            
             final_text = await self.gemini.chat_with_system_prompt(
-                "Merge existing spec with new insights semantically", f"{merge_system_prompt}\n\n{merge_input}"
+                "Perform sophisticated merge of existing project detail with new insights", 
+                f"{merge_system_prompt}\n\n{merge_input}"
             )
         else:
-            # replace or no existing
-            replace_system_prompt = (
-                "Synthesize the provided summaries into a single concise 'Project Detail Specification' suitable as a "
-                "permanent reference for an AI coding assistant.\n\n"
-                "Hard constraints:\n"
-                "- Extract ONLY facts explicitly present in the summaries; do NOT fabricate or infer details.\n"
-                "- Do NOT create API endpoints, parameters, models, fields, or architectural elements unless they are "
-                "  explicitly stated.\n"
-                "- If a section lacks explicit information, write 'Not specified'.\n"
-                "- Move missing-but-important details to 'Open Questions' as questions.\n\n"
-                "Use these sections: Project Overview, Tech Stack, Architecture, Key APIs, Data Models, Workflows, "
-                "Constraints, Non-Functional Requirements, Features, Open Questions. Use bullet points and keep it crisp."
-            )
+            # For replace mode or when no existing content, use simpler synthesis
+            synthesis_prompt = self._build_synthesis_system_prompt()
             final_text = await self.gemini.chat_with_system_prompt(
-                "Create synthesized project detail", f"{replace_system_prompt}\n\n{synthesis_input}"
+                "Create new project detail from insights", 
+                f"{synthesis_prompt}\n\nNEW INSIGHTS:\n{new_insight_raw_text}"
             )
 
         final_text = (final_text or "").strip()
         file_service.save_project_detail(project_id, final_text)
-        logger.info(f"Project detail ingested and saved for {project_id} ({len(final_text)} chars, mode={mode_for_prompt})")
+        logger.info(f"Project detail ingested and saved for {project_id} ({len(final_text)} chars, mode={mode_normalized})")
         return final_text
+
+    def _build_merge_system_prompt(self) -> str:
+        """
+        Build the sophisticated merge system prompt with granular merge rules.
+        """
+        return """
+You are an expert software documentation architect performing a PRECISE MERGE of an existing project specification with new insights. Your goal is to maintain the comprehensive historical context while intelligently incorporating new information.
+
+CRITICAL MERGE RULES:
+
+1. PRESERVATION-FIRST POLICY:
+   - Preserve ALL existing content by default
+   - Only delete information if the new insights EXPLICITLY contradict it at a phrase level
+   - When new insights add detail to existing items, AUGMENT rather than replace
+   - If conflicts are ambiguous, keep the original and add the conflicting statement to 'Open Questions'
+
+2. GRANULAR CONTRADICTION HANDLING:
+   - Example of ADDITION: "Auth uses JWT" + "Auth is implemented in auth_service.py" = Keep both
+   - Example of REPLACEMENT: "stopped using python and now using typescript" = Replace the old tech stack entry
+   - Only replace when new information explicitly states a change or correction
+   - Preserve context and historical information unless explicitly superseded
+
+3. HEADING MANAGEMENT:
+   - STRICTLY rely on existing headings in the current document
+   - If a heading doesn't exist for new information, create it using "### New Heading" format
+   - Attempt to integrate new information into existing, broad headings first
+   - Only create new categories when information is truly misaligned with typical software development sections
+   - Example: "AI algorithm" for an "AI agent" project should go under existing "Architecture" or "Tech Stack", not create a new section
+
+4. CONTENT ORGANIZATION:
+   - Project Overview: Primary goal and 3-5 main features/value propositions
+   - Features: User-visible capabilities (action/result statements)
+   - Tech Stack: Technologies, frameworks, libraries as explicitly stated
+   - Architecture: System design, patterns, components as explicitly stated
+   - Key APIs: Explicitly named endpoints with methods/paths if provided
+   - Data Models: Database schema elements (tables, fields, types, relationships)
+   - Workflows: Main end-to-end flows (3-8 steps, high level)
+   - Constraints: Technical or business limitations
+   - Non-Functional Requirements: Performance, security, scalability requirements
+   - Open Questions: Gaps, ambiguities, and unresolved conflicts
+
+5. FORMATTING REQUIREMENTS:
+   - Maintain existing markdown format exactly
+   - Use bullet points for lists
+   - Keep original domain terminology
+   - Write "Not specified" for sections without explicit information
+   - Normalize duplicates using stable canonical names from existing spec
+
+6. COMPLETENESS REQUIREMENTS:
+   - Do not drop explicit facts from either source
+   - If information doesn't fit neatly, place under 'Constraints' or 'Open Questions'
+   - Ensure the entire merge operation is completed in a single response
+   - Return the complete, updated project detail as a single markdown string
+
+EXAMPLES OF CORRECT MERGE BEHAVIOR:
+- Existing: "Authentication uses OAuth2"
+  New: "Authentication is implemented in auth_service.py using JWT tokens"
+  Result: "Authentication uses OAuth2 and is implemented in auth_service.py using JWT tokens"
+
+- Existing: "Tech Stack: Python, Django"
+  New: "stopped using python and now using typescript"
+  Result: "Tech Stack: TypeScript, Django"
+
+- Existing: "Features: User registration, Login"
+  New: "Users can upload profile pictures"
+  Result: "Features: User registration, Login, Profile picture upload"
+
+Output the complete merged project detail specification with all sections properly organized and formatted.
+"""
+
+    def _build_merge_input(self, existing_content: str, new_insights: str) -> str:
+        """
+        Build the structured input for the LLM merge operation.
+        """
+        return f"""EXISTING PROJECT DETAIL:
+{existing_content}
+
+NEW INSIGHTS TO MERGE:
+{new_insights}
+
+INSTRUCTIONS: Perform the merge according to the rules above, ensuring preservation of existing content while intelligently incorporating new insights."""
+
+    def _build_synthesis_system_prompt(self) -> str:
+        """
+        Build the system prompt for creating new project detail from scratch.
+        """
+        return """
+You are a senior software architect creating comprehensive, reader-friendly documentation for engineers and product/project managers. Extract ONLY facts that are explicitly stated in the provided text.
+
+HARD CONSTRAINTS:
+- Extract ONLY facts explicitly present in the text; do NOT fabricate or infer details
+- Do NOT create API endpoints, parameters, models, fields, or architectural elements unless explicitly stated
+- If a section lacks explicit information, write 'Not specified'
+- Move missing-but-important details to 'Open Questions' as questions
+
+ORGANIZE INTO THESE SECTIONS:
+- Project Overview: Primary goal and 3-5 main features/value propositions
+- Features: User-visible capabilities (action/result statements)
+- Tech Stack: Technologies, frameworks, libraries as explicitly stated
+- Architecture: System design, patterns, components as explicitly stated
+- Key APIs: Explicitly named endpoints with methods/paths if provided
+- Data Models: Database schema elements (tables, fields, types, relationships)
+- Workflows: Main end-to-end flows (3-8 steps, high level)
+- Constraints: Technical or business limitations
+- Non-Functional Requirements: Performance, security, scalability requirements
+- Open Questions: Gaps, ambiguities, and unresolved conflicts
+
+FORMATTING: Use bullet points, crisp language, and avoid internal jargon where possible.
+"""
 
 
 # Singleton
