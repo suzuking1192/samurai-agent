@@ -1075,7 +1075,7 @@ Reasoning: [Explain your selection process and relevance ordering]
                 combined_content = combined_content[:max_content_size] + "\n... (truncated due to length)"
             
             # Step 4: Analyze the content directly without chunking
-            prompt = f"""
+            prompt = """
 You are an expert code analyzer. Given a user request and code content from multiple files, extract comprehensive and detailed 
 information that would help answer the request. Your analysis should be thorough and include all relevant technical details, 
 as this context will be used to generate high-quality responses to user queries.
@@ -1110,7 +1110,7 @@ Example response format:
   "relevant_code": "def example_function():...",
   "file_path": "path/to/file.py"
 }
-"""
+""".format(request=request, combined_content=combined_content)
             
             response = await gemini_service.chat_with_system_prompt("", prompt)
             
