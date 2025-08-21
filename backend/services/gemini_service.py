@@ -84,7 +84,7 @@ class GeminiService:
             return "Warning: Gemini API key not found or invalid. Please set your GEMINI_API_KEY in the .env file to enable full functionality."
         
         try:
-            full_prompt = f"{system_prompt}\n\nUser: {message}"
+            full_prompt = system_prompt + "\n\nUser: " + message
             # Offload blocking SDK call to a background thread to avoid blocking the event loop
             response = await asyncio.to_thread(self.model.generate_content, full_prompt)
             return response.text
