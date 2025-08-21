@@ -13,6 +13,7 @@ try:
     from .file_service import FileService
     from .code_parser import code_parser
     from .code_context_storage import code_context_storage
+    from .utils import parse_ai_json_response, clean_ai_json_response, extract_json_from_ai_response
     from models import Task, Memory, Project
 except ImportError:
     import sys
@@ -1092,6 +1093,8 @@ Instructions:
 5. Focus on providing maximum useful information - it's better to include more details than to miss important context
 6. Consider the code's architecture, design patterns, data flow, error handling, and integration points
 
+IMPORTANT: You must respond with ONLY a valid JSON object. Do not include any other text, explanations, or formatting outside the JSON.
+
 Return a JSON object with:
 - "relevance_score": 0-10 (how relevant this content is to the request)
 - "context": A comprehensive and detailed analysis of the relevant code, including its purpose, functionality, key components, data structures, algorithms, dependencies, relationships with other parts of the codebase, and any important implementation details that would be useful for understanding and working with this code
@@ -1099,46 +1102,51 @@ Return a JSON object with:
 - "file_path": The most relevant file path from this content
 
 If the content is not relevant, set relevance_score to 0.
+
+Example response format:
+{
+  "relevance_score": 8,
+  "context": "This code implements...",
+  "relevant_code": "def example_function():...",
+  "file_path": "path/to/file.py"
+}
 """
             
             response = await gemini_service.chat_with_system_prompt("", prompt)
             
-            # Extract JSON from response
-            try:
-                import re
-                json_match = re.search(r'\{.*\}', response, re.DOTALL)
-                if json_match:
-                    analysis = json.loads(json_match.group())
-                else:
-                    analysis = json.loads(response)
-                
-                relevance_score = analysis.get("relevance_score", 0)
-                
-                logger.info(f"Analysis relevance score: {relevance_score}")
-                logger.info(f"Analysis: {analysis}")
-                
-                if relevance_score > 0:
-                    return {
-                        "success": True,
-                        "context": analysis.get("context", ""),
-                        "relevant_code": analysis.get("relevant_code", ""),
-                        "file_path": analysis.get("file_path"),
-                        "relevance_score": relevance_score
-                    }
-                else:
-                    return {
-                        "success": False,
-                        "message": "❌ No sufficiently relevant code found for the request",
-                        "context": None,
-                        "relevant_code": None,
-                        "file_path": None
-                    }
+            # Parse AI response using robust utility function
+            # Use the utility function to parse the AI response
+            expected_fields = ["relevance_score", "context", "relevant_code", "file_path"]
+            analysis = parse_ai_json_response(response, expected_fields)
             
-            except json.JSONDecodeError as e:
-                logger.warning(f"Failed to parse analysis: {e}")
+            # Check if parsing failed
+            if "error" in analysis:
+                logger.warning(f"Failed to parse AI response: {analysis.get('message', 'Unknown error')}")
                 return {
                     "success": False,
                     "message": "❌ Failed to parse code analysis response",
+                    "context": None,
+                    "relevant_code": None,
+                    "file_path": None
+                }
+            
+            relevance_score = analysis.get("relevance_score", 0)
+            
+            logger.info(f"Analysis relevance score: {relevance_score}")
+            logger.info(f"Analysis: {analysis}")
+            
+            if relevance_score > 0:
+                return {
+                    "success": True,
+                    "context": analysis.get("context", ""),
+                    "relevant_code": analysis.get("relevant_code", ""),
+                    "file_path": analysis.get("file_path"),
+                    "relevance_score": relevance_score
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": "❌ No sufficiently relevant code found for the request",
                     "context": None,
                     "relevant_code": None,
                     "file_path": None
@@ -1329,6 +1337,7 @@ If the content is not relevant, set relevance_score to 0.
         except Exception as e:
             logger.warning(f"Error extracting broader context: {e}")
             return None
+
     
 
 
