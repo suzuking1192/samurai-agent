@@ -1159,6 +1159,9 @@ Reasoning: [Explain your selection process and relevance ordering]
             # Step 2: Combine all code content
             combined_content = "\n\n".join(all_code_content)
             
+            # Escape curly braces in combined_content to prevent format() from interpreting them as placeholders
+            combined_content = combined_content.replace("{", "{{").replace("}", "}}")
+            
             # Step 3: If combined_content is longer than 100000, remove the rest
             max_content_size = 100000
             if len(combined_content) > max_content_size:
@@ -1195,12 +1198,12 @@ Return a JSON object with:
 If the content is not relevant, set relevance_score to 0.
 
 Example response format:
-{
+{{
   "relevance_score": 8,
   "context": "This code implements...",
   "relevant_code": "def example_function():...",
   "file_path": "path/to/file.py"
-}
+}}
 """.format(request=request, combined_content=combined_content)
             
             response = await gemini_service.chat_with_system_prompt("", prompt)

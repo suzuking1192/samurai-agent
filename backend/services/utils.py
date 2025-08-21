@@ -171,7 +171,29 @@ def clean_ai_json_response(json_str: str) -> str:
         json_str = json_str.strip()
         
         # Handle newlines and other control characters in string values
-        json_str = re.sub(r'[\r\n\t]', ' ', json_str)
+        # But first, try to escape newlines within quotes properly
+        try:
+            # Try to parse as-is first
+            json.loads(json_str)
+            # If it works, no need to clean
+            return json_str
+        except json.JSONDecodeError:
+            # If parsing fails, try to fix newlines in string values
+            # This is a more sophisticated approach to handle unescaped newlines in JSON strings
+            import re
+            
+            # Find all string values and escape newlines within them
+            def escape_newlines_in_strings(match):
+                content = match.group(1)
+                # Escape newlines and other control characters
+                content = content.replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t')
+                return f'"{content}"'
+            
+            # Replace newlines in string values with escaped newlines
+            json_str = re.sub(r'"([^"]*)"', escape_newlines_in_strings, json_str)
+            
+            # Also replace newlines outside of quotes with spaces
+            json_str = re.sub(r'[\r\n\t](?=(?:[^"]*"[^"]*")*[^"]*$)', ' ', json_str)
         
         # Remove any trailing commas before closing braces/brackets
         json_str = re.sub(r',(\s*[}\]])', r'\1', json_str)
@@ -399,12 +421,31 @@ def parse_ai_json_response(response: str, expected_fields: Optional[List[str]] =
         Dictionary with parsed data or error information
     """
     try:
-        # First, try to find and clean JSON from the response
-        json_match = re.search(r'\{.*\}', response, re.DOTALL)
-        if json_match:
-            json_str = json_match.group()
+        # First, try to extract JSON from markdown code blocks if present
+        # Look for ```json ... ``` or ``` ... ``` patterns
+        markdown_match = re.search(r'```(?:json)?\s*\n(.*?)\n```', response, re.DOTALL)
+        if markdown_match:
+            json_str = markdown_match.group(1).strip()
         else:
+            # Fallback to finding JSON with brace counting for better accuracy
             json_str = response
+            brace_count = 0
+            start_idx = -1
+            end_idx = -1
+            
+            for i, char in enumerate(response):
+                if char == '{':
+                    if brace_count == 0:
+                        start_idx = i
+                    brace_count += 1
+                elif char == '}':
+                    brace_count -= 1
+                    if brace_count == 0 and start_idx != -1:
+                        end_idx = i
+                        break
+            
+            if start_idx != -1 and end_idx != -1:
+                json_str = response[start_idx:end_idx + 1]
         
         # Clean the JSON string
         cleaned_json = clean_ai_json_response(json_str)
