@@ -295,6 +295,78 @@ class FileService:
         """Get file path for a given filename."""
         return str(self._get_file_path(filename))
     
+    # LLM Usage operations
+    def _get_daily_llm_usage_file_path(self, date: datetime) -> Path:
+        """Generate file path for daily LLM usage records."""
+        date_str = date.strftime('%Y-%m-%d')
+        return self.data_dir / f"llm_usage_{date_str}.json"
+    
+    def save_llm_call_record(self, record: 'LLMCallRecord') -> None:
+        """Save a single LLM call record to the daily usage file."""
+        try:
+            # Get the daily file path
+            file_path = self._get_daily_llm_usage_file_path(record.timestamp)
+            
+            # Load existing records for the day
+            existing_records = self._load_json(file_path)
+            
+            # Convert record to dict and append
+            record_dict = record.model_dump()
+            existing_records.append(record_dict)
+            
+            # Save updated records
+            self._save_json(file_path, existing_records)
+            
+            logger.debug(f"Saved LLM call record for project {record.project_id}, cost: ${record.cost:.6f}")
+            
+        except Exception as e:
+            logger.error(f"Error saving LLM call record: {e}")
+            raise
+    
+    def load_llm_usage_for_month(self, year: int, month: int) -> List['LLMCallRecord']:
+        """Load all LLM usage records for a specific month."""
+        try:
+            from models import LLMCallRecord
+            
+            all_records = []
+            
+            # Get all files in the data directory
+            for file_path in self.data_dir.glob("llm_usage_*.json"):
+                # Extract date from filename (llm_usage_YYYY-MM-DD.json)
+                filename = file_path.stem  # Remove .json extension
+                if not filename.startswith("llm_usage_"):
+                    continue
+                
+                date_str = filename.replace("llm_usage_", "")
+                try:
+                    file_date = datetime.strptime(date_str, '%Y-%m-%d')
+                    
+                    # Check if file is in the specified month and year
+                    if file_date.year == year and file_date.month == month:
+                        # Load records from this file
+                        data = self._load_json(file_path)
+                        for item in data:
+                            try:
+                                # Convert timestamp string back to datetime
+                                if 'timestamp' in item and isinstance(item['timestamp'], str):
+                                    item['timestamp'] = datetime.fromisoformat(item['timestamp'].replace('Z', '+00:00'))
+                                record = LLMCallRecord(**item)
+                                all_records.append(record)
+                            except Exception as e:
+                                logger.warning(f"Invalid LLM call record in {file_path}: {e}")
+                                continue
+                                
+                except ValueError as e:
+                    logger.warning(f"Invalid date format in filename {filename}: {e}")
+                    continue
+            
+            logger.debug(f"Loaded {len(all_records)} LLM usage records for {year}-{month:02d}")
+            return all_records
+            
+        except Exception as e:
+            logger.error(f"Error loading LLM usage for month {year}-{month:02d}: {e}")
+            return []
+    
     # Project operations
     def load_projects(self) -> List[Project]:
         """Load all projects from projects.json."""
@@ -325,7 +397,7 @@ class FileService:
         
         # Save with atomic write
         file_path = self._get_file_path("projects.json")
-        self._save_json(file_path, [p.dict() for p in projects])
+        self._save_json(file_path, [p.model_dump() for p in projects])
         logger.info(f"Saved project: {project.name}")
     
     def delete_project(self, project_id: str) -> bool:
@@ -344,7 +416,7 @@ class FileService:
             
             # Save updated projects list
             file_path = self._get_file_path("projects.json")
-            self._save_json(file_path, [p.dict() for p in projects])
+            self._save_json(file_path, [p.model_dump() for p in projects])
             
             # Delete project-specific files
             self._delete_project_files(project_id)
@@ -414,7 +486,7 @@ class FileService:
         memories.append(memory)
         
         file_path = self._get_project_file_path(project_id, "memories")
-        self._save_json(file_path, [m.dict() for m in memories])
+        self._save_json(file_path, [m.model_dump() for m in memories])
         logger.info(f"Saved memory: {memory.id}")
     
     def save_memories(self, project_id: str, memories: List[Memory]) -> None:
@@ -424,7 +496,7 @@ class FileService:
             memory = self._generate_memory_embedding(memory)
         
         file_path = self._get_project_file_path(project_id, "memories")
-        self._save_json(file_path, [m.dict() for m in memories])
+        self._save_json(file_path, [m.model_dump() for m in memories])
         logger.info(f"Saved {len(memories)} memories for project {project_id}")
     
     def delete_memory(self, project_id: str, memory_id: str) -> bool:
@@ -439,7 +511,7 @@ class FileService:
             return False
         
         file_path = self._get_project_file_path(project_id, "memories")
-        self._save_json(file_path, [m.dict() for m in memories])
+        self._save_json(file_path, [m.model_dump() for m in memories])
         logger.info(f"Deleted memory: {memory_id}")
         return True
     
@@ -471,7 +543,7 @@ class FileService:
             task = self._generate_task_embedding(task)
         
         file_path = self._get_project_file_path(project_id, "tasks")
-        self._save_json(file_path, [t.dict() for t in tasks])
+        self._save_json(file_path, [t.model_dump() for t in tasks])
         logger.info(f"Saved {len(tasks)} tasks for project {project_id}")
     
     def save_task(self, project_id: str, task: Task) -> None:
@@ -489,7 +561,7 @@ class FileService:
         tasks.sort(key=lambda x: x.order)
         
         file_path = self._get_project_file_path(project_id, "tasks")
-        self._save_json(file_path, [t.dict() for t in tasks])
+        self._save_json(file_path, [t.model_dump() for t in tasks])
         logger.info(f"Saved task: {task.title}")
     
     def get_task_by_id(self, project_id: str, task_id: str) -> Optional[Task]:
@@ -551,7 +623,7 @@ class FileService:
             return False
         
         file_path = self._get_project_file_path(project_id, "tasks")
-        self._save_json(file_path, [t.dict() for t in tasks])
+        self._save_json(file_path, [t.model_dump() for t in tasks])
         logger.info(f"Deleted task: {task_id}")
         return True
     
@@ -630,7 +702,7 @@ class FileService:
         messages.append(message)
         
         file_path = self._get_project_file_path(project_id, "chat")
-        self._save_json(file_path, [m.dict() for m in messages])
+        self._save_json(file_path, [m.model_dump() for m in messages])
         logger.info(f"Saved chat message: {message.id}")
     
     def save_chat_history(self, project_id: str, messages: List[ChatMessage]) -> None:
@@ -640,7 +712,7 @@ class FileService:
             message = self._generate_chat_message_embedding(message)
         
         file_path = self._get_project_file_path(project_id, "chat")
-        self._save_json(file_path, [m.dict() for m in messages])
+        self._save_json(file_path, [m.model_dump() for m in messages])
         logger.info(f"Saved {len(messages)} chat messages for project {project_id}")
     
     # Session management methods
@@ -677,7 +749,7 @@ class FileService:
             sessions.append(session)
         
         file_path = self._get_project_file_path(project_id, "sessions")
-        self._save_json(file_path, [s.dict() for s in sessions])
+        self._save_json(file_path, [s.model_dump() for s in sessions])
         logger.debug(f"Saved session: {session.id}")
     
     def get_session_by_id(self, project_id: str, session_id: str) -> Optional["Session"]:

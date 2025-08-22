@@ -307,7 +307,7 @@ class ConsolidatedMemoryService:
             memories = self.file_service.load_memories(project_id)
             for memory in memories:
                 if memory.id == memory_id:
-                    memory_dict = memory.dict()
+                    memory_dict = memory.model_dump()
                     
                     # Try to load sections metadata
                     sections_file = self.file_service.data_dir / f"memory-{memory_id}-sections.json"
@@ -464,6 +464,6 @@ class ConsolidatedMemoryService:
         
         for memory in memories:
             if memory.id.endswith('_consolidated'):
-                consolidated_memories.append(memory.dict())
+                consolidated_memories.append(memory.model_dump())
         
         return consolidated_memories 

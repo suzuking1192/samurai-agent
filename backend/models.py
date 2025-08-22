@@ -772,3 +772,25 @@ class ProjectDetailIngestRequest(BaseModel):
 class ProjectDetailDirectSaveRequest(BaseModel):
     """Request model for directly saving project detail without LLM digestion."""
     content: str = Field(..., description="Full project detail to save directly")
+
+
+class LLMCallRecord(BaseModel):
+    """
+    Model for storing individual LLM API call usage details.
+    
+    Attributes:
+        timestamp: When the LLM call was made
+        input_tokens: Number of input tokens used
+        output_tokens: Number of output tokens generated
+        cost: Calculated cost for the call
+        project_id: ID of the project the call was made for
+        model_name: Name of the LLM model used
+    """
+    model_config = {"protected_namespaces": ()}
+    
+    timestamp: datetime = Field(..., description="When the LLM call was made")
+    input_tokens: int = Field(..., ge=0, description="Number of input tokens used")
+    output_tokens: int = Field(..., ge=0, description="Number of output tokens generated")
+    cost: float = Field(..., ge=0.0, description="Calculated cost for the call")
+    project_id: str = Field(..., description="ID of the project the call was made for")
+    model_name: str = Field(..., description="Name of the LLM model used")

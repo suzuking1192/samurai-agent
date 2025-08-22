@@ -10,7 +10,8 @@ import {
   TaskUpdate,
   MemoryCreate,
   Session,
-  CodeContextMode
+  CodeContextMode,
+  MonthlyLLMCost
 } from '../types'
 
 const API_BASE_URL = 'http://localhost:8000'
@@ -479,4 +480,9 @@ export interface ModeSelectionResponse {
 
 export async function getProjectModeSelection(projectId: string): Promise<ModeSelectionResponse> {
   return apiRequest<ModeSelectionResponse>(`/projects/${projectId}/mode-selection`)
+}
+
+// LLM Cost tracking API functions
+export async function getMonthlyLLMCost(): Promise<MonthlyLLMCost> {
+  return apiRequest<MonthlyLLMCost>(`/llm-usage/monthly-cost`)
 }
