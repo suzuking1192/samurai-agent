@@ -1041,13 +1041,11 @@ Reasoning: [Explain your selection process and relevance ordering]
                         for method in methods:
                             if method not in existing_methods:  # Avoid duplicates
                                 logger.info(f"Step 2: Looking for method '{method}' in file {actual_file_path}")
-                                # Check if method exists in the file's elements
-                                for element in file_info.elements:
-                                    logger.info(f"Step 2: Checking element '{element.name}' against method '{method}'")
-                                    if element.name.lower() == method.lower():
-                                        logger.info(f"Step 2: Found match! Adding '{element.name}' for method '{method}'")
-                                        valid_methods.append(element.name)
-                                        break
+                                # Check if method exists in the file's elements using improved matching
+                                matched_element = self._find_matching_element(method, file_info.elements)
+                                if matched_element:
+                                    logger.info(f"Step 2: Found match! Adding '{matched_element.name}' for method '{method}'")
+                                    valid_methods.append(matched_element.name)
                         
                         if valid_methods:
                             valid_file_methods[actual_file_path] = valid_methods
@@ -1425,12 +1423,53 @@ Example response format:
             
             extracted_content = '\n'.join(lines[start_line:end_line])
             logger.info(f"Extracted broader context for {target_name}: {len(extracted_content)} characters")
-            logger.info(f"First 500 chars of broader context: {extracted_content[:500]}")
+            
             return extracted_content
             
         except Exception as e:
             logger.warning(f"Error extracting broader context: {e}")
             return None
+
+    def _find_matching_element(self, llm_method_name: str, elements: list):
+        """
+        Improved method matching that handles LLM prefixes like 'interface ', 'arrow_function: ', etc.
+        
+        Args:
+            llm_method_name: Method name returned by LLM (may include prefixes)
+            elements: List of CodeElement objects from the file
+            
+        Returns:
+            CodeElement if match found, None otherwise
+        """
+        # Remove common LLM prefixes
+        prefixes_to_remove = [
+            "interface ",
+            "arrow_function: ",
+            "function ",
+            "class ",
+            "method ",
+            "const ",
+            "let ",
+            "var ",
+        ]
+        
+        cleaned_method_name = llm_method_name
+        for prefix in prefixes_to_remove:
+            if cleaned_method_name.lower().startswith(prefix.lower()):
+                cleaned_method_name = cleaned_method_name[len(prefix):]
+                break
+        
+        # Try exact match first
+        for element in elements:
+            if element.name.lower() == cleaned_method_name.lower():
+                return element
+        
+        # Try partial match (in case LLM adds extra words)
+        for element in elements:
+            if cleaned_method_name.lower() in element.name.lower() or element.name.lower() in cleaned_method_name.lower():
+                return element
+        
+        return None
 
     
 

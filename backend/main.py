@@ -323,6 +323,8 @@ async def chat(project_id: str, request: ChatRequest):
 
         final_response = handle_agent_response(result.get("response", ""))
 
+        # LLM cost tracking is now handled automatically by GeminiService
+
         # Persist chat
         chat_message = ChatMessage(
             id=str(uuid.uuid4()),
@@ -1386,6 +1388,38 @@ async def connect_codebase(request: CodebaseConnectRequest):
     except Exception as e:
         logger.error(f"Error connecting codebase: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to connect codebase: {str(e)}")
+
+
+@app.get("/llm-usage/monthly-cost")
+async def get_monthly_llm_cost():
+    """
+    Get the total aggregated LLM cost for the current calendar month across all projects.
+    """
+    try:
+        # 1. Get current month and year
+        from datetime import datetime
+        current_date = datetime.now()
+        current_year = current_date.year
+        current_month = current_date.month
+        
+        # 2. Load all LLM usage records for the current month
+        llm_records = file_service.load_llm_usage_for_month(current_year, current_month)
+        
+        # 3. Sum all costs across all projects
+        total_cost = sum(record.cost for record in llm_records)
+        
+        logger.info(f"Total monthly LLM cost across all projects: ${total_cost:.6f} ({len(llm_records)} calls)")
+        
+        return {
+            "total_cost": round(total_cost, 6),
+            "call_count": len(llm_records),
+            "year": current_year,
+            "month": current_month
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting monthly LLM cost: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get monthly LLM cost: {str(e)}")
 
 
 if __name__ == "__main__":

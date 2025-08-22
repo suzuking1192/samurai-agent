@@ -6,6 +6,7 @@ import ProgressDisplay from './ProgressDisplay'
 import ProactiveSuggestion from './ProactiveSuggestion'
 import CreateTasksButton from './CreateTasksButton'
 import ModeSelectionDropdown from './ModeSelectionDropdown'
+import MonthlyCostDisplay from './MonthlyCostDisplay'
 
 interface ChatProps {
   projectId?: string
@@ -579,7 +580,7 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrig
 
   return (
     <div className="chat-container">
-      {/* Header with Start New Conversation button */}
+      {/* Header with Start New Conversation button and monthly cost */}
       <div className="chat-header">
         <h3>Chat with Samurai Agent</h3>
         {!projectId ? (
@@ -587,14 +588,17 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrig
             Please select a project to start chatting
           </div>
         ) : (
-          <button
-            onClick={handleStartNewConversation}
-            className="start-new-conversation-btn"
-            disabled={isLoading || !projectId}
-            title={!projectId ? "Please select a project first" : "Start a new conversation"}
-          >
-            🆕 Start New Conversation
-          </button>
+          <div className="chat-header-controls">
+            <MonthlyCostDisplay />
+            <button
+              onClick={handleStartNewConversation}
+              className="start-new-conversation-btn"
+              disabled={isLoading || !projectId}
+              title={!projectId ? "Please select a project first" : "Start a new conversation"}
+            >
+              🆕 Start New Conversation
+            </button>
+          </div>
         )}
       </div>
 

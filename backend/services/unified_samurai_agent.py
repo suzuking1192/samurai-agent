@@ -125,6 +125,8 @@ class UnifiedSamuraiAgent:
         try:
             logger.info(f"Processing message with unified architecture: {message[:100]}...")
             
+            # Usage tracking is now handled automatically by GeminiService
+            
             # Step 1: Start processing
             if progress_callback:
                 await self._send_dynamic_progress_update(
@@ -158,7 +160,7 @@ class UnifiedSamuraiAgent:
                 )
             
             intent_analysis = await self._analyze_user_intent(
-                message, conversation_context, progress_callback=progress_callback, code_context_mode=code_context_mode, session=session
+                message, conversation_context, progress_callback=progress_callback, code_context_mode=code_context_mode, session=session, project_id=project_id
             )
             logger.info(f"Intent analysis: {intent_analysis}")
             
@@ -400,7 +402,8 @@ class UnifiedSamuraiAgent:
         context: ConversationContext,
         progress_callback: Optional[Callable[[str, str, str, Dict[str, Any]], None]] = None,
         code_context_mode: Optional[str] = None,
-        session: Optional[Any] = None
+        session: Optional[Any] = None,
+        project_id: Optional[str] = None
     ) -> IntentAnalysis:
         """
         Analyze user intent with enhanced understanding using the Samurai Engine prompt.
@@ -701,7 +704,7 @@ Return ONLY the intent type: pure_discussion, feature_exploration, spec_clarific
             if progress_callback:
                 await progress_callback("ai_call", "🤖 Calling AI service...", "Analyzing your intent with AI", {})
             
-            intent_response = await self.gemini_service.chat_with_system_prompt(message, intent_system_prompt)
+            intent_response = await self.gemini_service.chat_with_system_prompt(message, intent_system_prompt, project_id)
             
             # Parse intent response
             try:
@@ -797,7 +800,7 @@ ACTIVE TASK:
 RELEVANT MEMORIES:
 {self._format_memories_for_context(context.relevant_memories)}
 
-CODE CONTEXT:
+EXISTING CODE CONTEXT:
 {self._format_code_context_for_prompt(context.code_context)}
 
 CURRENT MESSAGE: "{message}"
@@ -805,59 +808,81 @@ DETECTED INTENT: "{detected_intent}"
 
 ## CODE CONTEXT NECESSITY ANALYSIS
 
-Your task is to determine if NEW code context extraction is needed to provide an accurate answer.
+Your task is to determine if NEW code context extraction is needed to provide an accurate answer. **CRITICALLY IMPORTANT**: If comprehensive code context is already available, prefer using existing context over extracting new context.
+
+### EXISTING CODE CONTEXT EVALUATION:
+
+**First, assess the existing code context quality:**
+1. **Comprehensive Coverage**: Does the existing context cover the main components, functions, and architecture relevant to the question?
+2. **Recent and Relevant**: Is the existing context recent and directly related to the current question?
+3. **Sufficient Detail**: Does it contain enough implementation details to answer the question accurately?
+4. **File Coverage**: Does it include the key files and modules that would be needed?
+
+**If existing context is comprehensive and relevant, set new_code_context_necessary = false**
 
 ### ASSESSMENT CRITERIA:
 
-1. **Would more code context be helpful for a better answer?**
+1. **Is existing code context sufficient for an accurate answer?**
+   - If YES → new_code_context_necessary = false
+   - If NO → new_code_context_necessary = true
+
+2. **Does the question ask about ACTUAL CODE implementation that's NOT covered in existing context?**
    - If YES → new_code_context_necessary = true
    - If NO → new_code_context_necessary = false
 
-2. **Does the question ask about ACTUAL CODE implementation?**
-   - If YES → new_code_context_necessary = true
-   - If NO → new_code_context_necessary = false
-
-3. **Is the question about system functionality that would benefit from code analysis?**
+3. **Is the question about system functionality that would benefit from code analysis NOT already present?**
    - If YES → new_code_context_necessary = true
    - If NO → new_code_context_necessary = false
 
 ### DECISION RULES:
 
-**ALWAYS set new_code_context_necessary = true for:**
-- Questions about ACTUAL CODE implementation ("How are projects and tasks persisted?", "How is memory updated?", "How is chat streaming implemented?")
-- Questions about system architecture that need code analysis ("Where is the agent routing defined?", "How does the system pick which agent to run?")
-- Questions about specific implementation details ("How does X work in the code?", "What's the implementation of Y?")
-- Questions that ask "how" something is implemented in the codebase
-- Questions that start with "How are...", "How is...", "Where is...", "How does..." about system functionality
-
-**Set new_code_context_necessary = false for:**
-- Questions that can be answered with current code context 
+**Set new_code_context_necessary = false when:**
+- Existing code context is comprehensive and covers the question's scope
+- The question can be answered accurately using current code context
+- The existing context includes relevant files, functions, and implementation details
+- The context is recent and directly related to the current question
 - General conceptual questions ("What is JWT?", "How does authentication work conceptually?")
 - Casual conversation ("Hello", "Thanks", "Got it")
 - Task management commands ("Mark task complete", "Delete task")
 - Questions about project requirements or specifications (not implementation)
 
+**Set new_code_context_necessary = true when:**
+- Existing code context is insufficient or outdated
+- The question asks about implementation details NOT covered in existing context
+- The question is about system architecture or components NOT present in current context
+- The existing context is too general or lacks specific implementation details
+- Questions that ask "how" something is implemented that's not in current context
+- Questions that start with "How are...", "How is...", "Where is...", "How does..." about system functionality NOT covered
+
 ### DECISION TREE:
-1. Would code context help provide a better, more accurate answer? → new_code_context_necessary = true
-2. Is the user asking about HOW something is implemented in the actual code? → new_code_context_necessary = true
-3. Is the user asking about WHAT something does (conceptually)? → new_code_context_necessary = false
-4. Does the question contain words like "how are", "how is", "where is", "how does" about system functionality? → new_code_context_necessary = true
-5. Can this be answered with current code context only? → new_code_context_necessary = false
+1. Is existing code context comprehensive and relevant to the question? → new_code_context_necessary = false
+2. Does the existing context contain the specific implementation details needed? → new_code_context_necessary = false
+3. Is the question about HOW something is implemented that's NOT in current context? → new_code_context_necessary = true
+4. Is the existing context too general or outdated for the specific question? → new_code_context_necessary = true
+5. Can this be answered accurately with current code context only? → new_code_context_necessary = false
 
 ### EXAMPLES:
 
 **Message**: "How are projects and tasks persisted and loaded?"
-**Analysis**: User is asking about HOW the system is implemented in code. Code context would provide much better, more accurate answers than just project specifications.
+**Existing Context**: Comprehensive coverage of data models, file operations, and persistence logic
+**Analysis**: Existing context already covers the implementation details needed.
+**Decision**: new_code_context_necessary = false
+**Reasoning**: "Existing code context provides comprehensive coverage of project and task persistence including data models, file operations, and serialization methods."
+
+**Message**: "How are projects and tasks persisted and loaded?"
+**Existing Context**: Only basic project structure, no persistence implementation details
+**Analysis**: Existing context lacks the specific implementation details needed.
 **Decision**: new_code_context_necessary = true
 **Code Context Request**: "Find project and task persistence code including save/load functions, file storage methods, data serialization, and any database or file system operations for storing and retrieving project and task data"
 
 **Message**: "How does JWT authentication work?"
-**Analysis**: User is asking about the general concept of JWT, not about specific implementation. Code context wouldn't add much value here.
+**Analysis**: User is asking about the general concept of JWT, not about specific implementation.
 **Decision**: new_code_context_necessary = false
-**Code Context Request**: null
+**Reasoning**: "This is a general conceptual question about JWT authentication that doesn't require specific code implementation details."
 
 **Message**: "How is JWT authentication implemented in our codebase?"
-**Analysis**: User is asking about HOW JWT is implemented in the specific codebase. Code context would provide much better, more accurate answers.
+**Existing Context**: No authentication or security-related code
+**Analysis**: User is asking about HOW JWT is implemented in the specific codebase, but existing context doesn't cover this.
 **Decision**: new_code_context_necessary = true
 **Code Context Request**: "Find JWT authentication implementation including token generation, validation, middleware, and user authentication flow"
 
@@ -867,7 +892,7 @@ Return a JSON object with the following structure:
 {{
     "new_code_context_necessary": true|false,
     "code_context_request": "detailed description of what code information is needed" | null,
-    "reasoning": "explanation of why you made this decision"
+    "reasoning": "explanation of why you made this decision, including assessment of existing context quality"
 }}
 
 ### Code Context Request Guidelines:
@@ -877,7 +902,7 @@ If new_code_context_necessary is true, provide a VERY DETAILED description of wh
 - What specific methods or components might be relevant
 - What architectural patterns or structures to focus on
 
-If new_code_context_necessary is false, set code_context_request to null.
+If new_code_context_necessary is false, set code_context_request to null and explain why existing context is sufficient.
 
 Return ONLY the JSON object."""
 
@@ -929,7 +954,8 @@ Return ONLY the JSON object."""
                 
         except Exception as e:
             logger.error(f"Error analyzing user intent: {e}")
-            return self._create_fallback_intent_analysis(message)
+            fallback_analysis = self._create_fallback_intent_analysis(message)
+            return fallback_analysis
     
 
     
@@ -1000,7 +1026,7 @@ Use this code context to provide more accurate and specific answers about the co
                 }
             
             if intent_analysis.intent_type == "pure_discussion":
-                return await self._handle_pure_discussion(message, context, progress_callback)
+                return await self._handle_pure_discussion(message, context, project_id, progress_callback)
             
             elif intent_analysis.intent_type == "feature_exploration":
                 return await self._handle_feature_exploration(message, context, intent_analysis, progress_callback)
@@ -1016,13 +1042,14 @@ Use this code context to provide more accurate and specific answers about the co
             
             else:
                 # Fallback to pure discussion
-                return await self._handle_pure_discussion(message, context)
+                return await self._handle_pure_discussion(message, context, project_id)
                 
         except Exception as e:
             logger.error(f"Error in response path execution: {e}")
-            return await self._handle_pure_discussion(message, context)
+            result = await self._handle_pure_discussion(message, context, project_id)
+            return result
     
-    async def _handle_pure_discussion(self, message: str, context: ConversationContext, progress_callback: Optional[Callable] = None) -> dict:
+    async def _handle_pure_discussion(self, message: str, context: ConversationContext, project_id: str, progress_callback: Optional[Callable] = None) -> dict:
         """Handle pure discussion with comprehensive conversation context awareness."""
         try:
             # For system functionality questions, use minimal conversation context to avoid task generation
@@ -1131,7 +1158,7 @@ Your response:
             if progress_callback:
                 await progress_callback("ai_call", "🤖 Calling AI service...", "Generating response with conversation context")
             
-            response = await self.gemini_service.chat_with_system_prompt(message, system_prompt)
+            response = await self.gemini_service.chat_with_system_prompt(message, system_prompt, project_id)
             
             return {
                 "type": "discussion_response",
@@ -1415,6 +1442,22 @@ Based on the comprehensive conversation history above:
 - Otherwise, ask a concise, numbered list of targeted questions from the Precision Checklist above.
 - Keep questions specific and answerable; prefer yes/no or enumerated options when possible.
 - Do not proceed to task creation or implementation details until scope is narrowed and required details are confirmed.
+
+## BEST PRACTICE SUGGESTIONS (GENTLE CONFIRMATION ONLY)
+When reviewing the user's requirements, consider these software development best practices and gently confirm if they align with the user's intent:
+
+**Keep It Simple (KISS Principle):**
+- If the user's request seems overly complex, gently confirm: "I notice this approach involves [complexity]. Would you prefer to start with a simpler version first, or is the complexity necessary for your use case?"
+- For multiple features: "Would you like to implement these features incrementally, or do you need them all at once?"
+
+**Don't Repeat Yourself (DRY Principle):**
+- If similar functionality is mentioned multiple times: "I see we're discussing [similar concepts]. Should these be consolidated into a single, reusable component, or do they need to remain separate?"
+- For repeated patterns: "Would you like me to suggest a shared utility for [repeated pattern], or do you prefer keeping them separate?"
+
+**Single Responsibility Principle:**
+- If a component/function seems to do multiple things: "This [component/function] handles [list of responsibilities]. Should we split it into focused components, or is this combined approach what you need?"
+
+**Important:** These are gentle confirmations, not strong recommendations. The user's specific requirements and preferences take priority. Only mention these if there's a clear opportunity to improve maintainability or reduce complexity, and always frame them as questions to confirm the user's intent.
 
 ## SPECIFICATION COMPLETENESS CHECK
 Consider the full conversation arc:
@@ -1966,7 +2009,8 @@ Rephrased Question:
             
         except Exception as e:
             logger.error(f"Error in ready for action handling: {e}")
-            return await self._handle_pure_discussion(message, context)
+            result = await self._handle_pure_discussion(message, context, project_id)
+            return result
     
     async def _handle_direct_action(self, message: str, context: ConversationContext, project_id: str, progress_callback: Optional[Callable] = None) -> dict:
         """Handle direct action with comprehensive conversation context awareness."""

@@ -240,6 +240,12 @@ body {
   color: var(--text-primary);
 }
 
+.chat-header-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .start-new-conversation-btn {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
@@ -274,6 +280,59 @@ body {
   background: #f8fafc;
   border: 1px solid var(--border);
   border-radius: 6px;
+}
+
+/* Monthly cost display styles */
+.monthly-cost-display {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  transition: all 0.2s ease;
+  cursor: default;
+}
+
+.monthly-cost-display:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.monthly-cost-display.loading {
+  opacity: 0.7;
+}
+
+.monthly-cost-display.error {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #dc2626;
+}
+
+.monthly-cost-display.zero-cost {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+  color: #16a34a;
+}
+
+.cost-icon {
+  font-size: 1rem;
+}
+
+.cost-text {
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
+  font-weight: 600;
+}
+
+.cost-label {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  font-weight: 400;
+  margin-left: 2px;
 }
 
 /* Notification styles */
