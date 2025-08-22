@@ -368,4 +368,12 @@ export interface MemoryPanelProps {
 export interface LoadingState {
   isLoading: boolean
   error: string | null
+}
+
+// LLM Cost tracking
+export interface MonthlyLLMCost {
+  total_cost: number
+  call_count: number
+  year: number
+  month: number
 } 
