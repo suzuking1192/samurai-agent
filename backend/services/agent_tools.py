@@ -1179,18 +1179,16 @@ Code Content:
 
 Instructions:
 1. Analyze the code content in relation to the user request
-2. Extract the most relevant code snippets and context
-3. Provide a comprehensive and detailed analysis of how this code relates to the request, including all relevant technical details, patterns, and implementation specifics
-4. If the code is not relevant to the request, indicate this clearly
-5. Focus on providing maximum useful information - it's better to include more details than to miss important context
-6. Consider the code's architecture, design patterns, data flow, error handling, and integration points
+2. Provide a comprehensive and detailed analysis of how this code relates to the request, including all relevant technical details, patterns, and implementation specifics
+3. If the code is not relevant to the request, indicate this clearly
+4. Focus on providing maximum useful information - it's better to include more details than to miss important context
+5. Consider the code's architecture, design patterns, data flow, error handling, and integration points
 
 IMPORTANT: You must respond with ONLY a valid JSON object. Do not include any other text, explanations, or formatting outside the JSON.
 
 Return a JSON object with:
 - "relevance_score": 0-10 (how relevant this content is to the request)
 - "context": A comprehensive and detailed analysis of the relevant code, including its purpose, functionality, key components, data structures, algorithms, dependencies, relationships with other parts of the codebase, and any important implementation details that would be useful for understanding and working with this code
-- "relevant_code": The most relevant code snippets from this content (limit to 10000 characters)
 - "file_path": The most relevant file path from this content
 
 If the content is not relevant, set relevance_score to 0.
@@ -1199,7 +1197,6 @@ Example response format:
 {{
   "relevance_score": 8,
   "context": "This code implements...",
-  "relevant_code": "def example_function():...",
   "file_path": "path/to/file.py"
 }}
 """.format(request=request, combined_content=combined_content)
@@ -1208,7 +1205,7 @@ Example response format:
             
             # Parse AI response using robust utility function
             # Use the utility function to parse the AI response
-            expected_fields = ["relevance_score", "context", "relevant_code", "file_path"]
+            expected_fields = ["relevance_score", "context", "file_path"]
             analysis = parse_ai_json_response(response, expected_fields)
             
             # Check if parsing failed
@@ -1224,25 +1221,22 @@ Example response format:
             
             relevance_score = analysis.get("relevance_score", 0)
             
-            logger.info(f"Analysis relevance score: {relevance_score}")
+            # Use the first 10000 characters of combined_content as relevant_code
+            # This is more efficient than asking the LLM to extract it
+            relevant_code = combined_content[:10000]
+            if len(combined_content) > 10000:
+                relevant_code += "\n... (truncated to 10000 characters)"
+            
             logger.info(f"Analysis: {analysis}")
             
-            if relevance_score > 0:
-                return {
-                    "success": True,
-                    "context": analysis.get("context", ""),
-                    "relevant_code": analysis.get("relevant_code", ""),
-                    "file_path": analysis.get("file_path"),
-                    "relevance_score": relevance_score
-                }
-            else:
-                return {
-                    "success": False,
-                    "message": "❌ No sufficiently relevant code found for the request",
-                    "context": None,
-                    "relevant_code": None,
-                    "file_path": None
-                }
+            return {
+                "success": True,
+                "context": analysis.get("context", ""),
+                "relevant_code": relevant_code,
+                "file_path": analysis.get("file_path"),
+                "relevance_score": relevance_score
+            }
+            
                 
         except Exception as e:
             logger.error(f"Error extracting code context: {e}")
