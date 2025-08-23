@@ -1190,7 +1190,7 @@ IMPORTANT: You must respond with ONLY a valid JSON object. Do not include any ot
 Return a JSON object with:
 - "relevance_score": 0-10 (how relevant this content is to the request)
 - "context": A comprehensive and detailed analysis of the relevant code, including its purpose, functionality, key components, data structures, algorithms, dependencies, relationships with other parts of the codebase, and any important implementation details that would be useful for understanding and working with this code
-- "relevant_code": The most relevant code snippets from this content (limit to 1000 characters)
+- "relevant_code": The most relevant code snippets from this content (limit to 10000 characters)
 - "file_path": The most relevant file path from this content
 
 If the content is not relevant, set relevance_score to 0.
