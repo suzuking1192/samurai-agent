@@ -358,10 +358,49 @@ export interface ChatProps {
 
 export interface TaskPanelProps {
   projectId?: string
+  refreshTrigger?: number
+  onTaskContextUpdate?: () => void
 }
 
 export interface MemoryPanelProps {
   projectId?: string
+}
+
+export interface CompactTaskItemProps {
+  task: Task
+  onUpdate: (taskId: string, updates: TaskUpdate) => void
+  onDelete: (taskId: string) => void
+  onTaskClick: (task: Task) => void
+  style?: React.CSSProperties
+  hasSubtasks: boolean
+  isExpanded: boolean
+  onToggleExpansion: (taskId: string) => void
+  onTaskDetailsClick: (task: Task) => void
+}
+
+export interface TaskListViewProps {
+  tasks: Task[]
+  isLoading: boolean
+  onTaskClick: (task: Task) => void
+  onCreateTask: (task: TaskCreate) => Promise<void>
+  projectId?: string
+  expandedTasks?: Record<string, boolean>
+  toggleTaskExpansion?: (taskId: string) => void
+  isTaskExpanded?: (taskId: string) => boolean
+}
+
+export interface TaskBoardProps {
+  tasks: Task[]
+  isLoading: boolean
+  onTaskClick: (task: Task) => void
+  projectId?: string
+  onTaskUpdate?: (updatedTask: Task) => void
+  onCreateTask?: (task: TaskCreate) => Promise<void>
+  expandedTasks?: Record<string, boolean>
+  toggleTaskExpansion?: (taskId: string) => void
+  isTaskExpanded?: (taskId: string) => boolean
+  selectedTask?: Task | null
+  shouldRestoreScroll?: boolean
 }
 
 // Loading states
