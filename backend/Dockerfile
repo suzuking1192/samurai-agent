@@ -1,4 +1,5 @@
 # Backend Dockerfile
+# Uses Python 3.11 for consistency across environments
 FROM python:3.11-slim
 
 WORKDIR /app
