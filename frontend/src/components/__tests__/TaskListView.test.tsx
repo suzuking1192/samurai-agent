@@ -4,175 +4,270 @@ import { vi, describe, it, expect, beforeEach } from 'vitest'
 import TaskListView from '../TaskListView'
 import { Task, TaskStatus, TaskPriority } from '../../types'
 
-// No mocks needed since TaskListView now receives expansion state as props
-
-describe('TaskListView with Auto-Expansion', () => {
-  const mockTasks: Task[] = [
-    {
-      id: 'task-1',
-      project_id: 'project-1',
-      title: 'Parent Task 1',
-      description: 'A parent task',
-      status: TaskStatus.PENDING,
-      priority: TaskPriority.MEDIUM,
-      created_at: '2024-01-01T00:00:00Z',
-      updated_at: '2024-01-01T00:00:00Z'
-    },
-    {
-      id: 'task-2',
-      project_id: 'project-1',
-      title: 'Child Task 1',
-      description: 'A child task',
-      status: TaskStatus.PENDING,
-      priority: TaskPriority.MEDIUM,
-      created_at: '2024-01-01T00:00:00Z',
-      updated_at: '2024-01-01T00:00:00Z',
-      parent_task_id: 'task-1'
-    },
-    {
-      id: 'task-3',
-      project_id: 'project-1',
-      title: 'Child Task 2',
-      description: 'Another child task',
-      status: TaskStatus.PENDING,
-      priority: TaskPriority.MEDIUM,
-      created_at: '2024-01-01T00:00:00Z',
-      updated_at: '2024-01-01T00:00:00Z',
-      parent_task_id: 'task-1'
-    }
-  ]
-
-  const defaultProps = {
-    tasks: mockTasks,
-    isLoading: false,
-    onTaskClick: vi.fn(),
-    onCreateTask: vi.fn(),
-    projectId: 'project-1',
-    expandedTasks: {},
-    toggleTaskExpansion: vi.fn(),
-    isTaskExpanded: vi.fn().mockReturnValue(false)
+// Mock the CompactTaskItem component
+vi.mock('../CompactTaskItem', () => ({
+  default: function MockCompactTaskItem({ task, hasSubtasks, isExpanded, onToggleExpansion, onTaskDetailsClick }: any) {
+    return (
+      <div 
+        className="compact-task-item" 
+        data-task-id={task.id}
+        data-has-subtasks={hasSubtasks}
+        data-is-expanded={isExpanded}
+        onClick={() => {
+          if (hasSubtasks) {
+            onToggleExpansion(task.id)
+          } else {
+            onTaskDetailsClick(task)
+          }
+        }}
+      >
+        {task.title}
+        {hasSubtasks && (
+          <button 
+            onClick={(e) => {
+              e.stopPropagation()
+              onToggleExpansion(task.id)
+            }}
+            aria-label={isExpanded ? 'Collapse subtasks' : 'Expand subtasks'}
+          >
+            {isExpanded ? '▾' : '▸'}
+          </button>
+        )}
+      </div>
+    )
   }
+}))
 
+const mockTasks: Task[] = [
+  {
+    id: 'task-1',
+    project_id: 'project-1',
+    title: 'Parent Task',
+    description: 'Parent task description',
+    status: TaskStatus.PENDING,
+    priority: TaskPriority.MEDIUM,
+    created_at: '2023-01-01T00:00:00Z',
+    updated_at: '2023-01-01T00:00:00Z'
+  },
+  {
+    id: 'task-2',
+    project_id: 'project-1',
+    title: 'Child Task 1',
+    description: 'Child task description',
+    status: TaskStatus.IN_PROGRESS,
+    priority: TaskPriority.HIGH,
+    created_at: '2023-01-02T00:00:00Z',
+    updated_at: '2023-01-02T00:00:00Z',
+    parent_task_id: 'task-1'
+  },
+  {
+    id: 'task-3',
+    project_id: 'project-1',
+    title: 'Child Task 2',
+    description: 'Another child task',
+    status: TaskStatus.COMPLETED,
+    priority: TaskPriority.LOW,
+    created_at: '2023-01-03T00:00:00Z',
+    updated_at: '2023-01-03T00:00:00Z',
+    parent_task_id: 'task-1'
+  },
+  {
+    id: 'task-4',
+    project_id: 'project-1',
+    title: 'Standalone Task',
+    description: 'Task without parent',
+    status: TaskStatus.PENDING,
+    priority: TaskPriority.MEDIUM,
+    created_at: '2023-01-04T00:00:00Z',
+    updated_at: '2023-01-04T00:00:00Z'
+  }
+]
+
+const mockProps = {
+  tasks: mockTasks,
+  isLoading: false,
+  onTaskClick: vi.fn(),
+  onCreateTask: vi.fn(),
+  projectId: 'project-1',
+  expandedTasks: {},
+  toggleTaskExpansion: vi.fn(),
+  isTaskExpanded: vi.fn(() => false)
+}
+
+describe('TaskListView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  it('should render task list with hierarchy', () => {
-    render(<TaskListView {...defaultProps} />)
+  it('renders task list with proper hierarchy', () => {
+    render(<TaskListView {...mockProps} />)
     
-    expect(screen.getByText('Parent Task 1')).toBeInTheDocument()
-    // Child tasks are not visible by default (collapsed state)
-    expect(screen.queryByText('Child Task 1')).not.toBeInTheDocument()
-    expect(screen.queryByText('Child Task 2')).not.toBeInTheDocument()
+    expect(screen.getByText('Parent Task')).toBeInTheDocument()
+    expect(screen.getByText('Standalone Task')).toBeInTheDocument()
   })
 
-  it('should show expand/collapse icon for parent tasks', () => {
-    render(<TaskListView {...defaultProps} />)
+  it('correctly calculates hasSubtasks for parent tasks', () => {
+    render(<TaskListView {...mockProps} />)
     
-    // Check for expand icon (▸) for parent task
-    expect(screen.getByText('▸')).toBeInTheDocument()
+    const parentTask = screen.getByText('Parent Task').closest('.compact-task-item')
+    expect(parentTask).toHaveAttribute('data-has-subtasks', 'true')
   })
 
-  it('should toggle task expansion when clicking on parent task', () => {
-    const mockToggleTaskExpansion = vi.fn()
-    render(<TaskListView {...defaultProps} toggleTaskExpansion={mockToggleTaskExpansion} />)
+  it('correctly calculates hasSubtasks for tasks without children', () => {
+    render(<TaskListView {...mockProps} />)
     
-    const parentTask = screen.getByText('Parent Task 1')
-    fireEvent.click(parentTask)
-    
-    expect(mockToggleTaskExpansion).toHaveBeenCalledWith('task-1')
+    const standaloneTask = screen.getByText('Standalone Task').closest('.compact-task-item')
+    expect(standaloneTask).toHaveAttribute('data-has-subtasks', 'false')
   })
 
-  it('should show sub-tasks when parent is expanded', () => {
-    render(<TaskListView 
-      {...defaultProps} 
-      expandedTasks={{ 'task-1': true }}
-      isTaskExpanded={(taskId: string) => taskId === 'task-1'}
-    />)
+  it('calls onToggleExpansion when parent task is clicked', () => {
+    render(<TaskListView {...mockProps} />)
     
-    // Check for collapse icon (▾) for expanded parent task
-    expect(screen.getByText('▾')).toBeInTheDocument()
+    const parentTask = screen.getByText('Parent Task').closest('.compact-task-item')
+    fireEvent.click(parentTask!)
     
-    // Sub-tasks should be visible
+    expect(mockProps.toggleTaskExpansion).toHaveBeenCalledWith('task-1')
+    expect(mockProps.onTaskClick).not.toHaveBeenCalled()
+  })
+
+  it('calls onTaskClick when standalone task is clicked', () => {
+    render(<TaskListView {...mockProps} />)
+    
+    const standaloneTask = screen.getByText('Standalone Task').closest('.compact-task-item')
+    fireEvent.click(standaloneTask!)
+    
+    expect(mockProps.onTaskClick).toHaveBeenCalledWith(mockTasks[3]) // Standalone task
+    expect(mockProps.toggleTaskExpansion).not.toHaveBeenCalled()
+  })
+
+  it('shows expansion icon for parent tasks', () => {
+    render(<TaskListView {...mockProps} />)
+    
+    const expandButton = screen.getByLabelText('Expand subtasks')
+    expect(expandButton).toBeInTheDocument()
+    expect(expandButton).toHaveTextContent('▸')
+  })
+
+  it('shows collapse icon when parent task is expanded', () => {
+    const expandedProps = {
+      ...mockProps,
+      isTaskExpanded: vi.fn((taskId: string) => taskId === 'task-1')
+    }
+    
+    render(<TaskListView {...expandedProps} />)
+    
+    const collapseButton = screen.getByLabelText('Collapse subtasks')
+    expect(collapseButton).toBeInTheDocument()
+    expect(collapseButton).toHaveTextContent('▾')
+  })
+
+  it('expansion icon click calls toggleTaskExpansion and stops propagation', () => {
+    render(<TaskListView {...mockProps} />)
+    
+    const expandButton = screen.getByLabelText('Expand subtasks')
+    fireEvent.click(expandButton)
+    
+    expect(mockProps.toggleTaskExpansion).toHaveBeenCalledWith('task-1')
+    // The expansion icon click should not trigger the parent div's click handler
+    expect(mockProps.onTaskClick).not.toHaveBeenCalled()
+  })
+
+  it('renders child tasks when parent is expanded', () => {
+    const expandedProps = {
+      ...mockProps,
+      isTaskExpanded: vi.fn((taskId: string) => taskId === 'task-1')
+    }
+    
+    render(<TaskListView {...expandedProps} />)
+    
+    // Child tasks should be visible when parent is expanded
     expect(screen.getByText('Child Task 1')).toBeInTheDocument()
     expect(screen.getByText('Child Task 2')).toBeInTheDocument()
   })
 
-  it('should auto-expand parent tasks when new sub-tasks are created', async () => {
-    // This test is no longer relevant since auto-expansion is now handled in TaskPanel
-    // The TaskListView component just receives the expansion state as props
-    expect(true).toBe(true) // Placeholder test
+  it('does not render child tasks when parent is collapsed', () => {
+    render(<TaskListView {...mockProps} />)
+    
+    // Child tasks should not be visible when parent is collapsed
+    expect(screen.queryByText('Child Task 1')).not.toBeInTheDocument()
+    expect(screen.queryByText('Child Task 2')).not.toBeInTheDocument()
   })
 
-  it('should not auto-expand tasks when no new tasks are detected', () => {
-    // This test is no longer relevant since auto-expansion is now handled in TaskPanel
-    // The TaskListView component just receives the expansion state as props
-    expect(true).toBe(true) // Placeholder test
+  it('child tasks have correct hasSubtasks value', () => {
+    const expandedProps = {
+      ...mockProps,
+      isTaskExpanded: vi.fn((taskId: string) => taskId === 'task-1')
+    }
+    
+    render(<TaskListView {...expandedProps} />)
+    
+    // Child tasks should have hasSubtasks=false since they don't have their own children
+    const childTask1 = screen.getByText('Child Task 1').closest('.compact-task-item')
+    const childTask2 = screen.getByText('Child Task 2').closest('.compact-task-item')
+    
+    expect(childTask1).toHaveAttribute('data-has-subtasks', 'false')
+    expect(childTask2).toHaveAttribute('data-has-subtasks', 'false')
   })
 
-  it('should handle task creation form', async () => {
-    const mockOnCreateTask = vi.fn()
-    render(<TaskListView {...defaultProps} onCreateTask={mockOnCreateTask} />)
+  it('child task click calls onTaskClick', () => {
+    const expandedProps = {
+      ...mockProps,
+      isTaskExpanded: vi.fn((taskId: string) => taskId === 'task-1')
+    }
     
-    // Click add task button
-    const addButton = screen.getByText('+ Add Task')
-    fireEvent.click(addButton)
+    render(<TaskListView {...expandedProps} />)
     
-    // Fill out the form
-    const titleInput = screen.getByPlaceholderText('Task title')
-    const descriptionInput = screen.getByPlaceholderText('Task description')
+    const childTask = screen.getByText('Child Task 1').closest('.compact-task-item')
+    fireEvent.click(childTask!)
     
-    fireEvent.change(titleInput, { target: { value: 'New Task' } })
-    fireEvent.change(descriptionInput, { target: { value: 'New task description' } })
-    
-    // Submit the form
-    const createButton = screen.getByText('Create Task')
-    fireEvent.click(createButton)
-    
-    await waitFor(() => {
-      expect(mockOnCreateTask).toHaveBeenCalledWith({
-        title: 'New Task',
-        description: 'New task description',
-        priority: TaskPriority.MEDIUM
-      })
-    })
+    expect(mockProps.onTaskClick).toHaveBeenCalledWith(mockTasks[1]) // Child Task 1
+    expect(mockProps.toggleTaskExpansion).not.toHaveBeenCalled()
   })
 
-  it('should show loading state', () => {
-    render(<TaskListView {...defaultProps} isLoading={true} />)
+  it('shows loading state when isLoading is true', () => {
+    render(<TaskListView {...mockProps} isLoading={true} />)
     
     expect(screen.getByText('Loading tasks...')).toBeInTheDocument()
   })
 
-  it('should show empty state when no tasks', () => {
-    render(<TaskListView {...defaultProps} tasks={[]} />)
+  it('shows empty state when no tasks', () => {
+    render(<TaskListView {...mockProps} tasks={[]} />)
     
     expect(screen.getByText('No active tasks')).toBeInTheDocument()
     expect(screen.getByText('All caught up! Add a new task to get started.')).toBeInTheDocument()
   })
 
-  it('should call onTaskClick when clicking on child task', () => {
-    const mockOnTaskClick = vi.fn()
-    render(<TaskListView 
-      {...defaultProps} 
-      onTaskClick={mockOnTaskClick}
-      expandedTasks={{ 'task-1': true }}
-      isTaskExpanded={(taskId: string) => taskId === 'task-1'}
-    />)
+  it('shows create task form when add button is clicked', () => {
+    render(<TaskListView {...mockProps} />)
     
-    const childTask = screen.getByText('Child Task 1')
-    fireEvent.click(childTask)
+    const addButton = screen.getByText('+ Add Task')
+    fireEvent.click(addButton)
     
-    expect(mockOnTaskClick).toHaveBeenCalledWith(mockTasks[1])
+    expect(screen.getByText('Create New Task')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('Task title')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('Task description')).toBeInTheDocument()
   })
 
-  it('should call onTaskClick when clicking "See details" button', () => {
-    const mockOnTaskClick = vi.fn()
-    render(<TaskListView {...defaultProps} onTaskClick={mockOnTaskClick} />)
+  it('creates task when form is submitted', async () => {
+    render(<TaskListView {...mockProps} />)
     
-    const seeDetailsButtons = screen.getAllByText('See details')
-    fireEvent.click(seeDetailsButtons[0])
+    const addButton = screen.getByText('+ Add Task')
+    fireEvent.click(addButton)
     
-    expect(mockOnTaskClick).toHaveBeenCalledWith(mockTasks[0])
+    const titleInput = screen.getByPlaceholderText('Task title')
+    const descriptionInput = screen.getByPlaceholderText('Task description')
+    const createButton = screen.getByText('Create Task')
+    
+    fireEvent.change(titleInput, { target: { value: 'New Task' } })
+    fireEvent.change(descriptionInput, { target: { value: 'New description' } })
+    fireEvent.click(createButton)
+    
+    await waitFor(() => {
+      expect(mockProps.onCreateTask).toHaveBeenCalledWith({
+        title: 'New Task',
+        description: 'New description',
+        priority: TaskPriority.MEDIUM
+      })
+    })
   })
 })

@@ -1,35 +1,9 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react'
-import { Task, TaskPriority, TaskStatus, TaskCreate } from '../types'
-import { updateTask, createTask } from '../services/api'
+import { Task, TaskPriority, TaskStatus, TaskCreate, TaskBoardProps } from '../types'
+import { updateTask } from '../services/api'
 import { useAutoScroll } from '../hooks/useAutoScroll'
 import { useTaskScrollPersistence } from '../hooks/useTaskScrollPersistence'
 import './TaskBoard.css'
-
-/**
- * Props for the TaskBoard component
- */
-interface TaskBoardProps {
-  /** Array of tasks to display */
-  tasks: Task[]
-  /** Whether the component is in a loading state */
-  isLoading: boolean
-  /** Callback function when a task is clicked */
-  onTaskClick: (task: Task) => void
-  /** Project ID for API calls */
-  projectId?: string
-  /** Callback function when a task is updated */
-  onTaskUpdate?: (updatedTask: Task) => void
-  onCreateTask?: (task: TaskCreate) => Promise<void>
-  /** Object to track expanded subtasks for each task */
-  expandedTasks?: Record<string, boolean>
-  /** Callback to toggle task expansion */
-  toggleTaskExpansion?: (taskId: string) => void
-  /** Function to check if a task is expanded */
-  isTaskExpanded?: (taskId: string) => boolean
-  selectedTask?: Task | null
-  /** Whether to restore scroll position (triggered when returning from detail view) */
-  shouldRestoreScroll?: boolean
-}
 
 /**
  * Internal state for drag and drop operations
@@ -75,7 +49,6 @@ const TaskBoard: React.FC<TaskBoardProps> = ({
   projectId,
   onTaskUpdate,
   onCreateTask,
-  expandedTasks = {},
   toggleTaskExpansion,
   isTaskExpanded = () => false,
   selectedTask,
@@ -97,7 +70,7 @@ const TaskBoard: React.FC<TaskBoardProps> = ({
   const { handleDragOver: handleAutoScrollDragOver, handleDragEnd: handleAutoScrollDragEnd, cleanup } = useAutoScroll(taskBoardRef, autoScrollConfig)
   
   // Initialize scroll persistence hook
-  const { scrollState, saveScrollPosition, getScrollPosition } = useTaskScrollPersistence(projectId || null)
+  const { scrollState, saveScrollPosition } = useTaskScrollPersistence(projectId || null)
   
   const [dragState, setDragState] = useState<DragState>({
     isDragging: false,
@@ -161,7 +134,7 @@ const TaskBoard: React.FC<TaskBoardProps> = ({
     }
     
     // Sort children by creation date (oldest first) for each parent
-    for (const [parentId, children] of map.entries()) {
+    for (const [, children] of map.entries()) {
       children.sort((a, b) => 
         new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
       )
@@ -313,10 +286,29 @@ const TaskBoard: React.FC<TaskBoardProps> = ({
     const isBeingUpdated = updatingTaskId === task.id
     const isDragging = dragState.draggedTask?.id === task.id
     const children = childrenMap.get(task.id) || []
-    const isParent = children.length > 0
+    const hasSubtasks = children.length > 0
     const isExpanded = isTaskExpanded(task.id)
     const isTopLevel = !task.parent_task_id
     const isSelected = selectedTask?.id === task.id
+
+    const handleCardClick = (e: React.MouseEvent) => {
+      // Only handle click if not clicking on interactive elements
+      if (e.target === e.currentTarget || 
+          (e.target as HTMLElement).closest('.task-card') === e.currentTarget) {
+        
+        // Unified click behavior: expand/collapse if has subtasks, otherwise open details
+        if (hasSubtasks) {
+          toggleTaskExpansion?.(task.id)
+        } else {
+          // Capture current scroll position before opening task details
+          if (taskBoardRef.current) {
+            const scrollTop = taskBoardRef.current.scrollTop
+            saveScrollPosition(scrollTop, task.id)
+          }
+          onTaskClick(task)
+        }
+      }
+    }
 
     return (
       <div
@@ -325,20 +317,7 @@ const TaskBoard: React.FC<TaskBoardProps> = ({
         className={`task-card ${isDragging ? 'dragging' : ''} ${isBeingUpdated ? 'updating' : ''} ${isSelected ? 'selected' : ''}`}
         draggable={!isBeingUpdated}
         onDragStart={(e) => handleDragStart(e, task)}
-        onClick={(e) => {
-          // Only handle click if not clicking on interactive elements
-          if (e.target === e.currentTarget || 
-              (e.target as HTMLElement).closest('.task-card') === e.currentTarget) {
-            
-            // Capture current scroll position before opening task details
-            if (taskBoardRef.current) {
-              const scrollTop = taskBoardRef.current.scrollTop
-              saveScrollPosition(scrollTop, task.id)
-            }
-            
-            onTaskClick(task)
-          }
-        }}
+        onClick={handleCardClick}
         style={{
           opacity: isDragging ? 0.5 : 1,
           cursor: 'pointer',
@@ -354,7 +333,7 @@ const TaskBoard: React.FC<TaskBoardProps> = ({
           // Add visual indicator for subtasks
           borderLeft: !isTopLevel ? '3px solid #3b82f6' : undefined
         }}
-        title={`Click to view details: ${task.title}`}
+        title={`Click to ${hasSubtasks ? (isExpanded ? 'collapse' : 'expand') : 'view details'}: ${task.title}`}
         onMouseEnter={(e) => {
           if (!isSelected) {
             e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.15)'
@@ -398,7 +377,7 @@ const TaskBoard: React.FC<TaskBoardProps> = ({
         )}
         
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: '4px' }}>
-          {isParent && (
+          {hasSubtasks && (
             <button
               onClick={(e) => {
                 e.stopPropagation()
@@ -408,10 +387,11 @@ const TaskBoard: React.FC<TaskBoardProps> = ({
                 background: 'none',
                 border: 'none',
                 cursor: 'pointer',
-                fontSize: '16px',
-                marginRight: '8px',
+                fontSize: '28px',
+                marginRight: '12px',
                 color: '#6b7280',
-                padding: '2px'
+                padding: '6px',
+                lineHeight: '1'
               }}
               aria-label={isExpanded ? 'Collapse subtasks' : 'Expand subtasks'}
             >
@@ -421,7 +401,7 @@ const TaskBoard: React.FC<TaskBoardProps> = ({
           <div style={{ fontWeight: '500', flex: 1 }}>
             {task.title}
           </div>
-          {isParent && (
+          {hasSubtasks && (
             <span style={{
               fontSize: '12px',
               color: '#9ca3af',
@@ -499,7 +479,7 @@ const TaskBoard: React.FC<TaskBoardProps> = ({
         </div>
 
         {/* Render subtasks if expanded */}
-        {isParent && isExpanded && (
+        {hasSubtasks && isExpanded && (
           <div style={{ marginTop: '8px', borderTop: '1px solid #f3f4f6', paddingTop: '8px' }}>
             {children.map(child => renderTaskCard(child, level + 1))}
           </div>

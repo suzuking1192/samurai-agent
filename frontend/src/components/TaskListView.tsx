@@ -1,16 +1,6 @@
 import React, { useState } from 'react'
-import { Task, TaskPriority, TaskCreate, TaskStatus } from '../types'
-
-interface TaskListViewProps {
-  tasks: Task[]
-  isLoading: boolean
-  onTaskClick: (task: Task) => void
-  onCreateTask: (task: TaskCreate) => Promise<void>
-  projectId?: string
-  expandedTasks?: Record<string, boolean>
-  toggleTaskExpansion?: (taskId: string) => void
-  isTaskExpanded?: (taskId: string) => boolean
-}
+import { Task, TaskPriority, TaskCreate, TaskStatus, TaskListViewProps } from '../types'
+import CompactTaskItem from './CompactTaskItem'
 
 const TaskListView: React.FC<TaskListViewProps> = ({
   tasks,
@@ -50,21 +40,6 @@ const TaskListView: React.FC<TaskListViewProps> = ({
     }
   }
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString)
-    const now = new Date()
-    const diffTime = Math.abs(now.getTime() - date.getTime())
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-    
-    if (diffDays === 1) return 'Today'
-    if (diffDays === 2) return 'Yesterday'
-    if (diffDays <= 7) return `${diffDays - 1} days ago`
-    return date.toLocaleDateString()
-  }
-
-  // Filter out completed tasks for top-level display only
-  const activeTasks = tasks.filter(task => task.status !== TaskStatus.COMPLETED)
-
   // Build a hierarchy map: parent -> children
   const childrenMap = React.useMemo(() => {
     const map = new Map<string, Task[]>()
@@ -88,69 +63,37 @@ const TaskListView: React.FC<TaskListViewProps> = ({
   }, [tasks])
 
   // Root tasks are those without parent_task_id
-  const rootTasks = React.useMemo(() => activeTasks.filter(t => !t.parent_task_id), [activeTasks])
+  const rootTasks = React.useMemo(() => tasks.filter(t => !t.parent_task_id), [tasks])
 
-  // Remove the old local state - now using persistent state from the hook
-
-  const renderTaskNode = (task: Task, level: number = 0, trail: boolean[] = []) => {
+  const renderTaskNode = (task: Task, level: number = 0) => {
     const kids = childrenMap.get(task.id) || []
-    const isParent = kids.length > 0
+    const hasSubtasks = kids.length > 0
     const isExpanded = expansionCheck(task.id)
-    const nodeIcon = isParent ? '📂' : '📄'
-    const buildAsciiPrefix = (trailFlags: boolean[], isLast: boolean) => {
-      const parts: string[] = []
-      for (let i = 0; i < trailFlags.length; i++) {
-        parts.push(trailFlags[i] ? '   ' : '│  ')
-      }
-      parts.push(isLast ? '└─ ' : '├─ ')
-      return parts.join('')
-    }
 
     return (
       <div key={task.id}>
-        <div 
-          className="task-item" 
-          data-task-id={task.id}
-          onClick={() => {
-            if (isParent) {
-              expansionToggle(task.id)
-            } else if (level > 0) {
-              onTaskClick(task)
-            }
+        <CompactTaskItem
+          task={task}
+          onUpdate={async (taskId: string, updates: any) => {
+            // Handle task updates if needed
+            console.log('Task update:', taskId, updates)
           }}
-          style={{ marginLeft: `${level * 22}px`, paddingLeft: '10px', display: 'flex', alignItems: 'center', cursor: 'pointer' }}
-        >
-          {isParent && (
-            <span aria-label={isExpanded ? 'Collapse' : 'Expand'} style={{ marginRight: 6 }}>
-              {isExpanded ? '▾' : '▸'}
-            </span>
-          )}
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
-            {/* ASCII tree prefix for VSCode-like view */}
-            {level > 0 && (
-              <span aria-hidden="true" style={{ fontFamily: 'monospace', color: '#64748b' }}>
-                {buildAsciiPrefix(trail.slice(0, -1), trail[trail.length - 1] ?? false)}
-              </span>
-            )}
-            <span aria-hidden="true" style={{ opacity: 0.8 }}>{nodeIcon}</span>
-            <div className="task-title" title={task.title}>{task.title}</div>
-            <button 
-              className={`see-details-btn ${level > 0 ? 'small' : ''}`}
-              onClick={(e) => { e.stopPropagation(); onTaskClick(task) }}
-              aria-label={`See details for ${task.title}`}
-              style={{ marginLeft: 'auto' }}
-            >
-              See details
-            </button>
-          </div>
-        </div>
-        {/* Simplified nested display: do not show description/meta for file-tree clarity */}
-        {isParent && isExpanded && (
+          onDelete={async (taskId: string) => {
+            // Handle task deletion if needed
+            console.log('Task delete:', taskId)
+          }}
+          onTaskClick={onTaskClick}
+          style={{ marginLeft: `${level * 22}px` }}
+          hasSubtasks={hasSubtasks}
+          isExpanded={isExpanded}
+          onToggleExpansion={expansionToggle}
+          onTaskDetailsClick={onTaskClick}
+        />
+        
+        {/* Render subtasks if expanded */}
+        {hasSubtasks && isExpanded && (
           <div>
-            {kids.map((child, idx) => {
-              const isLast = idx === kids.length - 1
-              return renderTaskNode(child, level + 1, [...trail, isLast])
-            })}
+            {kids.map((child) => renderTaskNode(child, level + 1))}
           </div>
         )}
       </div>
@@ -217,7 +160,7 @@ const TaskListView: React.FC<TaskListViewProps> = ({
         <div className="loading-indicator">
           <span>Loading tasks...</span>
         </div>
-      ) : activeTasks.length === 0 ? (
+      ) : rootTasks.length === 0 ? (
         <div className="empty-state">
           <div className="empty-icon">✨</div>
           <p>No active tasks</p>
