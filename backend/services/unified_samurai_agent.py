@@ -421,6 +421,20 @@ class UnifiedSamuraiAgent:
                     accumulated_specs={}
                 )
             
+            # Special case: Direct classification for Create Tasks button
+            if message.strip() == "Create tasks based on discussion so far":
+                logger.info("Direct classification: 'Create tasks based on discussion so far' -> ready_for_action")
+                return IntentAnalysis(
+                    intent_type="ready_for_action",
+                    confidence=1.0,
+                    reasoning="Direct classification for Create Tasks button - explicit task creation request",
+                    needs_clarification=False,
+                    clarification_questions=[],
+                    accumulated_specs={},
+                    new_code_context_necessary=False,
+                    code_context_request=None
+                )
+            
             # Build enhanced context-aware prompt
             active_task_header = ""
             if context.task_context:
@@ -603,9 +617,13 @@ Based on the chain of thought analysis above, classify into exactly ONE category
         - If the message only provides detailed specifications without an explicit request above → classify as spec_clarification
 
 **direct_action**: 
-        - Requires explicit task management commands that reference tasks (e.g., "mark task X complete", "delete task Y", "update task Z")
-        - Pure progress statements without commands remain discussion unless they ask to update tasks
-        - Avoid inferring direct_action from generic verbs alone; prefer explicit "task" references
+        - ONLY for EXPLICIT task management commands that DIRECTLY reference specific tasks
+        - Must contain explicit action verbs like "mark", "update", "delete", "complete", "move", "reassign" followed by "task" and task name/ID
+        - Examples: "mark task 'Login API' as complete", "update task 'User Auth' description", "delete task 'Old Feature'", "move task 'Frontend' to high priority"
+        - Progress statements like "I finished X" or "X has been completed" are NOT direct_action (they are pure_discussion)
+        - Information sharing about completion status is NOT direct_action
+        - Must be a direct command to the agent to perform a specific task management action
+        - If the user is just informing about progress without asking for action, classify as pure_discussion
 
 ## REFLECTION CHECK
 
@@ -666,8 +684,38 @@ Return ONLY the intent type: pure_discussion, feature_exploration, spec_clarific
 
 **Message**: "I finished the login API endpoint task"
 **Context**: Task was previously created and assigned
-**Analysis**: Status update on existing task, direct project management
+**Analysis**: Progress statement informing about completion, not a command to update task status
+**Classification**: pure_discussion
+
+**Message**: "Mark task 'Login API endpoint' as complete"
+**Context**: Task was previously created and assigned
+**Analysis**: Explicit command to update task status, direct task management action
 **Classification**: direct_action
+
+**Message**: "LLM Cost Calculation and Real-time Display Feature has been completed properly"
+**Context**: User informing about feature completion
+**Analysis**: Information sharing about completion status, not a command to update task
+**Classification**: pure_discussion
+
+## CRITICAL GUIDANCE FOR DIRECT_ACTION CLASSIFICATION
+
+**ONLY classify as direct_action if the user EXPLICITLY commands the agent to perform a specific task management action.**
+
+**EXPLICIT COMMANDS that qualify as direct_action:**
+- "Mark task 'X' as complete"
+- "Update task 'Y' description to..."
+- "Delete task 'Z'"
+- "Move task 'A' to high priority"
+- "Reassign task 'B' to John"
+- "Change task 'C' status to in-progress"
+
+**DO NOT classify as direct_action for:**
+- Progress statements: "I finished X", "X has been completed", "X is done"
+- Information sharing: "The feature is working", "This has been implemented"
+- Status updates without commands: "Task X is complete", "Feature Y is ready"
+- General completion announcements without specific task management requests
+
+**Remember:** The user must EXPLICITLY command the agent to perform a task management action. Information sharing and progress statements are pure_discussion.
 
 ## CRITICAL GUIDANCE FOR READY_FOR_ACTION CLASSIFICATION
 
@@ -771,6 +819,10 @@ Return ONLY the intent type: pure_discussion, feature_exploration, spec_clarific
                     detected_intent == "ready_for_action"):
                     logger.info(f"Overriding ready_for_action to feature_exploration due to previous intent: {previous_intent}")
                     detected_intent = "spec_clarification"
+                elif (previous_intent not in [UserIntentEnum.FEATURE_EXPLORATION, UserIntentEnum.SPEC_CLARIFICATION] and 
+                      detected_intent == "direct_action"):
+                    logger.info(f"Overriding direct_action to spec_clarification due to previous intent: {previous_intent}")
+                    detected_intent = "feature_exploration"
                 else:
                     logger.info(f"No override needed. Previous intent: {previous_intent}, Current intent: {detected_intent}")
             else:

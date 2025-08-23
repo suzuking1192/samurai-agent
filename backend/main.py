@@ -12,6 +12,18 @@ import logging
 import traceback
 import json
 import sys
+import warnings
+
+# Suppress library warnings for clean beta launch
+# Pydantic warnings from google.genai library (Operation class field shadowing)
+warnings.filterwarnings("ignore", category=UserWarning, module="pydantic._internal._fields")
+warnings.filterwarnings("ignore", category=UserWarning, module="pydantic.fields")
+
+# Suppress huggingface_hub Pydantic V1 deprecation warnings
+warnings.filterwarnings("ignore", message="Pydantic V1 style.*deprecated", category=UserWarning)
+
+# Suppress PyTorch deprecation warnings from transformers
+warnings.filterwarnings("ignore", message=".*_pytree.*deprecated", category=FutureWarning)
 
 # Ensure backend directory is on sys.path for module imports
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
