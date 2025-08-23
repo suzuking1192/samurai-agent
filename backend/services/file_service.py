@@ -474,7 +474,7 @@ class FileService:
         logger.debug(f"Loaded {len(memories)} memories for project {project_id}")
         return memories
     
-    def save_memory(self, project_id: str, memory: Memory) -> None:
+    def save_memory(self, project_id: str, memory: Memory) -> Memory:
         """Save a single memory for a project with embedding generation."""
         # Generate embedding if not present
         memory = self._generate_memory_embedding(memory)
@@ -488,6 +488,8 @@ class FileService:
         file_path = self._get_project_file_path(project_id, "memories")
         self._save_json(file_path, [m.model_dump() for m in memories])
         logger.info(f"Saved memory: {memory.id}")
+        
+        return memory
     
     def save_memories(self, project_id: str, memories: List[Memory]) -> None:
         """Save multiple memories for a project with embedding generation."""

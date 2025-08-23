@@ -1,11 +1,14 @@
-version: '3.8'
-
 services:
   backend:
     build:
       context: ./backend
     working_dir: /app
     command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    env_file:
+      - ./backend/.env
+    environment:
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
     volumes:
       - ./backend:/app
     ports:
