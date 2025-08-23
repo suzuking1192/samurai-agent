@@ -784,6 +784,7 @@ Return ONLY the intent type: pure_discussion, feature_exploration, spec_clarific
                 code_context_request = None
             else:
                 logger.info(f"Starting Step 2: Code Context Necessity Analysis for message: '{message}'")
+                logger.info(f"Existing code context: {context.code_context}")
                 code_context_system_prompt = f"""You are Samurai Engine's code context necessity expert. Your role is to determine if new code context extraction is needed to provide accurate answers.
 
 CONVERSATION CONTEXT:

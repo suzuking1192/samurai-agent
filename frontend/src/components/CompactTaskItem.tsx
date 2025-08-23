@@ -1,20 +1,16 @@
 import React, { useState } from 'react'
-import { Task, TaskStatus, TaskPriority, TaskUpdate } from '../types'
-
-interface CompactTaskItemProps {
-  task: Task
-  onUpdate: (taskId: string, updates: TaskUpdate) => void
-  onDelete: (taskId: string) => void
-  onTaskClick: (task: Task) => void
-  style?: React.CSSProperties
-}
+import { Task, TaskStatus, TaskPriority, TaskUpdate, CompactTaskItemProps } from '../types'
 
 const CompactTaskItem: React.FC<CompactTaskItemProps> = ({ 
   task, 
   onUpdate, 
   onDelete,
   onTaskClick,
-  style 
+  style,
+  hasSubtasks,
+  isExpanded,
+  onToggleExpansion,
+  onTaskDetailsClick
 }) => {
   const [showActions, setShowActions] = useState(false)
 
@@ -71,7 +67,18 @@ const CompactTaskItem: React.FC<CompactTaskItemProps> = ({
 
   const handleItemClick = (e: React.MouseEvent) => {
     e.preventDefault()
-    onTaskClick(task)
+    
+    // Unified click behavior: expand/collapse if has subtasks, otherwise open details
+    if (hasSubtasks) {
+      onToggleExpansion(task.id)
+    } else {
+      onTaskDetailsClick(task)
+    }
+  }
+
+  const handleExpansionIconClick = (e: React.MouseEvent) => {
+    e.stopPropagation() // Prevent triggering the parent div's click handler
+    onToggleExpansion(task.id)
   }
 
   const handleStatusChange = async (newStatus: TaskStatus) => {
@@ -111,6 +118,27 @@ const CompactTaskItem: React.FC<CompactTaskItemProps> = ({
         <span className="task-priority-icon">
           {getPriorityIcon(task.priority)}
         </span>
+        
+        {/* Expansion icon for tasks with subtasks */}
+        {hasSubtasks && (
+          <button
+            onClick={handleExpansionIconClick}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              fontSize: '14px',
+              marginRight: '6px',
+              color: '#6b7280',
+              padding: '2px',
+              display: 'flex',
+              alignItems: 'center'
+            }}
+            aria-label={isExpanded ? 'Collapse subtasks' : 'Expand subtasks'}
+          >
+            {isExpanded ? '▾' : '▸'}
+          </button>
+        )}
         
         <div className="item-title">
           {task.title}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Task, TaskUpdate, TaskStatus, TaskCreate } from '../types'
+import { Task, TaskUpdate, TaskStatus, TaskCreate, TaskPanelProps } from '../types'
 import { getTasks, updateTask, deleteTask, completeTask, createTask } from '../services/api'
 import TaskDetailsView from './TaskDetailsView'
 import TaskBoard from './TaskBoard'
@@ -8,12 +8,6 @@ import {
   identifyNewTasks, 
   getParentTasksToAutoExpand 
 } from '../utils/taskExpansionUtils'
-
-interface TaskPanelProps {
-  projectId?: string
-  refreshTrigger?: number
-  onTaskContextUpdate?: () => void
-}
 
 const TaskPanel: React.FC<TaskPanelProps> = ({ projectId, refreshTrigger, onTaskContextUpdate }) => {
   const [tasks, setTasks] = useState<Task[]>([])
