@@ -2,6 +2,12 @@
 
 Samurai Agent is an AI senior engineer that 10x’s your vibe coding — it crafts specs you can drop into Cursor for the exact code on the first try
 
+## 🚀 Samurai Agent Cloud (Coming Soon)
+
+We’re building the SaaS version of Samurai Agent 
+👉 [Join the waitlist here](https://tally.so/r/3yQOJx)
+
+
 ## Tech Stack
 
 - **Frontend**: React + Vite + TypeScript
