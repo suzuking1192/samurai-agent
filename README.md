@@ -103,6 +103,7 @@ Samurai Agent will ask clarifying questions to understand your requirements bett
 
 for example
 
+```
 "Excellent! This clarifies your intent to enhance the visual display of the task status on the task cards.
 
 Based on the CompactTaskItem.tsx code context, I see that the task status is currently displayed in a few ways:
@@ -112,6 +113,7 @@ A dropdown (<select>) that shows the current status (e.g., "Pending", "In Progre
 A small status-dot which also gets its background color from getStatusColor(task.status).
 
 When you say "status is showing on task card with very small text", are you referring to the text displayed within the dropdown itself (e.g., the word "Pending" as the currently selected option)? Or is there another specific text element on the task card displaying the status that you'd like to target for increased size and color?"
+```
 
 **Pro Tip**: The more detailed your responses, the better the final specification will be.
 
