@@ -2,6 +2,12 @@
 
 Samurai Agent is an AI senior engineer that 10x’s your vibe coding — it crafts specs you can drop into Cursor for the exact code on the first try
 
+## 🚀 Samurai Agent Cloud (Coming Soon)
+
+We’re building the SaaS version of Samurai Agent 
+👉 [Join the waitlist here](https://tally.so/r/3yQOJx)
+
+
 ## Tech Stack
 
 - **Frontend**: React + Vite + TypeScript
@@ -88,16 +94,24 @@ This initial setup helps Samurai Agent provide more accurate and contextual reco
 #### Step 2: Describe Your Goal
 Start by describing what you want to implement. You can be as vague or specific as you'd like:
 
-- **Vague**: "I want to add user authentication"
-- **Specific**: "I need a login form with email/password validation and JWT tokens"
+e.g 
+
+"Currently, the status appears on the task card in very small text, so I want to make it larger and color-coded based on the status type."
 
 #### Step 3: Specification Refinement
-Samurai Agent will ask clarifying questions to understand your requirements better. Common questions include:
+Samurai Agent will ask clarifying questions to understand your requirements better. 
 
-- What technologies/frameworks should be used?
-- What's the user experience flow?
-- Are there any specific design requirements?
-- What edge cases should be handled?
+for example
+
+"Excellent! This clarifies your intent to enhance the visual display of the task status on the task cards.
+
+Based on the CompactTaskItem.tsx code context, I see that the task status is currently displayed in a few ways:
+
+An icon (e.g., '📋', '⏳', '✅') which is rendered by <span className="task-status-icon"> and already gets its color from getStatusColor(task.status).
+A dropdown (<select>) that shows the current status (e.g., "Pending", "In Progress", "Completed") and allows changing it. The options themselves contain the status text.
+A small status-dot which also gets its background color from getStatusColor(task.status).
+
+When you say "status is showing on task card with very small text", are you referring to the text displayed within the dropdown itself (e.g., the word "Pending" as the currently selected option)? Or is there another specific text element on the task card displaying the status that you'd like to target for increased size and color?"
 
 **Pro Tip**: The more detailed your responses, the better the final specification will be.
 

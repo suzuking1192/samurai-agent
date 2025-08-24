@@ -406,6 +406,166 @@ def extract_json_from_ai_response(response: str) -> Optional[Dict[str, Any]]:
         return None
 
 
+def extract_useful_info_from_response(response: str, expected_fields: Optional[List[str]] = None) -> Dict[str, Any]:
+    """
+    Extract useful information from AI response even when JSON parsing fails.
+    
+    This function attempts to extract meaningful content from the response
+    using various strategies, ensuring users get some useful information
+    even when the response is malformed.
+    
+    Args:
+        response: The raw AI response
+        expected_fields: Optional list of expected fields for extraction
+        
+    Returns:
+        Dictionary with extracted information and metadata
+    """
+    try:
+        import re
+        
+        # Initialize result with default values
+        result = {
+            "relevance_score": 0,
+            "context": "",
+            "file_path": "",
+            "relevant_code": "",
+            "parsing_issues": []
+        }
+        
+        # Try to extract relevance score
+        score_patterns = [
+            r'"relevance_score"\s*:\s*(\d+)',
+            r'relevance_score\s*:\s*(\d+)',
+            r'relevance[^\d]*(\d+)',
+            r'score[^\d]*(\d+)',
+            r'-\s*relevance_score:\s*(\d+)',  # For bullet point format
+            r'relevance.*?(\d+)',  # More flexible relevance matching
+        ]
+        
+        for pattern in score_patterns:
+            match = re.search(pattern, response, re.IGNORECASE)
+            if match:
+                try:
+                    result["relevance_score"] = int(match.group(1))
+                    break
+                except (ValueError, IndexError):
+                    continue
+        
+        # Try to extract context - use multiple strategies
+        context_patterns = [
+            r'"context"\s*:\s*"([^"]*(?:"[^"]*"[^"]*)*)"',  # Handle some quotes
+            r'"context"\s*:\s*"([^"]+)"',  # Simple quoted context
+            r'context[^:]*:\s*"([^"]+)"',  # Case insensitive
+            r'context[^:]*:\s*([^\n,}]+)',  # Unquoted context
+        ]
+        
+        context_found = False
+        for pattern in context_patterns:
+            match = re.search(pattern, response, re.IGNORECASE | re.DOTALL)
+            if match:
+                context = match.group(1).strip()
+                if len(context) > 10:  # Only use if substantial content
+                    result["context"] = context.replace('\\"', '"')  # Unescape quotes
+                    context_found = True
+                    break
+        
+        # If no structured context found, try to extract meaningful text
+        if not context_found:
+            # Look for descriptive text that might be useful
+            text_patterns = [
+                r'This\s+(?:code|function|method|class|file)[^.]*\.[^.]*\.',
+                r'The\s+(?:code|function|method|class|file)[^.]*\.[^.]*\.',
+                r'(?:implements?|provides?|handles?|manages?)[^.]*\.[^.]*\.',
+            ]
+            
+            for pattern in text_patterns:
+                matches = re.findall(pattern, response, re.IGNORECASE | re.DOTALL)
+                if matches:
+                    result["context"] = " ".join(matches[:3])  # Take first 3 matches
+                    break
+            
+            # If still no context, use the first substantial sentence
+            if not result["context"]:
+                sentences = re.findall(r'[A-Z][^.!?]*[.!?]', response)
+                substantial_sentences = [s for s in sentences if len(s.strip()) > 20]
+                if substantial_sentences:
+                    result["context"] = substantial_sentences[0].strip()
+        
+        # Try to extract file path
+        path_patterns = [
+            r'"file_path"\s*:\s*"([^"]+)"',
+            r'file_path[^:]*:\s*"([^"]+)"',
+            r'file[^:]*:\s*"([^"]+)"',
+            r'path[^:]*:\s*"([^"]+)"',
+            r'([a-zA-Z_][a-zA-Z0-9_]*\.(?:py|js|ts|java|cpp|c|h|rb|php|go|rs))',  # File extensions
+        ]
+        
+        for pattern in path_patterns:
+            match = re.search(pattern, response, re.IGNORECASE)
+            if match:
+                result["file_path"] = match.group(1).strip()
+                break
+        
+        # Try to extract relevant code
+        code_patterns = [
+            (r'"relevant_code"\s*:\s*"([^"]+)"', 1),
+            (r'relevant_code[^:]*:\s*"([^"]+)"', 1),
+            (r'code[^:]*:\s*"([^"]+)"', 1),
+            (r'```(?:python|javascript|typescript|java|cpp|c)?\s*\n(.*?)\n```', 1),  # Code blocks
+            (r'`([^`]+)`', 1),  # Inline code
+            (r'(def\s+\w+\([^)]*\):)', 1),  # Function definitions - capture the whole thing
+            (r'(class\s+\w+[^:]*:)', 1),  # Class definitions - capture the whole thing
+            (r'Here\'s some relevant code:\s*([^\n]+)', 1),  # Explicit code mentions
+            (r'relevant code:\s*([^\n]+)', 1),  # Case insensitive
+        ]
+        
+        for pattern, group_num in code_patterns:
+            match = re.search(pattern, response, re.IGNORECASE | re.DOTALL)
+            if match:
+                try:
+                    code = match.group(group_num).strip()
+                    if len(code) > 5:  # Only use if substantial
+                        result["relevant_code"] = code.replace('\\n', '\n').replace('\\"', '"')
+                        break
+                except IndexError:
+                    continue
+        
+        # If we couldn't extract much useful information, include a portion of the raw response
+        if not result["context"] and not result["relevant_code"]:
+            # Clean up the response and use it as context
+            clean_response = re.sub(r'[{}"\[\]]', '', response)  # Remove JSON artifacts
+            clean_response = re.sub(r'\s+', ' ', clean_response).strip()  # Normalize whitespace
+            if len(clean_response) > 50:
+                result["context"] = clean_response[:500] + ("..." if len(clean_response) > 500 else "")
+                result["parsing_issues"].append("Used raw response as context due to parsing failure")
+        
+        # Add metadata about what we found
+        found_fields = [field for field in ["relevance_score", "context", "file_path", "relevant_code"] 
+                       if result[field]]
+        
+        if expected_fields:
+            missing_fields = [field for field in expected_fields if not result.get(field)]
+            if missing_fields:
+                result["parsing_issues"].append(f"Could not extract: {', '.join(missing_fields)}")
+        
+        # Clean up empty parsing_issues
+        if not result["parsing_issues"]:
+            del result["parsing_issues"]
+        
+        return result
+        
+    except Exception as e:
+        logger.warning(f"Error in fallback information extraction: {e}")
+        return {
+            "relevance_score": 0,
+            "context": "Unable to extract information from response due to parsing errors",
+            "file_path": "",
+            "relevant_code": "",
+            "parsing_issues": [f"Extraction failed: {str(e)}"]
+        }
+
+
 def parse_ai_json_response(response: str, expected_fields: Optional[List[str]] = None) -> Dict[str, Any]:
     """
     Parse AI JSON response with robust error handling and fallback strategies.
@@ -454,6 +614,15 @@ def parse_ai_json_response(response: str, expected_fields: Optional[List[str]] =
         try:
             parsed_data = json.loads(cleaned_json)
             
+            # Check if the parsed data contains an error message from clean_ai_json_response
+            if isinstance(parsed_data, dict) and "error" in parsed_data:
+                logger.warning(f"JSON cleaning returned error: {parsed_data.get('message', 'Unknown error')}")
+                # Instead of returning an error, extract useful information
+                logger.info("Attempting to extract useful information despite JSON parsing issues")
+                extracted_info = extract_useful_info_from_response(response, expected_fields)
+                extracted_info["parsing_notes"] = f"JSON parsing failed: {parsed_data.get('message', 'Unknown error')}"
+                return extracted_info
+            
             # Validate expected fields if provided
             if expected_fields:
                 missing_fields = [field for field in expected_fields if field not in parsed_data]
@@ -471,18 +640,26 @@ def parse_ai_json_response(response: str, expected_fields: Optional[List[str]] =
                 logger.info("Successfully extracted data using fallback method")
                 return fallback_result
             else:
-                return {
-                    "success": False,
-                    "error": "json_parse_failed",
-                    "message": f"Failed to parse AI response: {str(e)}",
-                    "raw_response": response[:500] + "..." if len(response) > 500 else response
-                }
+                # Instead of returning an error, extract useful information
+                logger.info("Attempting to extract useful information despite JSON parsing failure")
+                extracted_info = extract_useful_info_from_response(response, expected_fields)
+                extracted_info["parsing_notes"] = f"JSON parsing failed: {str(e)}"
+                return extracted_info
     
     except Exception as e:
         logger.error(f"Error parsing AI JSON response: {e}")
-        return {
-            "success": False,
-            "error": "unexpected_error",
-            "message": f"Unexpected error: {str(e)}",
-            "raw_response": response[:500] + "..." if len(response) > 500 else response
-        }
+        # Even in case of unexpected errors, try to extract useful information
+        logger.info("Attempting to extract useful information despite unexpected error")
+        try:
+            extracted_info = extract_useful_info_from_response(response, expected_fields)
+            extracted_info["parsing_notes"] = f"Unexpected error during parsing: {str(e)}"
+            return extracted_info
+        except Exception as extraction_error:
+            logger.error(f"Failed to extract information even with fallback method: {extraction_error}")
+            return {
+                "relevance_score": 0,
+                "context": "Unable to extract information from response due to severe parsing errors",
+                "file_path": "",
+                "relevant_code": "",
+                "parsing_notes": f"All parsing methods failed: {str(e)}"
+            }
