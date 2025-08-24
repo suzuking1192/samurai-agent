@@ -1161,7 +1161,7 @@ Reasoning: [Explain your selection process and relevance ordering]
             combined_content = combined_content.replace("{", "{{").replace("}", "}}")
             
             # Step 3: If combined_content is longer than 100000, remove the rest
-            max_content_size = 100000
+            max_content_size = 200000
             if len(combined_content) > max_content_size:
                 logger.info(f"Combined content length ({len(combined_content)}) exceeds {max_content_size}. Truncating to first {max_content_size} characters.")
                 combined_content = combined_content[:max_content_size] + "\n... (truncated due to length)"
@@ -1202,11 +1202,19 @@ Example response format:
 """.format(request=request, combined_content=combined_content)
             
             response = await gemini_service.chat_with_system_prompt("", prompt)
+            logger.info(f"Code context response: {response}")
             
             # Parse AI response using robust utility function
             # Use the utility function to parse the AI response
             expected_fields = ["relevance_score", "context", "file_path"]
             analysis = parse_ai_json_response(response, expected_fields)
+            
+            # Use the first 10000 characters of combined_content as relevant_code
+            # This is more efficient than asking the LLM to extract it
+            relevant_code = combined_content[:50000]
+            if len(combined_content) > 50000:
+                relevant_code += "\n... (truncated to 50000 characters)"
+            
             
             # Check if parsing failed
             if "error" in analysis:
@@ -1215,17 +1223,12 @@ Example response format:
                     "success": False,
                     "message": "❌ Failed to parse code analysis response",
                     "context": None,
-                    "relevant_code": None,
+                    "relevant_code": relevant_code,
                     "file_path": None
                 }
             
             relevance_score = analysis.get("relevance_score", 0)
             
-            # Use the first 10000 characters of combined_content as relevant_code
-            # This is more efficient than asking the LLM to extract it
-            relevant_code = combined_content[:10000]
-            if len(combined_content) > 10000:
-                relevant_code += "\n... (truncated to 10000 characters)"
             
             logger.info(f"Analysis: {analysis}")
             
