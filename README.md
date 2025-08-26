@@ -1,110 +1,121 @@
 # Samurai Agent
 
-Samurai Agent is an AI senior engineer that 10x’s your vibe coding — it crafts specs you can drop into Cursor for the exact code on the first try
+Samurai Agent is an **AI "senior engineer" for vibe coding**.
+Instead of jumping straight into code, it pushes back, asks clarifying questions, and helps you **craft specs you can drop into Cursor (or similar tools) for the exact implementation on the first try**.
+
+Now I’d love **your feedback** — where is it useful, where does it break, what would make you actually use it?
+
+---
+
+## ✨ Why Samurai Agent?
+- **Avoid wasted coding** -> It makes you slow down, think, and spec before you code.
+- **Better AI coding** -> Drop the spec into Cursor/Claude/etc. and usually get the right code first try.
+- **OSS-first** -> Self-hosted, uses your own Gemini API key.
+- **Simple setup** -> No database, just JSON files.
+
+---
 
 ## 🚀 Samurai Agent Cloud (Coming Soon)
-
-We’re building the SaaS version of Samurai Agent 
+We're building a SaaS version for teams.
 👉 [Join the waitlist here](https://tally.so/r/3yQOJx)
 
+---
 
-## Tech Stack
-
+## 🛠️ Tech Stack
 - **Frontend**: React + Vite + TypeScript
 - **Backend**: FastAPI + Python + Gemini AI
-- **Storage**: JSON files (no database)
-- **Development**: Simple npm/pip commands for quick setup
+- **Storage**: JSON files (no DB)
 
-## Quick Start
+---
 
-### Backend Setup
+## ⚡ Quick Start
+
+### 1. Clone repo
+
+```bash
+git clone https://github.com/suzuking1192/samurai-agent.git
+```
+
+### 2. Backend Setup
+
+Copy the example env file and add your key:
+
 ```bash
 cd backend
-
-# Create and activate virtual environment
-python -m venv "samurai-agent"
-source samurai-agent/bin/activate  # Linux/macOS
-# OR on Windows: samurai-agent\Scripts\activate
-
-pip install -r requirements.txt
 cp .env.example .env
-# Add your GEMINI_API_KEY to .env
-# If .env.example is missing, create a new .env file manually
-uvicorn main:app --reload
 ```
 
-#### Run Backend with Docker
+Get a Gemini API key: [Google AI Studio](https://aistudio.google.com/app/apikey)
 
-Alternatively, you can run the backend using Docker Compose:
-
-```bash
-docker compose up --build
-```
-
-The backend will be available at `http://localhost:8000`.
-
-### Get a Gemini API key (brief)
-
-- Visit Google AI Studio: [Create API key](https://aistudio.google.com/app/apikey)
-- Sign in, click "Create API key", and copy the key
-- Add it to your `.env` as:
+Add it to `.env`:
 
 ```bash
 GEMINI_API_KEY=your_key_here
 ```
 
+Run with Docker:
 
-### Frontend Setup
+```bash
+docker compose up --build
+```
+
+Or without Docker:
+
+```bash
+cd backend
+python -m venv samurai-agent
+# Linux/macOS:
+source samurai-agent/bin/activate
+# Windows (PowerShell):
+# .\samurai-agent\Scripts\Activate.ps1
+pip install -r requirements.txt
+uvicorn main:app --reload
+```
+
+### 3. Frontend Setup
+
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
 
-The backend will run on `http://localhost:8000` and the frontend on `http://localhost:5173`.
+- Backend -> http://localhost:8000
+- Frontend -> http://localhost:5173
 
-## Project Structure
+---
 
+## 🏃 How to Use
+
+1. **Add Project Details + Codebase** -> Gives context to Samurai Agent.
+2. **Start a New Conversation** for each task -> keeps context clean.
+3. **Describe Your Goal** (vague or specific).
+4. **Refine Spec** -> Agent asks clarifying questions.
+5. **Generate Tasks** -> Click "Create Tasks" -> structured breakdown appears.
+6. **Copy to Cursor** -> Tasks are spec-ready for AI coding assistants.
+
+---
+
+## 🙏 Feedback Wanted
+This is still early. I’d love feedback on:
+- Does this workflow fit your coding style?
+- Where does it help, and where does it feel unnecessary?
+- What would make you use this day-to-day?
+
+---
+
+## 🎬 Demo
+
+**Users could say**
+
+```text
+Currently, the status appears on the task card in very small text, so I want to make it larger and color-coded based on the status type.
 ```
-samurai-agent/
-├── frontend/          # React + Vite + TypeScript frontend
-├── backend/           # FastAPI + Python backend
-```
 
-# How to Use Samurai Agent
+**Samurai Agent replies**
 
-## 🚀 Getting Started
-
-### 1. Initial Project Setup
-After launching Samurai Agent, start by providing context about your project:
-
-1. **Add Project Details**: Click the "Add Project Detail and Codebase" button at the top of the interface
-2. **Connect Your Codebase**: Let Samurai Agent scan your existing code to understand the current architecture and patterns
-
-This initial setup helps Samurai Agent provide more accurate and contextual recommendations.
-
-### 2. Working with Samurai Agent
-
-#### Step 1: Start Fresh for New Tasks
-**Important**: When you want to work on a new task or feature, always click the **"Start New Conversation"** button first. This ensures:
-- Clean context for your new request
-- Better focus on the current task
-- Avoids confusion from previous discussions
-
-#### Step 2: Describe Your Goal
-Start by describing what you want to implement. You can be as vague or specific as you'd like:
-
-e.g 
-
-"Currently, the status appears on the task card in very small text, so I want to make it larger and color-coded based on the status type."
-
-#### Step 3: Specification Refinement
-Samurai Agent will ask clarifying questions to understand your requirements better. 
-
-for example
-
-```
-"Excellent! This clarifies your intent to enhance the visual display of the task status on the task cards.
+```text
+Excellent! This clarifies your intent to enhance the visual display of the task status on the task cards.
 
 Based on the CompactTaskItem.tsx code context, I see that the task status is currently displayed in a few ways:
 
@@ -112,19 +123,25 @@ An icon (e.g., '📋', '⏳', '✅') which is rendered by <span className="task-
 A dropdown (<select>) that shows the current status (e.g., "Pending", "In Progress", "Completed") and allows changing it. The options themselves contain the status text.
 A small status-dot which also gets its background color from getStatusColor(task.status).
 
-When you say "status is showing on task card with very small text", are you referring to the text displayed within the dropdown itself (e.g., the word "Pending" as the currently selected option)? Or is there another specific text element on the task card displaying the status that you'd like to target for increased size and color?"
+When you say "status is showing on task card with very small text", are you referring to the text displayed within the dropdown itself (e.g., the word "Pending" as the currently selected option)? Or is there another specific text element on the task card displaying the status that you'd like to target for increased size and color?
 ```
 
-**Pro Tip**: The more detailed your responses, the better the final specification will be.
+**Generated sub-task example**
 
-#### Step 4: Task Generation
-Once you've provided sufficient information:
-
-1. Click the **"Create Tasks Based on Discussion"** button at the bottom of the chat
-2. Samurai Agent will automatically generate a structured task breakdown in the right sidebar
-3. Each task includes detailed specifications ready for implementation
-
-#### Step 5: Implementation
-- **View Task Details**: Click on any task to see its full description and sub-tasks
-- **Copy to Cursor**: The task descriptions are formatted to be copy-pasted directly into Cursor or any AI coding assistant
-- **Follow the Flow**: Tasks are organized in logical order - start with the first task and work your way down
+```text
+Context: To enable visual styling, this task ensures the current `task.status` value is explicitly rendered as a visible text label within the `CompactTaskItem`'s header, distinct from the icon and title. This addresses the user's request to modify the appearance of an 'already existing' status text.
+Implementation Steps:
+  - Step 1: Investigate `frontend/src/components/CompactTaskItem.tsx` to identify any existing HTML element that currently renders the raw `task.status` value (e.g., 'Pending', 'In Progress') as text within the `item-header` (excluding the dropdown `<select>` element). This addresses the user's assertion that the text 'is already there'.
+  - Step 2: If a distinct text element for `task.status` is identified, apply a new class name, for example, `task-status-text-label`, to it to allow for styling. If no such distinct element is found, introduce a new `<span>` element within the `item-header`, preferably next to the `task-status-icon`, and render the `task.status` string value (e.g., `{{task.status}}`) inside it, assigning the `task-status-text-label` class.
+Frontend UI Spec:
+  - Screens/Components: `CompactTaskItem.tsx` (`/Users/yutosuzuki/code/samurai-agent/frontend/src/components/CompactTaskItem.tsx`)
+  - Layout & Responsive: The status text label should appear within the `item-header` alongside the existing icon and title elements.
+  - Visual Spec: Display the string value of `task.status` (e.g., 'PENDING', 'IN_PROGRESS', 'COMPLETED') as text.
+Code Changes:
+  - Frontend: Modify `frontend/src/components/CompactTaskItem.tsx` to either update an existing element or add a new `<span>` element for the status text.
+Tests:
+  - Unit/Integration: Add or update a test in `CompactTaskItem.test.tsx` to confirm the status text label is rendered in the header and contains the correct `task.status` string.
+Acceptance Criteria:
+  - The `CompactTaskItem` prominently displays the `task.status` as text (e.g., 'PENDING', 'IN_PROGRESS', 'COMPLETED') in its header area.
+  - The displayed status text is contained within a distinct HTML element (e.g., `<span>`) that can be targeted by CSS using the `task-status-text-label` class.
+```
