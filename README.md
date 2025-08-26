@@ -3,15 +3,85 @@
 Samurai Agent is an **AI "senior engineer" for vibe coding**.
 Instead of jumping straight into code, it pushes back, asks clarifying questions, and helps you **craft specs you can drop into Cursor (or similar tools) for the exact implementation on the first try**.
 
-Now I’d love **your feedback** — where is it useful, where does it break, what would make you actually use it?
+Now I'd love **your feedback** — where is it useful, where does it break, what would make you actually use it?
+
+![Samurai Agent Screenshot](samurai-agent-screenshot.png)
+
+---
+
+## 🚨 Problems We Solve
+
+If you’ve tried vibe coding with AI, you’ve probably run into this:  
+
+- The AI makes **aggressive assumptions** and generates lots of unnecessary code.  
+- It **ignores existing functions** and writes new ones from scratch.  
+- You end up **spending all day fixing and debugging** the AI’s output — instead of shipping features.  
+
+I was one of those frustrated devs. That’s why I built **Samurai Agent**.  
+
+---
+
+## 🛠️ Our Solution
+
+AI coding tools like Cursor are already powerful. The real issue?  
+They need **very precise instructions**.  
+
+Instead of saying:  
+> *“Add a button”*  
+
+You really need to say:  
+> *“Add a button inside `TaskList.tsx`, under the existing `renderFooter()` method”*  
+
+Otherwise, the AI fills in the blanks with bad assumptions.  
+
+Samurai Agent helps you **bridge that gap** — it asks clarifying questions and turns vague requests into **concrete specs** you can drop directly into your coding tool.  
+
+---
+
+## ✨ How This Changes the Workflow
+
+**Old way (with AI coding tools today):**  
+- AI writes code → you spend **hours debugging and fixing** unintended assumptions.  
+
+**New way (with Samurai Agent):**  
+- Spend **10 minutes planning** with Samurai Agent (clarifying scope & writing a spec).  
+- AI coding tool writes the code.  
+- You spend **less than an hour** fine-tuning instead of all day debugging.  
+
+---
+
+## ⚙️ How Our Technology Works
+
+**1. Context Engineering**  
+Samurai Agent extracts only the context it needs, so the AI can reason about your actual project instead of hallucinating:  
+- **Codebase access** → reads the relevant files/functions.  
+- **Project details** → you can feed documentation, which is continuously updated.  
+- **Structured memory** → a software-engineering-specific memory format to keep track of design decisions.  
+
+**2. Agentic Flow**  
+- Analyze user intent.  
+- Push back with clarifying questions.  
+- Generate a structured spec (tasks, steps, acceptance criteria).  
+
+**3. Tool Calling**  
+- Automatically creates tasks in the sidebar.  
+- Each task comes with a **crafted prompt/spec** you can copy into Cursor/Claude/etc.  
 
 ---
 
 ## ✨ Why Samurai Agent?
-- **Avoid wasted coding** -> It makes you slow down, think, and spec before you code.
-- **Better AI coding** -> Drop the spec into Cursor/Claude/etc. and usually get the right code first try.
-- **OSS-first** -> Self-hosted, uses your own Gemini API key.
-- **Simple setup** -> No database, just JSON files.
+
+**Compared to ChatGPT / foundational LLMs**  
+- Has **real codebase context** → asks smarter questions, writes better specs.  
+
+**Compared to Cursor / Cline / Claude Code**  
+- Doesn’t just break down tasks.  
+- **Pushes back like a senior engineer** → guiding you toward solid implementation decisions based on your actual code.  
+
+---
+
+👉 With Samurai Agent, you don’t waste time fixing AI’s bad guesses.  
+You spend time building.  
 
 ---
 
