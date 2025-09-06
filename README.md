@@ -9,6 +9,11 @@ Now I'd love **your feedback** — where is it useful, where does it break, what
 
 ---
 
+## 🚀 Samurai Agent Cloud (Coming Soon)
+We're building a SaaS version for teams.
+👉 [Join the waitlist here](https://tally.so/r/3yQOJx)
+
+
 ## 🚨 Problems We Solve
 
 If you’ve tried vibe coding with AI, you’ve probably run into this:  
@@ -83,11 +88,6 @@ Samurai Agent extracts only the context it needs, so the AI can reason about you
 👉 With Samurai Agent, you don’t waste time fixing AI’s bad guesses.  
 You spend time building.  
 
----
-
-## 🚀 Samurai Agent Cloud (Coming Soon)
-We're building a SaaS version for teams.
-👉 [Join the waitlist here](https://tally.so/r/3yQOJx)
 
 ---
 
@@ -133,11 +133,11 @@ Or without Docker:
 
 ```bash
 cd backend
-python -m venv samurai-agent
+python -m venv .venv
 # Linux/macOS:
-source samurai-agent/bin/activate
+source .venv/bin/activate
 # Windows (PowerShell):
-# .\samurai-agent\Scripts\Activate.ps1
+# .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 uvicorn main:app --reload
 ```
