@@ -1,102 +1,100 @@
-# Samurai Agent
-
-Samurai Agent is an **AI "senior engineer" for vibe coding**.
-Instead of jumping straight into code, it pushes back, asks clarifying questions, and helps you **craft specs you can drop into Cursor (or similar tools) for the exact implementation on the first try**.
-
-Now I'd love **your feedback** — where is it useful, where does it break, what would make you actually use it?
+# Samurai Agent 
+AI tool for spec-driven development that debugs requirements to prevent messy AI-generated code.
 
 ![Samurai Agent Screenshot](samurai-agent-screenshot.png)
+![Samurai Agent Screenshot Task](samurai-agent-screenshot-task.png)
 
 ---
 
-## 🚀 Samurai Agent Cloud (Coming Soon)
-We're building a SaaS version for teams.
-👉 [Join the waitlist here](https://tally.so/r/3yQOJx)
+## 🚀 SaaS Version Coming Soon 
+Love the concept but want a hosted solution? 
 
+We're building Samurai Agent Cloud with: 
 
-## 🚨 Problems We Solve
+- Advanced AI Agent (Better and faster)
+- No local setup required  
+- More integrations (Jira, GitHub, Slack)
 
-If you’ve tried vibe coding with AI, you’ve probably run into this:  
-
-- The AI makes **aggressive assumptions** and generates lots of unnecessary code.  
-- It **ignores existing functions** and writes new ones from scratch.  
-- You end up **spending all day fixing and debugging** the AI’s output — instead of shipping features.  
-
-I was one of those frustrated devs. That’s why I built **Samurai Agent**.  
+👉 [Join the waitlist](https://tally.so/r/3yQOJx)
 
 ---
 
-## 🛠️ Our Solution
+## Why We Built This
 
-AI coding tools like Cursor are already powerful. The real issue?  
-They need **very precise instructions**.  
+We were frustrated spending hours fixing messy AI-generated code. We kept wishing AI tools could write the code we actually wanted on the first try.
 
-Instead of saying:  
-> *“Add a button”*  
+Then we had a realization: the problem wasn't the AI coding agents—it was our planning process. Vague requirements inevitably lead to vague code, regardless of how sophisticated the AI is.
 
-You really need to say:  
-> *“Add a button inside `TaskList.tsx`, under the existing `renderFooter()` method”*  
+We knew spec-driven development could solve this, but existing tools either generate generic templates or assume you already know what you want to build. We needed something that would systematically debug our requirements before we started coding.
 
-Otherwise, the AI fills in the blanks with bad assumptions.  
+So we built Samurai Agent.
 
-Samurai Agent helps you **bridge that gap** — it asks clarifying questions and turns vague requests into **concrete specs** you can drop directly into your coding tool.  
+*We're actively developing this and would love your feedback in our issue.*
 
 ---
 
-## ✨ How This Changes the Workflow
+## How We Solve the Messy AI Code Problem
 
-**Old way (with AI coding tools today):**  
-- AI writes code → you spend **hours debugging and fixing** unintended assumptions.  
+We debug specifications before code gets written.
 
-**New way (with Samurai Agent):**  
-- Spend **10 minutes planning** with Samurai Agent (clarifying scope & writing a spec).  
-- AI coding tool writes the code.  
-- You spend **less than an hour** fine-tuning instead of all day debugging.  
+Vague specifications force AI to make assumptions, leading to code that works but solves the wrong problem. Samurai Agent analyzes your codebase and systematically identifies ambiguities, missing requirements, and potential conflicts before you start coding.
 
----
+**The difference:**
 
-## ⚙️ How Our Technology Works
+❌ Vague spec: *"Add a button"*
+- AI doesn't know where, what it does, or how it fits with existing code
 
-**1. Context Engineering**  
-Samurai Agent extracts only the context it needs, so the AI can reason about your actual project instead of hallucinating:  
-- **Codebase access** → reads the relevant files/functions.  
-- **Project details** → you can feed documentation, which is continuously updated.  
-- **Structured memory** → a software-engineering-specific memory format to keep track of design decisions.  
+✅ Debugged spec: *"Add a 'Create Task' button in `TaskList.tsx`, positioned below the existing task grid, that opens the NewTaskModal component when clicked"*
+- Clear location, functionality, and integration points
 
-**2. Agentic Flow**  
-- Analyze user intent.  
-- Push back with clarifying questions.  
-- Generate a structured spec (tasks, steps, acceptance criteria).  
-
-**3. Tool Calling**  
-- Automatically creates tasks in the sidebar.  
-- Each task comes with a **crafted prompt/spec** you can copy into Cursor/Claude/etc.  
+Our agent asks targeted questions about edge cases, dependencies, and implementation details until your specification is precise enough that any AI tool will generate exactly what you want.
 
 ---
 
-## ✨ Why Samurai Agent?
+## ✨ How This Changes Your Workflow
 
-**Compared to ChatGPT / foundational LLMs**  
-- Has **real codebase context** → asks smarter questions, writes better specs.  
+**Old way (with AI coding tools today):**
+1. Give vague instructions to AI
+2. AI makes assumptions and writes code
+3. Spend hours debugging unintended behavior
+4. Repeat until it works
 
-**Compared to Cursor / Cline / Claude Code**  
-- Doesn’t just break down tasks.  
-- **Pushes back like a senior engineer** → guiding you toward solid implementation decisions based on your actual code.  
+**New way (with Samurai Agent):**
+1. Spend 10-15 minutes clarifying requirements with Samurai Agent
+2. Get precise specifications with implementation details
+3. Copy the spec and paste it into any AI coding tool (Cursor, Copilot, Claude, etc.)
+4. Get working code that matches your intent
+
+**Result:** Less time fixing, more time building.
+
+---
+
+## 🔄 Works with Your Existing Tools
+
+Samurai Agent doesn't replace your favorite AI coding tools - it makes them work better. Simply copy the refined specifications and paste them into:
+- Cursor
+- GitHub Copilot  
+- Claude Code
+- Or any AI coding assistant
 
 ---
 
-👉 With Samurai Agent, you don’t waste time fixing AI’s bad guesses.  
-You spend time building.  
+## ✨ What Makes Samurai Agent Different?
+
+**vs. ChatGPT / General LLMs**
+- Samurai Agent has codebase context and software engineering-specific knowledge
+- Systematically probes for missing requirements instead of just answering questions
+
+**vs. Cursor/Cline Planning Mode**
+- They break down what you tell them, but don't challenge unclear requirements
+- Samurai Agent actively identifies flaws in your specifications using codebase analysis
+- Pushes back with targeted questions instead of accepting vague inputs
+
+**vs. Traditional Planning Tools**
+- Most tools generate generic templates or accept whatever you input
+- Samurai Agent forces specification clarity through systematic questioning
 
 
----
-
-## 🛠️ Tech Stack
-- **Frontend**: React + Vite + TypeScript
-- **Backend**: FastAPI + Python + Gemini AI
-- **Storage**: JSON files (no DB)
-
----
 
 ## ⚡ Quick Start
 
@@ -157,61 +155,20 @@ npm run dev
 
 ## 🏃 How to Use
 
-1. **Add Project Details + Codebase** -> Gives context to Samurai Agent.
-2. **Start a New Conversation** for each task -> keeps context clean.
-3. **Describe Your Goal** (vague or specific).
-4. **Refine Spec** -> Agent asks clarifying questions.
-5. **Generate Tasks** -> Click "Create Tasks" -> structured breakdown appears.
-6. **Copy to Cursor** -> Tasks are spec-ready for AI coding assistants.
+### 1. Create a New Project
+- Click "Create Project" and give it a name
+- Add project documentation if available (helps Samurai Agent understand your codebase)
+- Connect your codebase folder (only folder structure is saved, not file contents)
+- You can update project details anytime using the button at the top
 
----
+### 2. Start a New Conversation
+Click "Start New Conversation" for each feature you want to plan. This keeps the context focused on one task at a time.
 
-## 🙏 Feedback Wanted
-This is still early. I’d love feedback on:
-- Does this workflow fit your coding style?
-- Where does it help, and where does it feel unnecessary?
-- What would make you use this day-to-day?
+### 3. Describe Your Feature
+Tell Samurai Agent what you want to build. If your request is too broad, it will ask you to narrow the scope first. Once focused, it will systematically ask clarifying questions to debug your requirements.
 
----
+### 4. Generate Tasks
+When the discussion feels complete (or Samurai Agent stops asking questions), click "Create tasks based on discussion so far" at the bottom of the chat. This generates structured tasks in the right sidebar.
 
-## 🎬 Demo
-
-**Users could say**
-
-```text
-Currently, the status appears on the task card in very small text, so I want to make it larger and color-coded based on the status type.
-```
-
-**Samurai Agent replies**
-
-```text
-Excellent! This clarifies your intent to enhance the visual display of the task status on the task cards.
-
-Based on the CompactTaskItem.tsx code context, I see that the task status is currently displayed in a few ways:
-
-An icon (e.g., '📋', '⏳', '✅') which is rendered by <span className="task-status-icon"> and already gets its color from getStatusColor(task.status).
-A dropdown (<select>) that shows the current status (e.g., "Pending", "In Progress", "Completed") and allows changing it. The options themselves contain the status text.
-A small status-dot which also gets its background color from getStatusColor(task.status).
-
-When you say "status is showing on task card with very small text", are you referring to the text displayed within the dropdown itself (e.g., the word "Pending" as the currently selected option)? Or is there another specific text element on the task card displaying the status that you'd like to target for increased size and color?
-```
-
-**Generated sub-task example**
-
-```text
-Context: To enable visual styling, this task ensures the current `task.status` value is explicitly rendered as a visible text label within the `CompactTaskItem`'s header, distinct from the icon and title. This addresses the user's request to modify the appearance of an 'already existing' status text.
-Implementation Steps:
-  - Step 1: Investigate `frontend/src/components/CompactTaskItem.tsx` to identify any existing HTML element that currently renders the raw `task.status` value (e.g., 'Pending', 'In Progress') as text within the `item-header` (excluding the dropdown `<select>` element). This addresses the user's assertion that the text 'is already there'.
-  - Step 2: If a distinct text element for `task.status` is identified, apply a new class name, for example, `task-status-text-label`, to it to allow for styling. If no such distinct element is found, introduce a new `<span>` element within the `item-header`, preferably next to the `task-status-icon`, and render the `task.status` string value (e.g., `{{task.status}}`) inside it, assigning the `task-status-text-label` class.
-Frontend UI Spec:
-  - Screens/Components: `CompactTaskItem.tsx` (`/Users/yutosuzuki/code/samurai-agent/frontend/src/components/CompactTaskItem.tsx`)
-  - Layout & Responsive: The status text label should appear within the `item-header` alongside the existing icon and title elements.
-  - Visual Spec: Display the string value of `task.status` (e.g., 'PENDING', 'IN_PROGRESS', 'COMPLETED') as text.
-Code Changes:
-  - Frontend: Modify `frontend/src/components/CompactTaskItem.tsx` to either update an existing element or add a new `<span>` element for the status text.
-Tests:
-  - Unit/Integration: Add or update a test in `CompactTaskItem.test.tsx` to confirm the status text label is rendered in the header and contains the correct `task.status` string.
-Acceptance Criteria:
-  - The `CompactTaskItem` prominently displays the `task.status` as text (e.g., 'PENDING', 'IN_PROGRESS', 'COMPLETED') in its header area.
-  - The displayed status text is contained within a distinct HTML element (e.g., `<span>`) that can be targeted by CSS using the `task-status-text-label` class.
-```
+### 5. Copy to AI Coding Tools
+Click "View Details" on any task to see the complete specification. Use the copy button to paste these specs directly into Cursor, Copilot, or any AI coding assistant.
