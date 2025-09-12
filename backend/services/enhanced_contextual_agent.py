@@ -16,7 +16,7 @@ from datetime import datetime
 
 try:
     from .agent_tools import AgentToolRegistry
-    from .gemini_service import GeminiService
+    from .llm_provider_service import llm_provider_service
     from .context_service import ContextSelectionService
     from models import Task, Memory, Project
 except ImportError:
@@ -24,7 +24,7 @@ except ImportError:
     import os
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from agent_tools import AgentToolRegistry
-    from gemini_service import GeminiService
+    from llm_provider_service import llm_provider_service
     from context_service import ContextSelectionService
     from models import Task, Memory, Project
 
@@ -35,7 +35,7 @@ class ContextUnderstandingService:
     """Service for extracting and understanding conversation context"""
     
     def __init__(self):
-        self.gemini_service = GeminiService()
+        self.llm_provider_service = llm_provider_service
     
     async def extract_conversation_context(self, conversation_history: List[Dict]) -> Dict:
         """
@@ -82,7 +82,8 @@ class ContextUnderstandingService:
         """
         
         try:
-            response = await self.gemini_service.chat_with_system_prompt(context_prompt, "You are a context analysis assistant. Return only valid JSON.")
+            llm_service = self.llm_provider_service.get_default_llm_service()
+            response = await llm_service.chat_with_system_prompt(context_prompt, "You are a context analysis assistant. Return only valid JSON.")
             return json.loads(response)
         except Exception as e:
             logger.error(f"Context extraction error: {e}")
@@ -147,7 +148,8 @@ class ContextUnderstandingService:
         """
         
         try:
-            response = await self.gemini_service.chat_with_system_prompt(detection_prompt, "You are a tool detection assistant. Return only valid JSON.")
+            llm_service = self.llm_provider_service.get_default_llm_service()
+            response = await llm_service.chat_with_system_prompt(detection_prompt, "You are a tool detection assistant. Return only valid JSON.")
             return json.loads(response)
         except Exception as e:
             logger.error(f"Tool detection error: {e}")
@@ -160,9 +162,9 @@ class EnhancedContextualAgent:
     """
     
     def __init__(self):
-        self.tool_registry = AgentToolRegistry()
+        self.tool_registry = AgentToolRegistry(llm_provider_service)
         self.context_service = ContextUnderstandingService()
-        self.gemini_service = GeminiService()
+        self.llm_provider_service = llm_provider_service
     
     async def process_message_with_context(self, user_message: str, conversation_history: List[Dict], 
                                          project_id: str, memories: List[Dict], tasks: List[Dict]) -> Dict:

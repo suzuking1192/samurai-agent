@@ -4,6 +4,7 @@ import logging
 import asyncio
 from datetime import datetime
 from dotenv import load_dotenv
+from .llm_abstract_service import AbstractLLMService
 
 # Load environment variables
 load_dotenv()
@@ -11,52 +12,51 @@ load_dotenv()
 # Setup logging
 logger = logging.getLogger(__name__)
 
-class GeminiService:
+class GeminiService(AbstractLLMService):
     def __init__(self):
-        # Configure Gemini with graceful fallback for local/dev/test
-        self.api_key = os.getenv("GEMINI_API_KEY")
-        self.use_mock = os.getenv("SAMURAI_USE_MOCK_LLM") == "1"
-        self.is_key_valid = self._validate_api_key()
-        
-        # Load cost configuration
-        self.input_cost_per_m_tokens = float(os.getenv("GEMINI_INPUT_COST_PER_M_TOKENS", "0.30"))
-        self.output_cost_per_m_tokens = float(os.getenv("GEMINI_OUTPUT_COST_PER_M_TOKENS", "2.50"))
+        """Initialize the Gemini service."""
+        super().__init__(
+            provider_name="Gemini",
+            api_key_env_var="GEMINI_API_KEY",
+            models_env_var="GEMINI_MODELS",
+            input_cost_env_var="GEMINI_INPUT_COST_PER_M_TOKENS",
+            output_cost_env_var="GEMINI_OUTPUT_COST_PER_M_TOKENS"
+        )
 
+    def _initialize_client(self):
+        """Initialize the Gemini client."""
         if self.use_mock:
-            logger.warning("SAMURAI_USE_MOCK_LLM=1 detected. Using mock LLM model for responses.")
-            
-            class _DummyResponse:
-                def __init__(self, text: str):
-                    self.text = text
-                    self.usage_metadata = None
-
-            class _DummyClient:
-                def models(self):
-                    class _DummyModels:
-                        def generate_content(self, model: str, contents: list):
-                            # Return a fast, deterministic mock response
-                            preview = contents[0]["parts"][0]["text"] if contents and contents[0].get("parts") else ""
-                            if len(preview) > 120:
-                                preview = preview[:120] + "..."
-                            return _DummyResponse(text=f"[mock-ai] {preview if preview else 'OK'}")
-                    return _DummyModels()
-
-            self.client = _DummyClient()
-            logger.info("Gemini service initialized with mock client")
+            return self._create_mock_client()
         elif self.is_key_valid:
-            self.client = genai.Client(api_key=self.api_key)
-            logger.info("Gemini service initialized successfully")
+            return genai.Client(api_key=self.api_key)
         else:
-            logger.warning("GEMINI_API_KEY not set or invalid. Service will return warning messages.")
-            self.client = None
+            return None
+    
+    def _create_mock_client(self):
+        """Create a mock Gemini client for testing."""
+        class _DummyResponse:
+            def __init__(self, text: str):
+                self.text = text
+                self.usage_metadata = None
 
-    def _validate_api_key(self) -> bool:
-        """Check if the API key is valid and available."""
-        return bool(self.api_key and len(self.api_key) > 10)
+        class _DummyClient:
+            def __init__(self, service):
+                self.service = service
+            
+            def models(self):
+                class _DummyModels:
+                    def __init__(self, service):
+                        self.service = service
+                    
+                    def generate_content(self, model: str, contents: list):
+                        # Return a fast, deterministic mock response
+                        preview = contents[0]["parts"][0]["text"] if contents and contents[0].get("parts") else ""
+                        if len(preview) > 120:
+                            preview = preview[:120] + "..."
+                        return _DummyResponse(text=self.service._create_mock_response(preview))
+                return _DummyModels(self.service)
 
-    def is_api_key_valid(self) -> bool:
-        """Return whether the API key is valid and the service can make real API calls."""
-        return self.is_key_valid and not self.use_mock
+        return _DummyClient(self)
 
     async def chat(self, message: str, context: str = "", project_id: str = None) -> str:
         """
@@ -86,7 +86,7 @@ class GeminiService:
             # Offload blocking SDK call to a background thread to avoid blocking the event loop
             response = await asyncio.to_thread(
                 self.client.models.generate_content,
-                model="gemini-2.5-flash",
+                model=self.default_model,
                 contents=contents
             )
             
@@ -103,7 +103,7 @@ class GeminiService:
                 logger.debug(f"Token usage - Input: {input_tokens}, Output: {output_tokens}, Cost: ${cost:.6f}")
             
             # Automatically save cost tracking
-            self._save_llm_call_record(input_tokens, output_tokens, cost, project_id)
+            self._save_llm_call_record(input_tokens, output_tokens, cost, project_id, self.default_model)
             
             return response.text
             
@@ -136,7 +136,7 @@ class GeminiService:
             # Offload blocking SDK call to a background thread to avoid blocking the event loop
             response = await asyncio.to_thread(
                 self.client.models.generate_content,
-                model="gemini-2.5-flash",
+                model=self.default_model,
                 contents=contents
             )
             
@@ -153,7 +153,7 @@ class GeminiService:
                 logger.debug(f"Token usage - Input: {input_tokens}, Output: {output_tokens}, Cost: ${cost:.6f}")
             
             # Automatically save cost tracking
-            self._save_llm_call_record(input_tokens, output_tokens, cost, project_id)
+            self._save_llm_call_record(input_tokens, output_tokens, cost, project_id, self.default_model)
             
             return response.text
             
@@ -162,52 +162,6 @@ class GeminiService:
             return f"I'm having trouble processing that request. Please try again."
 
     # Intentionally keep LLM surface minimal here; orchestration lives in dedicated services.
-
-    def _calculate_llm_cost(self, input_tokens: int, output_tokens: int) -> float:
-        """
-        Calculate the cost for an LLM call based on token usage.
-        
-        Args:
-            input_tokens: Number of input tokens used
-            output_tokens: Number of output tokens generated
-            
-        Returns:
-            Calculated cost in dollars
-        """
-        input_cost = (input_tokens / 1_000_000) * self.input_cost_per_m_tokens
-        output_cost = (output_tokens / 1_000_000) * self.output_cost_per_m_tokens
-        return input_cost + output_cost
-    
-    def _save_llm_call_record(self, input_tokens: int, output_tokens: int, cost: float, project_id: str = None) -> None:
-        """
-        Save LLM call record to daily usage file.
-        
-        Args:
-            input_tokens: Number of input tokens used
-            output_tokens: Number of output tokens generated  
-            cost: Calculated cost for the call
-            project_id: Project ID if available
-        """
-        try:
-            # Save record even if token counts are 0 (for tracking purposes)
-            # This allows us to track usage even when the API doesn't provide token metadata
-            from models import LLMCallRecord
-            from services.file_service import file_service
-            
-            record = LLMCallRecord(
-                timestamp=datetime.now(),
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                cost=cost,
-                project_id=project_id or "unknown",
-                model_name="gemini-2.5-flash"
-            )
-            
-            file_service.save_llm_call_record(record)
-            logger.debug(f"Saved LLM call record: {input_tokens} input, {output_tokens} output, ${cost:.6f}")
-        except Exception as e:
-            logger.error(f"Failed to save LLM call record: {e}")
-            # Don't raise - cost tracking failure shouldn't break the main functionality
 
     def _safe_ai_call(self, prompt: str) -> str:
         """Make AI call with error handling (synchronous)"""
@@ -218,7 +172,7 @@ class GeminiService:
         try:
             contents = [{"parts": [{"text": prompt}]}]
             response = self.client.models.generate_content(
-                model="gemini-2.5-flash",
+                model=self.default_model,
                 contents=contents
             )
             return response.text

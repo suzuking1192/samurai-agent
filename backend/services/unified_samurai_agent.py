@@ -15,7 +15,6 @@ from typing import List, Dict, Optional, Any, Callable
 from dataclasses import dataclass
 
 try:
-    from .gemini_service import GeminiService
     from .file_service import FileService
     from .memory_categorization import detect_memory_category, generate_category_specific_title
     from .consolidated_memory import ConsolidatedMemoryService
@@ -23,12 +22,13 @@ try:
     from .agent_tools import AgentToolRegistry
     from .response_generator import ResponseGenerator, ResponseContext
     from .code_context_storage import code_context_storage
+    from .llm_provider_service import llm_provider_service
+    from .project_settings_service import ProjectSettingsService
     from models import Task, Memory, Project, MemoryCategory, ChatMessage, UserIntentEnum
 except ImportError:
     import sys
     import os
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from gemini_service import GeminiService
     from file_service import FileService
     from memory_categorization import detect_memory_category, generate_category_specific_title
     from consolidated_memory import ConsolidatedMemoryService
@@ -36,6 +36,8 @@ except ImportError:
     from agent_tools import AgentToolRegistry
     from response_generator import ResponseGenerator, ResponseContext
     from code_context_storage import code_context_storage
+    from llm_provider_service import llm_provider_service
+    from project_settings_service import ProjectSettingsService
     from models import Task, Memory, Project, MemoryCategory, ChatMessage, UserIntentEnum
 
 logger = logging.getLogger(__name__)
@@ -79,11 +81,12 @@ class UnifiedSamuraiAgent:
     """
     
     def __init__(self):
-        self.gemini_service = GeminiService()
+        self.llm_provider_service = llm_provider_service
+        self.project_settings_service = ProjectSettingsService()
         self.file_service = FileService()
-        self.tool_registry = AgentToolRegistry()
+        self.tool_registry = AgentToolRegistry(self.llm_provider_service)
         self.consolidated_memory_service = ConsolidatedMemoryService()
-        self.response_generator = ResponseGenerator()
+        self.response_generator = ResponseGenerator(self.llm_provider_service)
         
         # Memory management configuration
         self.memory_update_triggers = [
@@ -97,6 +100,41 @@ class UnifiedSamuraiAgent:
         
         logger.info("UnifiedSamuraiAgent initialized with smart memory management and dynamic response generation")
     
+    def _get_llm_service(self, project_id: str, llm_model_id: Optional[str] = None):
+        """
+        Get the appropriate LLM service for the given model ID or project default.
+        
+        Args:
+            project_id: The project ID
+            llm_model_id: Optional specific model ID to use
+            
+        Returns:
+            The appropriate LLM service instance
+        """
+        # If no specific model ID provided, get the project's selected model
+        if not llm_model_id:
+            llm_model_id = self.project_settings_service.get_selected_llm_model(project_id)
+        
+        # If still no model ID, try to get a default from available providers
+        if not llm_model_id:
+            # Try to get default models from each provider in order of preference
+            for provider_name in ['gemini', 'openai', 'claude']:
+                default_model = self.llm_provider_service.get_default_model_for_provider(provider_name)
+                if default_model:
+                    llm_model_id = default_model
+                    break
+        
+        # Get the service for the model
+        if llm_model_id:
+            service = self.llm_provider_service.get_llm_service_by_model_id(llm_model_id)
+            if service:
+                logger.debug(f"Using LLM service for model: {llm_model_id}")
+                return service
+        
+        # Fallback to Gemini service if no other service is available
+        logger.warning(f"No valid LLM service found for model {llm_model_id}, falling back to Gemini")
+        return self.llm_provider_service.get_provider_by_name('gemini')
+    
     async def process_message(
         self, 
         message: str, 
@@ -107,6 +145,7 @@ class UnifiedSamuraiAgent:
         progress_callback: Optional[Callable[[str, str, str, Dict[str, Any]], None]] = None,
         task_context: Optional[Any] = None,
         code_context_mode: Optional[str] = None,
+        llm_model_id: Optional[str] = None,
         session: Optional[Any] = None
     ) -> dict:
         """
@@ -160,7 +199,7 @@ class UnifiedSamuraiAgent:
                 )
             
             intent_analysis = await self._analyze_user_intent(
-                message, conversation_context, progress_callback=progress_callback, code_context_mode=code_context_mode, session=session, project_id=project_id
+                message, conversation_context, progress_callback=progress_callback, code_context_mode=code_context_mode, session=session, project_id=project_id, llm_model_id=llm_model_id
             )
             logger.info(f"Intent analysis: {intent_analysis}")
             
@@ -403,15 +442,19 @@ class UnifiedSamuraiAgent:
         progress_callback: Optional[Callable[[str, str, str, Dict[str, Any]], None]] = None,
         code_context_mode: Optional[str] = None,
         session: Optional[Any] = None,
-        project_id: Optional[str] = None
+        project_id: Optional[str] = None,
+        llm_model_id: Optional[str] = None
     ) -> IntentAnalysis:
         """
         Analyze user intent with enhanced understanding using the Samurai Engine prompt.
         """
 
         try:
-            # Check if Gemini API key is valid before proceeding
-            if not self.gemini_service.is_api_key_valid():
+            # Get the appropriate LLM service for intent analysis
+            llm_service = self._get_llm_service(project_id, llm_model_id)
+            
+            # Check if LLM API key is valid before proceeding
+            if not llm_service or not llm_service.is_api_key_valid():
                 return IntentAnalysis(
                     intent_type="api_key_warning",
                     confidence=1.0,
@@ -752,7 +795,7 @@ Return ONLY the intent type: pure_discussion, feature_exploration, spec_clarific
             if progress_callback:
                 await progress_callback("ai_call", "🤖 Calling AI service...", "Analyzing your intent with AI", {})
             
-            intent_response = await self.gemini_service.chat_with_system_prompt(message, intent_system_prompt, project_id)
+            intent_response = await llm_service.chat_with_system_prompt(message, intent_system_prompt, project_id)
             
             # Parse intent response
             try:
@@ -959,12 +1002,16 @@ If new_code_context_necessary is false, set code_context_request to null and exp
 
 Return ONLY the JSON object."""
 
+                # Get the appropriate LLM service
+                project_id = context.project_context.get('id')
+                llm_service = self._get_llm_service(project_id)
+                
                 # Send progress update before AI call
                 if progress_callback:
                     await progress_callback("ai_call", "🤖 Calling AI service...", "Analyzing code context necessity", {})
                 
                 logger.info("Calling Gemini service for code context analysis...")
-                code_context_response = await self.gemini_service.chat_with_system_prompt(message, code_context_system_prompt)
+                code_context_response = await llm_service.chat_with_system_prompt(message, code_context_system_prompt)
             
                 # Debug: Log the raw LLM response for code context analysis
                 logger.info(f"Raw LLM response for code context analysis: {code_context_response}")
@@ -1082,7 +1129,7 @@ Use this code context to provide more accurate and specific answers about the co
                 return await self._handle_pure_discussion(message, context, project_id, progress_callback)
             
             elif intent_analysis.intent_type == "feature_exploration":
-                return await self._handle_feature_exploration(message, context, intent_analysis, progress_callback)
+                return await self._handle_feature_exploration(message, context, intent_analysis, project_id, progress_callback)
             
             elif intent_analysis.intent_type == "spec_clarification":
                 return await self._handle_spec_clarification(message, context, intent_analysis, code_context_mode)
@@ -1207,11 +1254,14 @@ When the user asks a direct question (especially questions starting with "How ar
 Your response:
 """
             
+            # Get the appropriate LLM service
+            llm_service = self._get_llm_service(project_id)
+            
             # Send progress update before AI call
             if progress_callback:
                 await progress_callback("ai_call", "🤖 Calling AI service...", "Generating response with conversation context")
             
-            response = await self.gemini_service.chat_with_system_prompt(message, system_prompt, project_id)
+            response = await llm_service.chat_with_system_prompt(message, system_prompt, project_id)
             
             return {
                 "type": "discussion_response",
@@ -1240,7 +1290,7 @@ Your response:
     
 
     
-    async def _handle_feature_exploration(self, message: str, context: ConversationContext, intent_analysis: IntentAnalysis, progress_callback: Optional[Callable] = None) -> dict:
+    async def _handle_feature_exploration(self, message: str, context: ConversationContext, intent_analysis: IntentAnalysis, project_id: str, progress_callback: Optional[Callable] = None) -> dict:
         """Handle feature exploration with comprehensive conversation continuity."""
         try:
             # Build enhanced conversation context with extended history
@@ -1350,11 +1400,14 @@ Ask natural, conversational questions that help them explore their idea:
 Remember: You're having a friendly conversation about their project ideas, not providing technical implementation guidance.
 """
             
+            # Get the appropriate LLM service
+            llm_service = self._get_llm_service(project_id)
+            
             # Send progress update before AI call
             if progress_callback:
                 await progress_callback("ai_call", "🤖 Calling AI service...", "Exploring feature ideas with AI")
             
-            response = await self.gemini_service.chat_with_system_prompt(message, system_prompt)
+            response = await llm_service.chat_with_system_prompt(message, system_prompt)
             
             return {
                 "type": "clarification_request",
@@ -1575,7 +1628,11 @@ Show deep understanding of how the specification has evolved throughout the enti
 
 """
             
-            response = await self.gemini_service.chat_with_system_prompt(message, system_prompt)
+            # Get the appropriate LLM service
+            project_id = context.project_context.get('id')
+            llm_service = self._get_llm_service(project_id)
+            
+            response = await llm_service.chat_with_system_prompt(message, system_prompt)
             
             # Step 4: Process spec_clarification response for codebase-relevant questions
             # Only process if code context mode allows it
@@ -1690,7 +1747,11 @@ Return a JSON array of question strings:
 If no relevant questions are found, return an empty array [].
 """
             
-            response = await self.gemini_service.chat_with_system_prompt("", prompt)
+            # Get the appropriate LLM service
+            project_id = conversation_context.project_context.get('id')
+            llm_service = self._get_llm_service(project_id)
+            
+            response = await llm_service.chat_with_system_prompt("", prompt)
             
             # Extract JSON from response
             import re
@@ -1806,7 +1867,11 @@ Instructions:
 Updated Response:
 """
             
-            response = await self.gemini_service.chat_with_system_prompt("", prompt)
+            # Get the appropriate LLM service (reuse from earlier in function)
+            project_id = conversation_context.project_context.get('id')
+            llm_service = self._get_llm_service(project_id)
+            
+            response = await llm_service.chat_with_system_prompt("", prompt)
             
             # Clean up the response
             updated_response = response.strip()
@@ -1873,7 +1938,11 @@ Examples of good processed questions:
 - "Is the API endpoint '/api/users' implemented in the UserController?"
 """
             
-            response = await self.gemini_service.chat_with_system_prompt("", prompt)
+            # Get the appropriate LLM service (reuse from earlier in function)
+            project_id = conversation_context.project_context.get('id')
+            llm_service = self._get_llm_service(project_id)
+            
+            response = await llm_service.chat_with_system_prompt("", prompt)
             
             # Extract JSON from response
             import re
@@ -1919,7 +1988,7 @@ Examples of good processed questions:
             return [{'original': q, 'processed': q} for q in questions]
 
     async def _rephrase_question_with_context(self, original_question: str, context: str, 
-                                            relevant_code: str, file_path: str) -> str:
+                                            relevant_code: str, file_path: str, project_id: str) -> str:
         """
         Use LLM to rephrase a question into a confirmation statement using codebase information.
         
@@ -1958,7 +2027,10 @@ Examples:
 Rephrased Question:
 """
             
-            response = await self.gemini_service.chat_with_system_prompt("", prompt)
+            # Get the appropriate LLM service
+            llm_service = self._get_llm_service(project_id)
+            
+            response = await llm_service.chat_with_system_prompt("", prompt)
             
             # Clean up the response
             rephrased = response.strip()
@@ -2173,7 +2245,8 @@ Rephrased Question:
             conversation = f"User: {message}\nAssistant: {response}"
             
             # Extract important information
-            important_info = await self._extract_important_information(conversation, context.project_context)
+            project_id = context.project_context.get('id')
+            important_info = await self._extract_important_information(conversation, context.project_context, project_id)
             
             if important_info:
                 for info in important_info:
@@ -2207,7 +2280,7 @@ Rephrased Question:
                 return {"status": "no_messages", "memories_created": 0}
             
             # Perform session-wide analysis
-            session_analysis = await self._analyze_session_for_memories(session_messages, project_context)
+            session_analysis = await self._analyze_session_for_memories(session_messages, project_context, project_id)
             
             # Create memories from session insights
             memories_created = 0
@@ -2778,7 +2851,11 @@ IMPORTANT:
 - Return JSON only. No markdown, code fences, or extra commentary.
 """
             
-            response = await self.gemini_service.chat_with_system_prompt(message, system_prompt)
+            # Get the appropriate LLM service
+            project_id = context.project_context.get('id')
+            llm_service = self._get_llm_service(project_id)
+            
+            response = await llm_service.chat_with_system_prompt(message, system_prompt)
             
             # Use the same robust parsing method
             parsed_response = self._parse_task_breakdown_response(response, message, context)
@@ -3074,7 +3151,10 @@ Analyze the user's message and return the appropriate JSON structure for detecte
         
         # Get LLM analysis
         try:
-            analysis_response = await self.gemini_service.chat_with_system_prompt(
+            # Get the appropriate LLM service
+            llm_service = self._get_llm_service(project_id)
+            
+            analysis_response = await llm_service.chat_with_system_prompt(
                 "Analyze the user's message for direct actions",
                 action_analysis_prompt
             )
@@ -3175,7 +3255,10 @@ Return JSON with the detected action and context-specific parameters informed by
 """
             
             # Get LLM analysis
-            response = await self.gemini_service.chat_with_system_prompt(message, action_analysis_prompt)
+            # Get the appropriate LLM service (reuse from earlier in function)
+            llm_service = self._get_llm_service(project_id)
+            
+            response = await llm_service.chat_with_system_prompt(message, action_analysis_prompt)
             
             # Parse the LLM response
             action_analysis = self._parse_action_analysis(response)
@@ -3512,7 +3595,7 @@ Return JSON with the detected action and context-specific parameters informed by
         
         return best_match if best_score > 0 else None
     
-    async def _extract_important_information(self, conversation: str, project_context: dict) -> List[dict]:
+    async def _extract_important_information(self, conversation: str, project_context: dict, project_id: str) -> List[dict]:
         """Extract important information from conversation for memory storage."""
         try:
             system_prompt = f"""
@@ -3538,7 +3621,10 @@ Return JSON with the detected action and context-specific parameters informed by
             Only include information that is substantial and worth remembering.
             """
             
-            response = await self.gemini_service.chat_with_system_prompt(conversation, system_prompt)
+            # Get the appropriate LLM service
+            llm_service = self._get_llm_service(project_id)
+            
+            response = await llm_service.chat_with_system_prompt(conversation, system_prompt)
             
             try:
                 return json.loads(response)
@@ -3549,7 +3635,7 @@ Return JSON with the detected action and context-specific parameters informed by
             logger.error(f"Error extracting important information: {e}")
             return []
     
-    async def _analyze_session_for_memories(self, session_messages: List[ChatMessage], project_context: dict) -> dict:
+    async def _analyze_session_for_memories(self, session_messages: List[ChatMessage], project_context: dict, project_id: str) -> dict:
         """Analyze entire session for memory creation."""
         try:
             # Build session text
@@ -3587,7 +3673,10 @@ Return JSON with the detected action and context-specific parameters informed by
             Only include insights with importance_score > 0.5.
             """
             
-            response = await self.gemini_service.chat_with_system_prompt(session_text, system_prompt)
+            # Get the appropriate LLM service
+            llm_service = self._get_llm_service(project_id)
+            
+            response = await llm_service.chat_with_system_prompt(session_text, system_prompt)
             
             try:
                 return json.loads(response)
