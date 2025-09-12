@@ -479,10 +479,12 @@ class ChatRequest(BaseModel):
         message: User message content
         task_context_id: Optional task ID to use as context for this chat
         code_context_mode: Optional code context mode for this chat
+        llm_model_id: Optional LLM model ID to use for this chat
     """
     message: str = Field(..., min_length=1, max_length=100000, description="User message")
     task_context_id: Optional[str] = Field(default=None, description="Task ID to use as context for this chat")
     code_context_mode: CodeContextMode = Field(default=CodeContextMode.AUTO, description="Code context mode for this chat")
+    llm_model_id: Optional[str] = Field(default=None, description="LLM model ID to use for this chat")
 
     class Config:
         json_schema_extra = {

@@ -1,11 +1,25 @@
-fastapi==0.109.0
-uvicorn[standard]==0.27.0
-google-genai==1.31.0
-python-dotenv==1.0.0
-pydantic==2.5.0
-python-multipart==0.0.6
-scikit-learn==1.3.2
-numpy==1.24.3
-sentence-transformers==2.2.2
-huggingface-hub==0.19.4
-transformers==4.35.2 
+# Core web framework
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+python-dotenv>=1.0.0
+pydantic>=2.5.0
+python-multipart>=0.0.6
+
+# HTTP client
+httpx>=0.28.1
+
+# LLM Providers
+google-genai>=1.31.0
+openai>=1.58.1
+anthropic>=0.34.2
+
+# ML and embeddings
+scikit-learn>=1.3.2
+numpy>=1.24.3
+sentence-transformers>=2.2.2,<3.0.0
+huggingface-hub>=0.16.0,<0.20.0
+transformers>=4.35.2,<4.40.0
+
+# Additional dependencies
+aiofiles>=23.2.1
+typing-extensions>=4.11.0 

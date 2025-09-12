@@ -8,7 +8,7 @@ from models import MemoryCategory, CATEGORY_CONFIG
 
 logger = logging.getLogger(__name__)
 
-def detect_memory_category(content: str, conversation_context: List[str] = None) -> MemoryCategory:
+def detect_memory_category(content: str, conversation_context: List[str] = None, project_id: str = None) -> MemoryCategory:
     """
     Automatically detect the most appropriate category for a memory based on content.
     
@@ -87,8 +87,28 @@ async def detect_category_with_llm(content: str, available_categories: List[Memo
         The detected category or None if detection fails
     """
     try:
-        from .gemini_service import GeminiService
-        gemini_service = GeminiService()
+        from .llm_provider_service import llm_provider_service
+        # Get LLM service - try to get any available service
+        llm_service = None
+        if project_id:
+            # If project_id provided, try to get the project's selected model
+            from .project_settings_service import ProjectSettingsService
+            settings_service = ProjectSettingsService()
+            selected_model = settings_service.get_selected_llm_model(project_id)
+            if selected_model:
+                llm_service = llm_provider_service.get_llm_service_by_model_id(selected_model)
+        
+        # If no service found, try to get any available service
+        if not llm_service:
+            for provider_name in ['gemini', 'openai', 'claude']:
+                default_model = llm_provider_service.get_default_model_for_provider(provider_name)
+                if default_model:
+                    llm_service = llm_provider_service.get_llm_service_by_model_id(default_model)
+                    if llm_service and llm_service.is_api_key_valid():
+                        break
+        
+        if not llm_service:
+            raise ValueError("No LLM service available")
         
         # Group categories by type for better prompting
         technical_cats = [cat for cat in available_categories if CATEGORY_CONFIG[cat].get('type') == 'technical']
@@ -123,7 +143,7 @@ async def detect_category_with_llm(content: str, available_categories: List[Memo
         Return only the category name (e.g., "frontend", "user_auth", "database"):
         """
         
-        response = await gemini_service.chat_with_system_prompt("", prompt)
+        response = await llm_service.chat_with_system_prompt("", prompt)
         response_clean = response.strip().lower()
         
         # Match response to enum value
@@ -173,7 +193,7 @@ def calculate_category_confidence(content: str, category: MemoryCategory) -> flo
     
     return confidence
 
-async def generate_category_specific_title(content: str, category: MemoryCategory) -> str:
+async def generate_category_specific_title(content: str, category: MemoryCategory, project_id: str = None) -> str:
     """
     Generate titles that incorporate category context.
     
@@ -185,8 +205,28 @@ async def generate_category_specific_title(content: str, category: MemoryCategor
         A short, category-specific title
     """
     try:
-        from .gemini_service import GeminiService
-        gemini_service = GeminiService()
+        from .llm_provider_service import llm_provider_service
+        # Get LLM service - try to get any available service
+        llm_service = None
+        if project_id:
+            # If project_id provided, try to get the project's selected model
+            from .project_settings_service import ProjectSettingsService
+            settings_service = ProjectSettingsService()
+            selected_model = settings_service.get_selected_llm_model(project_id)
+            if selected_model:
+                llm_service = llm_provider_service.get_llm_service_by_model_id(selected_model)
+        
+        # If no service found, try to get any available service
+        if not llm_service:
+            for provider_name in ['gemini', 'openai', 'claude']:
+                default_model = llm_provider_service.get_default_model_for_provider(provider_name)
+                if default_model:
+                    llm_service = llm_provider_service.get_llm_service_by_model_id(default_model)
+                    if llm_service and llm_service.is_api_key_valid():
+                        break
+        
+        if not llm_service:
+            raise ValueError("No LLM service available")
         
         config = CATEGORY_CONFIG[category]
         
@@ -208,7 +248,7 @@ async def generate_category_specific_title(content: str, category: MemoryCategor
         Return only the title:
         """
         
-        response = await gemini_service.chat_with_system_prompt("", prompt)
+        response = await llm_service.chat_with_system_prompt("", prompt)
         title = response.strip()
         
         # Ensure length limit

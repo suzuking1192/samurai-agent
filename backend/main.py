@@ -41,7 +41,6 @@ from models import (
 )
 
 # Import your services  
-from services.gemini_service import GeminiService
 from services.file_service import FileService
 from services.unified_samurai_agent import unified_samurai_agent
 from services.context_service import context_service
@@ -49,6 +48,7 @@ from services.response_service import handle_agent_response, handle_validation_e
 from services.intelligent_memory_consolidation import IntelligentMemoryConsolidationService
 from services.project_detail_service import project_detail_service
 from services.project_settings_service import ProjectSettingsService
+from services.llm_provider_service import llm_provider_service
 
 
 # Load environment variables
@@ -149,7 +149,6 @@ app.add_middleware(
 
 # Initialize services
 file_service = FileService()
-gemini_service = GeminiService()
 memory_consolidation_service = IntelligentMemoryConsolidationService()
 project_settings_service = ProjectSettingsService()
 
@@ -570,6 +569,74 @@ async def get_project_mode_selection(project_id: str):
     except Exception as e:
         logger.error(f"Error getting mode selection for project {project_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get mode selection: {str(e)}")
+
+@app.get("/projects/{project_id}/llm-models")
+async def get_project_llm_models(project_id: str):
+    """
+    Get available LLM models for a project and the currently selected model.
+    """
+    try:
+        # Verify project exists
+        project = file_service.get_project_by_id(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Get available models from LLM provider service
+        available_models = llm_provider_service.get_available_llm_models(project_id)
+        
+        # Get the currently selected model from project settings
+        selected_model_id = project_settings_service.get_selected_llm_model(project_id)
+        
+        return {
+            "project_id": project_id,
+            "available_models": available_models,
+            "selected_model_id": selected_model_id
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting LLM models for project {project_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get LLM models: {str(e)}")
+
+@app.post("/projects/{project_id}/llm-model")
+async def set_project_llm_model(project_id: str, request: dict):
+    """
+    Set the selected LLM model for a project.
+    """
+    try:
+        # Verify project exists
+        project = file_service.get_project_by_id(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Get model_id from request
+        model_id = request.get("model_id")
+        if not model_id:
+            raise HTTPException(status_code=400, detail="model_id is required")
+        
+        # Verify the model is available
+        available_models = llm_provider_service.get_available_llm_models(project_id)
+        model_ids = [model["id"] for model in available_models]
+        
+        if model_id not in model_ids:
+            raise HTTPException(status_code=400, detail=f"Model {model_id} is not available")
+        
+        # Set the selected model
+        success = project_settings_service.set_selected_llm_model(project_id, model_id)
+        
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to save LLM model selection")
+        
+        return {
+            "project_id": project_id,
+            "selected_model_id": model_id,
+            "success": True
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error setting LLM model for project {project_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to set LLM model: {str(e)}")
 
 @app.post("/projects/{project_id}/chat-stream")
 async def chat_stream(project_id: str, request: ChatRequest):

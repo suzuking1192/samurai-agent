@@ -38,6 +38,12 @@ class EmbeddingService:
                 return
 
             # Lazy import to avoid import errors during tests when deps mismatch
+            import warnings
+            
+            # Suppress the cached_download warning from huggingface_hub
+            warnings.filterwarnings('ignore', message='.*cached_download.*')
+            warnings.filterwarnings('ignore', message='.*cannot import name.*cached_download.*')
+            
             from sentence_transformers import SentenceTransformer  # type: ignore
 
             logger.info(f"Loading embedding model: {self.model_name}")

@@ -482,6 +482,40 @@ export async function getProjectModeSelection(projectId: string): Promise<ModeSe
   return apiRequest<ModeSelectionResponse>(`/projects/${projectId}/mode-selection`)
 }
 
+// LLM model selection API functions
+export interface LLMModel {
+  id: string
+  name: string
+  provider: string
+}
+
+export interface LLMModelsResponse {
+  project_id: string
+  available_models: LLMModel[]
+  selected_model_id: string | null
+}
+
+export interface SetLLMModelRequest {
+  model_id: string
+}
+
+export interface SetLLMModelResponse {
+  project_id: string
+  selected_model_id: string
+  success: boolean
+}
+
+export async function getProjectLLMModels(projectId: string): Promise<LLMModelsResponse> {
+  return apiRequest<LLMModelsResponse>(`/projects/${projectId}/llm-models`)
+}
+
+export async function setProjectLLMModel(projectId: string, modelId: string): Promise<SetLLMModelResponse> {
+  return apiRequest<SetLLMModelResponse>(`/projects/${projectId}/llm-model`, {
+    method: 'POST',
+    body: JSON.stringify({ model_id: modelId })
+  })
+}
+
 // LLM Cost tracking API functions
 export async function getMonthlyLLMCost(): Promise<MonthlyLLMCost> {
   return apiRequest<MonthlyLLMCost>(`/llm-usage/monthly-cost`)

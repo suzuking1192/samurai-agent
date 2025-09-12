@@ -9,13 +9,13 @@ from pydantic import BaseModel
 
 try:
     from models import TaskWarning
-    from .gemini_service import GeminiService
+    from .llm_provider_service import llm_provider_service
 except ImportError:
     import sys
     import os
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from models import TaskWarning
-    from gemini_service import GeminiService
+    from llm_provider_service import llm_provider_service
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ class TaskAnalysisAgent:
 
     def __init__(self):
         """Initialize the TaskAnalysisAgent."""
-        self.gemini_service = GeminiService()
+        self.llm_provider_service = llm_provider_service
         
         # Define analysis criteria for LLM prompts
         self.analysis_criteria = {
@@ -67,7 +67,7 @@ class TaskAnalysisAgent:
             }
         }
 
-    async def analyze_task(self, title: str, description: str) -> List[TaskWarning]:
+    async def analyze_task(self, title: str, description: str, project_id: str = None) -> List[TaskWarning]:
         """
         Analyze a task description and generate review warnings using LLM.
         
@@ -246,7 +246,8 @@ IMPORTANT: Only return valid JSON. Do not include any other text or explanations
 
         try:
             # Get LLM response
-            response = await self.gemini_service.chat_with_system_prompt(
+            llm_service = self.llm_provider_service.get_llm_service_by_project_id(project_id)
+            response = await llm_service.chat_with_system_prompt(
                 f"Analyze this task: {title} - {description}", 
                 system_prompt
             )

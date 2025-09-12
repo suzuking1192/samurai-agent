@@ -303,6 +303,7 @@ export interface ChatRequest {
   message: string
   task_context_id?: string
   code_context_mode?: CodeContextMode
+  llm_model_id?: string
 }
 
 export interface ChatResponse {
