@@ -113,6 +113,14 @@ cd backend
 cp .env.example .env
 ```
 
+You can use models from **OpenAI, Claude, and Gemini**. Simply configure your chosen models and API keys in the environment (`.env`) file.
+
+To track your expenses, you can also set the specific input and output token costs for each model. The total cost will then be calculated and displayed on the user interface.
+
+Our AI agents frequently process large contexts that include detailed code and project information. To ensure efficiency and keep costs low, we strongly recommend using a lightweight model.
+
+Our top recommendation is **`gemini-2.5-flash`**.
+
 Get a Gemini API key: [Google AI Studio](https://aistudio.google.com/app/apikey)
 
 Add it to `.env`:
