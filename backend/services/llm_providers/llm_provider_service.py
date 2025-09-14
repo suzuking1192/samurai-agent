@@ -197,7 +197,7 @@ class LLMProviderService:
         """
         try:
             # Try to get the project's selected model
-            from .project_settings_service import ProjectSettingsService
+            from ..core.project_settings_service import ProjectSettingsService
             settings_service = ProjectSettingsService()
             selected_model = settings_service.get_selected_llm_model(project_id)
             

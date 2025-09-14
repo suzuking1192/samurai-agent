@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 from unittest.mock import Mock, patch, AsyncMock
 
-from services.agent_tools import ExtractCodeContextTool
+from backend.services.tools.agent_tools import ExtractCodeContextTool
 from services.code_parser import CodeParser
 
 
@@ -179,7 +179,7 @@ class TaskService:
             mock_parser.scan_codebase.return_value = file_infos
             
             # Mock the LLM response for Step 1
-            with patch('services.gemini_service.GeminiService') as mock_gemini:
+            with patch('backend.services.llm_providers.gemini_service.GeminiService') as mock_gemini:
                 mock_service = Mock()
                 # Get the actual file paths to return in the mock response
                 actual_paths = list(file_infos.keys())
@@ -225,7 +225,7 @@ class TaskService:
         relevant_files = [models_file]
         
         # Mock the LLM response for Step 2
-        with patch('services.gemini_service.GeminiService') as mock_gemini:
+        with patch('backend.services.llm_providers.gemini_service.GeminiService') as mock_gemini:
             mock_service = Mock()
             # Get the actual file path to return in the mock response
             actual_path = os.path.basename(models_file)
@@ -271,7 +271,7 @@ class TaskService:
             mock_parser.scan_codebase.return_value = file_infos
             
             # Mock the LLM responses for both steps
-            with patch('services.gemini_service.GeminiService') as mock_gemini:
+            with patch('backend.services.llm_providers.gemini_service.GeminiService') as mock_gemini:
                 mock_service = Mock()
                 # Step 1 response
                 mock_service.chat_with_system_prompt = AsyncMock()

@@ -10,7 +10,7 @@ from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass
 
 from models import Memory, MemoryCategory, CATEGORY_CONFIG
-from services.consolidated_memory import ConsolidatedMemoryService
+from backend.services.memory.consolidated_memory import ConsolidatedMemoryService
 
 logger = logging.getLogger(__name__)
 

@@ -9,20 +9,11 @@ from pydantic import BaseModel, Field
 from pathlib import Path
 import re
 
-try:
-    from .file_service import FileService
-    from .code_parser import code_parser
-    from .code_context_storage import code_context_storage
-    from .utils import parse_ai_json_response, clean_ai_json_response, extract_json_from_ai_response
-    from models import Task, Memory, Project
-except ImportError:
-    import sys
-    import os
-    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from file_service import FileService
-    from code_parser import code_parser
-    from code_context_storage import code_context_storage
-    from models import Task, Memory, Project
+from ..core.file_service import FileService
+from ..analysis.code_parser import code_parser
+from ..context.code_context_storage import code_context_storage
+from ..core.utils import parse_ai_json_response, clean_ai_json_response, extract_json_from_ai_response
+from models import Task, Memory, Project
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +34,7 @@ class CreateTaskTool(TaskTool):
         Create a new task with automatic analysis
         """
         try:
-            from .task_service import TaskService
+            from backend.services.tools.task_service import TaskService
             task_service = TaskService()
             
             # Create task with analysis
@@ -110,7 +101,7 @@ class UpdateTaskTool(TaskTool):
             
             # Try to use TaskService first (preferred method)
             try:
-                from .task_service import TaskService
+                from backend.services.tools.task_service import TaskService
                 task_service = TaskService()
                 
                 # Find task by ID or title

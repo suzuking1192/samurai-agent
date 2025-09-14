@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from services.agent_tools import ExtractCodeContextTool
+from backend.services.tools.agent_tools import ExtractCodeContextTool
 from services.code_parser import CodeElement, FileInfo
 
 class TestLogScenarioFix(unittest.TestCase):

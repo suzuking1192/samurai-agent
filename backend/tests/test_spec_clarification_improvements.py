@@ -10,7 +10,7 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 from typing import Dict, Any, List
 
-from services.unified_samurai_agent import UnifiedSamuraiAgent, ConversationContext, IntentAnalysis
+from backend.services.agent_core.unified_samurai_agent import UnifiedSamuraiAgent, ConversationContext, IntentAnalysis
 
 
 class TestSpecClarificationImprovements:

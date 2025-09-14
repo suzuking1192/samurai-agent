@@ -157,7 +157,7 @@ class AbstractLLMService(ABC):
         """
         try:
             from models import LLMCallRecord
-            from services.file_service import file_service
+            from ..core.file_service import file_service
             
             # Use provided model_name or default model
             actual_model_name = model_name or self.default_model or f"{self.provider_name.lower()}-unknown"

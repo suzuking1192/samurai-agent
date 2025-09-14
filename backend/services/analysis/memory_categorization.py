@@ -87,12 +87,12 @@ async def detect_category_with_llm(content: str, available_categories: List[Memo
         The detected category or None if detection fails
     """
     try:
-        from .llm_provider_service import llm_provider_service
+        from ..llm_providers.llm_provider_service import llm_provider_service
         # Get LLM service - try to get any available service
         llm_service = None
         if project_id:
             # If project_id provided, try to get the project's selected model
-            from .project_settings_service import ProjectSettingsService
+            from ..core.project_settings_service import ProjectSettingsService
             settings_service = ProjectSettingsService()
             selected_model = settings_service.get_selected_llm_model(project_id)
             if selected_model:
@@ -205,12 +205,12 @@ async def generate_category_specific_title(content: str, category: MemoryCategor
         A short, category-specific title
     """
     try:
-        from .llm_provider_service import llm_provider_service
+        from ..llm_providers.llm_provider_service import llm_provider_service
         # Get LLM service - try to get any available service
         llm_service = None
         if project_id:
             # If project_id provided, try to get the project's selected model
-            from .project_settings_service import ProjectSettingsService
+            from ..core.project_settings_service import ProjectSettingsService
             settings_service = ProjectSettingsService()
             selected_model = settings_service.get_selected_llm_model(project_id)
             if selected_model:
@@ -306,7 +306,7 @@ def migrate_existing_memories():
     Migrate existing memories from old categories to new software engineering categories.
     """
     try:
-        from .file_service import FileService
+        from ..core.file_service import FileService
         file_service = FileService()
         
         # Migration mapping from old to new categories
@@ -353,7 +353,7 @@ def bulk_recategorize_memories(project_id: str = None) -> int:
         Number of memories updated
     """
     try:
-        from .file_service import FileService
+        from ..core.file_service import FileService
         file_service = FileService()
         
         updated_count = 0

@@ -4,7 +4,7 @@ import json
 import tempfile
 import os
 from unittest.mock import Mock, patch, AsyncMock
-from services.agent_tools import ExtractCodeContextTool
+from backend.services.tools.agent_tools import ExtractCodeContextTool
 
 
 class TestExtractCodeContextToolFix:
@@ -16,7 +16,7 @@ class TestExtractCodeContextToolFix:
     
     @pytest.fixture
     def mock_gemini_service(self):
-        with patch('services.gemini_service.GeminiService') as mock_service:
+        with patch('backend.services.llm_providers.gemini_service.GeminiService') as mock_service:
             mock_instance = Mock()
             mock_instance.chat_with_system_prompt = AsyncMock()
             mock_service.return_value = mock_instance

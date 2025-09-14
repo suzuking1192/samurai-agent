@@ -12,8 +12,8 @@ from datetime import datetime
 from dataclasses import dataclass
 
 from models import ChatMessage, Memory, Project, MemoryCategory, CATEGORY_CONFIG
-from services.file_service import FileService
-from services.llm_provider_service import llm_provider_service
+from ..core.file_service import FileService
+from ..llm_providers.llm_provider_service import llm_provider_service
 
 # Configuration constants
 MIN_SESSION_LENGTH = 3  # messages to trigger consolidation
@@ -76,7 +76,7 @@ class IntelligentMemoryConsolidationService:
     def __init__(self):
         self.llm_provider_service = llm_provider_service
         self.file_service = FileService()
-        from .project_settings_service import ProjectSettingsService
+        from ..core.project_settings_service import ProjectSettingsService
         self.project_settings_service = ProjectSettingsService()
         logger.info("IntelligentMemoryConsolidationService initialized")
     

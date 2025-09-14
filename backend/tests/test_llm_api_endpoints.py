@@ -15,9 +15,9 @@ class TestLLMAPIEndpoints:
     
     def test_get_llm_models_endpoint(self):
         """Test GET /projects/{project_id}/llm-models endpoint."""
-        with patch('services.file_service.file_service.get_project_by_id') as mock_get_project, \
-             patch('services.llm_provider_service.llm_provider_service.get_available_llm_models') as mock_get_models, \
-             patch('services.project_settings_service.ProjectSettingsService.get_selected_llm_model') as mock_get_selected:
+        with patch('backend.services.file_service.file_service.get_project_by_id') as mock_get_project, \
+             patch('backend.services.llm_providers.llm_provider_service.llm_provider_service.get_available_llm_models') as mock_get_models, \
+             patch('backend.services.project_settings_service.ProjectSettingsService.get_selected_llm_model') as mock_get_selected:
             
             # Mock project exists
             mock_project = MagicMock()
@@ -44,7 +44,7 @@ class TestLLMAPIEndpoints:
     
     def test_get_llm_models_endpoint_project_not_found(self):
         """Test GET /projects/{project_id}/llm-models endpoint with non-existent project."""
-        with patch('services.file_service.file_service.get_project_by_id') as mock_get_project:
+        with patch('backend.services.file_service.file_service.get_project_by_id') as mock_get_project:
             mock_get_project.return_value = None
             
             response = client.get("/projects/non-existent-project/llm-models")
@@ -55,9 +55,9 @@ class TestLLMAPIEndpoints:
     
     def test_set_llm_model_endpoint(self):
         """Test POST /projects/{project_id}/llm-model endpoint."""
-        with patch('services.file_service.file_service.get_project_by_id') as mock_get_project, \
-             patch('services.llm_provider_service.llm_provider_service.get_available_llm_models') as mock_get_models, \
-             patch('services.project_settings_service.ProjectSettingsService.set_selected_llm_model') as mock_set_model:
+        with patch('backend.services.file_service.file_service.get_project_by_id') as mock_get_project, \
+             patch('backend.services.llm_providers.llm_provider_service.llm_provider_service.get_available_llm_models') as mock_get_models, \
+             patch('backend.services.project_settings_service.ProjectSettingsService.set_selected_llm_model') as mock_set_model:
             
             # Mock project exists
             mock_project = MagicMock()
@@ -87,8 +87,8 @@ class TestLLMAPIEndpoints:
     
     def test_set_llm_model_endpoint_invalid_model(self):
         """Test POST /projects/{project_id}/llm-model endpoint with invalid model."""
-        with patch('services.file_service.file_service.get_project_by_id') as mock_get_project, \
-             patch('services.llm_provider_service.llm_provider_service.get_available_llm_models') as mock_get_models:
+        with patch('backend.services.file_service.file_service.get_project_by_id') as mock_get_project, \
+             patch('backend.services.llm_providers.llm_provider_service.llm_provider_service.get_available_llm_models') as mock_get_models:
             
             # Mock project exists
             mock_project = MagicMock()
@@ -112,7 +112,7 @@ class TestLLMAPIEndpoints:
     
     def test_set_llm_model_endpoint_missing_model_id(self):
         """Test POST /projects/{project_id}/llm-model endpoint with missing model_id."""
-        with patch('services.file_service.file_service.get_project_by_id') as mock_get_project:
+        with patch('backend.services.file_service.file_service.get_project_by_id') as mock_get_project:
             # Mock project exists
             mock_project = MagicMock()
             mock_project.id = "test-project-id"

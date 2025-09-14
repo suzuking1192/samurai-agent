@@ -13,7 +13,7 @@ import json
 import re
 
 from models import MemoryCategory, CATEGORY_CONFIG
-from .file_service import FileService
+from ..core.file_service import FileService
 
 logger = logging.getLogger(__name__)
 

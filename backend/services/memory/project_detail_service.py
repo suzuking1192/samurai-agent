@@ -1,8 +1,8 @@
 import logging
 from typing import List, Optional
 
-from .llm_provider_service import llm_provider_service as global_llm_provider_service
-from .file_service import file_service
+from ..llm_providers.llm_provider_service import llm_provider_service as global_llm_provider_service
+from ..core.file_service import file_service
 
 
 logger = logging.getLogger(__name__)

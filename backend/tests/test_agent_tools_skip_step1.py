@@ -1,7 +1,7 @@
 import pytest
 import asyncio
 from unittest.mock import AsyncMock, patch, MagicMock
-from services.agent_tools import ExtractCodeContextTool
+from backend.services.tools.agent_tools import ExtractCodeContextTool
 from services.code_parser import FileInfo, CodeElement
 
 
@@ -61,7 +61,7 @@ class TestAgentToolsSkipStep1:
         max_iterations = 3
         
         # Mock the GeminiService
-        with patch('services.gemini_service.GeminiService') as mock_gemini_class:
+        with patch('backend.services.llm_providers.gemini_service.GeminiService') as mock_gemini_class:
             mock_gemini = AsyncMock()
             mock_gemini_class.return_value = mock_gemini
             
@@ -99,7 +99,7 @@ class TestAgentToolsSkipStep1:
         max_iterations = 3
         
         # Mock the GeminiService
-        with patch('services.gemini_service.GeminiService') as mock_gemini_class:
+        with patch('backend.services.llm_providers.gemini_service.GeminiService') as mock_gemini_class:
             mock_gemini = AsyncMock()
             mock_gemini_class.return_value = mock_gemini
             
@@ -150,7 +150,7 @@ class TestAgentToolsSkipStep1:
         request = "test request"
         max_iterations = 3
         
-        with patch('services.gemini_service.GeminiService') as mock_gemini_class:
+        with patch('backend.services.llm_providers.gemini_service.GeminiService') as mock_gemini_class:
             mock_gemini = AsyncMock()
             mock_gemini_class.return_value = mock_gemini
             
@@ -191,7 +191,7 @@ class TestAgentToolsSkipStep1:
         request = "test request"
         max_iterations = 3
         
-        with patch('services.gemini_service.GeminiService') as mock_gemini_class:
+        with patch('backend.services.llm_providers.gemini_service.GeminiService') as mock_gemini_class:
             mock_gemini = AsyncMock()
             mock_gemini_class.return_value = mock_gemini
             

@@ -14,31 +14,16 @@ from datetime import datetime
 from typing import List, Dict, Optional, Any, Callable
 from dataclasses import dataclass
 
-try:
-    from .file_service import FileService
-    from .memory_categorization import detect_memory_category, generate_category_specific_title
-    from .consolidated_memory import ConsolidatedMemoryService
-    from .vector_context_service import vector_context_service
-    from .agent_tools import AgentToolRegistry
-    from .response_generator import ResponseGenerator, ResponseContext
-    from .code_context_storage import code_context_storage
-    from .llm_provider_service import llm_provider_service
-    from .project_settings_service import ProjectSettingsService
-    from models import Task, Memory, Project, MemoryCategory, ChatMessage, UserIntentEnum, QuestionSchema, UserInteractionSchema
-except ImportError:
-    import sys
-    import os
-    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from file_service import FileService
-    from memory_categorization import detect_memory_category, generate_category_specific_title
-    from consolidated_memory import ConsolidatedMemoryService
-    from vector_context_service import vector_context_service
-    from agent_tools import AgentToolRegistry
-    from response_generator import ResponseGenerator, ResponseContext
-    from code_context_storage import code_context_storage
-    from llm_provider_service import llm_provider_service
-    from project_settings_service import ProjectSettingsService
-    from models import Task, Memory, Project, MemoryCategory, ChatMessage, UserIntentEnum, QuestionSchema, UserInteractionSchema
+from ..core.file_service import FileService
+from ..analysis.memory_categorization import detect_memory_category, generate_category_specific_title
+from ..memory.consolidated_memory import ConsolidatedMemoryService
+from ..context.vector_context_service import vector_context_service
+from ..tools.agent_tools import AgentToolRegistry
+from ..response.response_generator import ResponseGenerator, ResponseContext
+from ..context.code_context_storage import code_context_storage
+from ..llm_providers.llm_provider_service import llm_provider_service
+from ..core.project_settings_service import ProjectSettingsService
+from models import Task, Memory, Project, MemoryCategory, ChatMessage, UserIntentEnum, QuestionSchema, UserInteractionSchema
 
 logger = logging.getLogger(__name__)
 

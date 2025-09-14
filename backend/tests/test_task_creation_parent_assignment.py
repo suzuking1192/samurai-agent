@@ -30,7 +30,7 @@ class TestTaskCreationParentAssignment(unittest.IsolatedAsyncioTestCase):
                 super().__init__(data_dir=tdir, backup_dir=os.path.join(tdir, 'backups'))
 
         # Patch TaskService to use our TempFileService internally
-        self.taskservice_fs_patch = mock.patch('services.task_service.FileService', TempFileService)
+        self.taskservice_fs_patch = mock.patch('backend.services.tools.task_service.FileService', TempFileService)
         self.taskservice_fs_patch.start()
 
     def tearDown(self):
@@ -40,7 +40,7 @@ class TestTaskCreationParentAssignment(unittest.IsolatedAsyncioTestCase):
 
     async def test_subtasks_attach_to_created_root_when_no_active_task(self):
         # Arrange
-        from services.unified_samurai_agent import UnifiedSamuraiAgent
+        from backend.services.agent_core.unified_samurai_agent import UnifiedSamuraiAgent
 
         agent = UnifiedSamuraiAgent()
         project_id = 'test-project-parent-assignment'

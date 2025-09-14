@@ -7,7 +7,7 @@ import os
 # Add the backend directory to the path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from services.agent_tools import AgentToolRegistry
+from backend.services.tools.agent_tools import AgentToolRegistry
 from services.utils import parse_ai_json_response, clean_ai_json_response
 
 
@@ -76,7 +76,7 @@ class TestCodeContextExtractionError:
 }
 '''
         
-        with patch('services.agent_tools.GeminiService') as mock_gemini:
+        with patch('backend.services.tools.agent_tools.GeminiService') as mock_gemini:
             mock_service = Mock()
             mock_service.chat_with_system_prompt = AsyncMock(return_value=malformed_response)
             mock_gemini.return_value = mock_service

@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, patch, MagicMock
 # Add the backend directory to the path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from services.unified_samurai_agent import UnifiedSamuraiAgent
+from backend.services.agent_core.unified_samurai_agent import UnifiedSamuraiAgent
 from services.gemini_service import GeminiService
 
 
@@ -22,7 +22,7 @@ class TestDirectActionStrictRules:
     @pytest.fixture
     def mock_gemini_service(self):
         """Mock the Gemini service to return controlled responses."""
-        with patch('services.unified_samurai_agent.GeminiService') as mock:
+        with patch('backend.services.agent_core.unified_samurai_agent.GeminiService') as mock:
             service_instance = AsyncMock()
             # Mock the API key validation to return True
             service_instance.is_api_key_valid.return_value = True

@@ -6,7 +6,7 @@ import pytest
 import json
 from unittest.mock import Mock, patch, AsyncMock
 from models import ChatRequest, UserInteractionSchema, QuestionSchema
-from services.unified_samurai_agent import UnifiedSamuraiAgent
+from backend.services.agent_core.unified_samurai_agent import UnifiedSamuraiAgent
 from utils.question_detector import _detect_interactive_questions
 
 

@@ -1,7 +1,7 @@
 """Test the updated prompt for _step1_identify_relevant_files to ensure it's less strict and more inclusive."""
 
 import pytest
-from services.agent_tools import ExtractCodeContextTool
+from backend.services.tools.agent_tools import ExtractCodeContextTool
 
 
 class TestAgentToolsPromptFix:

@@ -7,7 +7,7 @@ import os
 import tempfile
 import shutil
 from unittest.mock import patch, MagicMock
-from services.unified_samurai_agent import UnifiedSamuraiAgent, ConversationContext
+from backend.services.agent_core.unified_samurai_agent import UnifiedSamuraiAgent, ConversationContext
 from services.file_service import FileService
 from models import UserIntentEnum, Session, Project
 
