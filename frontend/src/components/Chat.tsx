@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
-import { ChatMessage, Session, Task, CodeContextMode } from '../types'
+import { ChatMessage, Session, Task, CodeContextMode, QuestionSchema, UserInteractionSchema } from '../types'
 import { sendChatMessageWithProgress, createSession, getCurrentSession, getSessionMessages, endSessionWithConsolidation, SessionEndDetailedResponse, getTaskContext, clearTaskContext, getSuggestionStatus, dismissSuggestion } from '../services/api'
 import ProgressDisplay from './ProgressDisplay'
 import ProactiveSuggestion from './ProactiveSuggestion'
@@ -8,6 +8,7 @@ import CreateTasksButton from './CreateTasksButton'
 import ModeSelectionDropdown from './ModeSelectionDropdown'
 import LLMSelectionDropdown from './LLMSelectionDropdown'
 import MonthlyCostDisplay from './MonthlyCostDisplay'
+import InteractiveQuestionButtons from './InteractiveQuestionButtons'
 
 interface ChatProps {
   projectId?: string
@@ -19,6 +20,7 @@ interface OptimisticMessage extends ChatMessage {
   isOptimistic?: boolean
   isError?: boolean
   progress?: any[]
+  interactive_questions?: QuestionSchema[]
 }
 
 const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrigger }) => {
@@ -404,14 +406,15 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrig
           ))
           updateAgentActivity(progress.message || 'Processing...')
         },
-        (finalResponse, intent_type) => {
+        (response) => {
           // Replace optimistic message with real response
           setMessages(prev => prev.map(msg => 
             msg.id === optimisticMessage.id 
               ? {
                   ...msg,
-                  response: finalResponse,
-                  intent_type: intent_type,
+                  response: response.response,
+                  intent_type: response.intent_type,
+                  interactive_questions: response.interactive_questions,
                   isOptimistic: false,
                   progress: undefined
                 }
@@ -501,13 +504,14 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrig
           ))
           updateAgentActivity(progress.message || 'Processing...')
         },
-        (finalResponse, intent_type) => {
+        (response) => {
           setMessages(prev => prev.map(msg => 
             msg.id === optimisticMessage.id 
               ? {
                   ...msg,
-                  response: finalResponse,
-                  intent_type: intent_type,
+                  response: response.response,
+                  intent_type: response.intent_type,
+                  interactive_questions: response.interactive_questions,
                   isOptimistic: false,
                   progress: undefined
                 }
@@ -556,6 +560,258 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrig
       setInputMessage('')
     }
   }, [projectId, isLoading, currentSession, onTaskGenerated])
+
+  const handleQuestionButtonClick = useCallback((interaction: UserInteractionSchema) => {
+    if (!projectId || isLoading) return
+    
+    // Create a descriptive message that shows which question the user is answering
+    const interactionMessage = `User clicked '${interaction.action_type}'${interaction.selected_option ? ` (${interaction.selected_option})` : ''} for question: ${interaction.question_text}`
+    
+    // Add the message to the input box instead of sending it immediately
+    setInputMessage(prev => {
+      // If there's already text in the input, append with a newline
+      if (prev.trim()) {
+        return prev + '\n' + interactionMessage
+      }
+      // If input is empty, just set the message
+      return interactionMessage
+    })
+    
+    // Focus the input field so user can edit
+    setTimeout(() => {
+      const inputElement = document.querySelector('textarea[placeholder*="message"]') as HTMLTextAreaElement
+      if (inputElement) {
+        inputElement.focus()
+        // Move cursor to end of text
+        inputElement.setSelectionRange(inputElement.value.length, inputElement.value.length)
+      }
+    }, 100)
+  }, [projectId, isLoading])
+
+  // Function to render response text with inline interactive questions
+  const renderResponseWithInlineQuestions = useCallback((response: string, questions: QuestionSchema[] = []) => {
+    if (!questions || questions.length === 0) {
+      return (
+        <ReactMarkdown
+          components={{
+            ul: ({children}) => <ul className="markdown-list">{children}</ul>,
+            ol: ({children}) => <ol className="markdown-list">{children}</ol>,
+            li: ({children}) => <li className="markdown-list-item">{children}</li>,
+            strong: ({children}) => <strong className="markdown-strong">{children}</strong>,
+            em: ({children}) => <em className="markdown-em">{children}</em>,
+            code: ({children, className}) => {
+              const isInline = !className;
+              return isInline ? (
+                <code className="markdown-inline-code">{children}</code>
+              ) : (
+                <code className="markdown-code">{children}</code>
+              );
+            },
+            pre: ({children}) => <pre className="markdown-code-block">{children}</pre>,
+            p: ({children}) => <p className="markdown-paragraph">{children}</p>,
+            h1: ({children}) => <h1 className="markdown-heading markdown-h1">{children}</h1>,
+            h2: ({children}) => <h2 className="markdown-heading markdown-h2">{children}</h2>,
+            h3: ({children}) => <h3 className="markdown-heading markdown-h3">{children}</h3>,
+            h4: ({children}) => <h4 className="markdown-heading markdown-h4">{children}</h4>,
+            h5: ({children}) => <h5 className="markdown-heading markdown-h5">{children}</h5>,
+            h6: ({children}) => <h6 className="markdown-heading markdown-h6">{children}</h6>,
+            blockquote: ({children}) => <blockquote className="markdown-blockquote">{children}</blockquote>,
+            a: ({href, children}) => <a href={href} className="markdown-link" target="_blank" rel="noopener noreferrer">{children}</a>,
+            hr: () => <hr className="markdown-hr" />,
+            table: ({children}) => <table className="markdown-table">{children}</table>,
+            thead: ({children}) => <thead className="markdown-thead">{children}</thead>,
+            tbody: ({children}) => <tbody className="markdown-tbody">{children}</tbody>,
+            tr: ({children}) => <tr className="markdown-tr">{children}</tr>,
+            th: ({children}) => <th className="markdown-th">{children}</th>,
+            td: ({children}) => <td className="markdown-td">{children}</td>,
+          }}
+        >
+          {response}
+        </ReactMarkdown>
+      )
+    }
+
+    // Find the position of each question in the response text
+    const questionPositions = questions.map(question => {
+      const questionText = question.text
+      const index = response.indexOf(questionText)
+      return {
+        question,
+        index,
+        text: questionText
+      }
+    }).filter(pos => pos.index !== -1).sort((a, b) => a.index - b.index)
+
+    if (questionPositions.length === 0) {
+      // If no questions found in text, show them standalone after the response
+      return (
+        <div className="response-with-standalone-questions">
+          <ReactMarkdown
+            components={{
+              ul: ({children}) => <ul className="markdown-list">{children}</ul>,
+              ol: ({children}) => <ol className="markdown-list">{children}</ol>,
+              li: ({children}) => <li className="markdown-list-item">{children}</li>,
+              strong: ({children}) => <strong className="markdown-strong">{children}</strong>,
+              em: ({children}) => <em className="markdown-em">{children}</em>,
+              code: ({children, className}) => {
+                const isInline = !className;
+                return isInline ? (
+                  <code className="markdown-inline-code">{children}</code>
+                ) : (
+                  <code className="markdown-code">{children}</code>
+                );
+              },
+              pre: ({children}) => <pre className="markdown-code-block">{children}</pre>,
+              p: ({children}) => <p className="markdown-paragraph">{children}</p>,
+              h1: ({children}) => <h1 className="markdown-heading markdown-h1">{children}</h1>,
+              h2: ({children}) => <h2 className="markdown-heading markdown-h2">{children}</h2>,
+              h3: ({children}) => <h3 className="markdown-heading markdown-h3">{children}</h3>,
+              h4: ({children}) => <h4 className="markdown-heading markdown-h4">{children}</h4>,
+              h5: ({children}) => <h5 className="markdown-heading markdown-h5">{children}</h5>,
+              h6: ({children}) => <h6 className="markdown-heading markdown-h6">{children}</h6>,
+              blockquote: ({children}) => <blockquote className="markdown-blockquote">{children}</blockquote>,
+              a: ({href, children}) => <a href={href} className="markdown-link" target="_blank" rel="noopener noreferrer">{children}</a>,
+              hr: () => <hr className="markdown-hr" />,
+              table: ({children}) => <table className="markdown-table">{children}</table>,
+              thead: ({children}) => <thead className="markdown-thead">{children}</thead>,
+              tbody: ({children}) => <tbody className="markdown-tbody">{children}</tbody>,
+              tr: ({children}) => <tr className="markdown-tr">{children}</tr>,
+              th: ({children}) => <th className="markdown-th">{children}</th>,
+              td: ({children}) => <td className="markdown-td">{children}</td>,
+            }}
+          >
+            {response}
+          </ReactMarkdown>
+          <div className="standalone-interactive-questions">
+            {questions.map((question, index) => (
+              <div key={`standalone-question-${index}`} className="standalone-interactive-question">
+                <InteractiveQuestionButtons
+                  question={question}
+                  onButtonClick={handleQuestionButtonClick}
+                  disabled={isLoading}
+                  hideQuestionText={false}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      )
+    }
+
+    // Split the response text and insert question buttons
+    const parts = []
+    let lastIndex = 0
+
+    questionPositions.forEach((pos, i) => {
+      // Add text before the question
+      if (pos.index > lastIndex) {
+        const textBefore = response.substring(lastIndex, pos.index)
+        if (textBefore.trim()) {
+          parts.push(
+            <ReactMarkdown
+              key={`text-${i}`}
+              components={{
+                ul: ({children}) => <ul className="markdown-list">{children}</ul>,
+                ol: ({children}) => <ol className="markdown-list">{children}</ol>,
+                li: ({children}) => <li className="markdown-list-item">{children}</li>,
+                strong: ({children}) => <strong className="markdown-strong">{children}</strong>,
+                em: ({children}) => <em className="markdown-em">{children}</em>,
+                code: ({children, className}) => {
+                  const isInline = !className;
+                  return isInline ? (
+                    <code className="markdown-inline-code">{children}</code>
+                  ) : (
+                    <code className="markdown-code">{children}</code>
+                  );
+                },
+                pre: ({children}) => <pre className="markdown-code-block">{children}</pre>,
+                p: ({children}) => <p className="markdown-paragraph">{children}</p>,
+                h1: ({children}) => <h1 className="markdown-heading markdown-h1">{children}</h1>,
+                h2: ({children}) => <h2 className="markdown-heading markdown-h2">{children}</h2>,
+                h3: ({children}) => <h3 className="markdown-heading markdown-h3">{children}</h3>,
+                h4: ({children}) => <h4 className="markdown-heading markdown-h4">{children}</h4>,
+                h5: ({children}) => <h5 className="markdown-heading markdown-h5">{children}</h5>,
+                h6: ({children}) => <h6 className="markdown-heading markdown-h6">{children}</h6>,
+                blockquote: ({children}) => <blockquote className="markdown-blockquote">{children}</blockquote>,
+                a: ({href, children}) => <a href={href} className="markdown-link" target="_blank" rel="noopener noreferrer">{children}</a>,
+                hr: () => <hr className="markdown-hr" />,
+                table: ({children}) => <table className="markdown-table">{children}</table>,
+                thead: ({children}) => <thead className="markdown-thead">{children}</thead>,
+                tbody: ({children}) => <tbody className="markdown-tbody">{children}</tbody>,
+                tr: ({children}) => <tr className="markdown-tr">{children}</tr>,
+                th: ({children}) => <th className="markdown-th">{children}</th>,
+                td: ({children}) => <td className="markdown-td">{children}</td>,
+              }}
+            >
+              {textBefore}
+            </ReactMarkdown>
+          )
+        }
+      }
+
+      // Add the interactive question buttons (hide question text since it's already in the response)
+      parts.push(
+        <div key={`question-buttons-${i}`} className="inline-interactive-question">
+          <InteractiveQuestionButtons
+            question={pos.question}
+            onButtonClick={handleQuestionButtonClick}
+            disabled={isLoading}
+            hideQuestionText={false}
+          />
+        </div>
+      )
+
+      lastIndex = pos.index + pos.text.length
+    })
+
+    // Add remaining text after the last question
+    if (lastIndex < response.length) {
+      const remainingText = response.substring(lastIndex)
+      if (remainingText.trim()) {
+        parts.push(
+          <ReactMarkdown
+            key="text-final"
+            components={{
+              ul: ({children}) => <ul className="markdown-list">{children}</ul>,
+              ol: ({children}) => <ol className="markdown-list">{children}</ol>,
+              li: ({children}) => <li className="markdown-list-item">{children}</li>,
+              strong: ({children}) => <strong className="markdown-strong">{children}</strong>,
+              em: ({children}) => <em className="markdown-em">{children}</em>,
+              code: ({children, className}) => {
+                const isInline = !className;
+                return isInline ? (
+                  <code className="markdown-inline-code">{children}</code>
+                ) : (
+                  <code className="markdown-code">{children}</code>
+                );
+              },
+              pre: ({children}) => <pre className="markdown-code-block">{children}</pre>,
+              p: ({children}) => <p className="markdown-paragraph">{children}</p>,
+              h1: ({children}) => <h1 className="markdown-heading markdown-h1">{children}</h1>,
+              h2: ({children}) => <h2 className="markdown-heading markdown-h2">{children}</h2>,
+              h3: ({children}) => <h3 className="markdown-heading markdown-h3">{children}</h3>,
+              h4: ({children}) => <h4 className="markdown-heading markdown-h4">{children}</h4>,
+              h5: ({children}) => <h5 className="markdown-heading markdown-h5">{children}</h5>,
+              h6: ({children}) => <h6 className="markdown-heading markdown-h6">{children}</h6>,
+              blockquote: ({children}) => <blockquote className="markdown-blockquote">{children}</blockquote>,
+              a: ({href, children}) => <a href={href} className="markdown-link" target="_blank" rel="noopener noreferrer">{children}</a>,
+              hr: () => <hr className="markdown-hr" />,
+              table: ({children}) => <table className="markdown-table">{children}</table>,
+              thead: ({children}) => <thead className="markdown-thead">{children}</thead>,
+              tbody: ({children}) => <tbody className="markdown-tbody">{children}</tbody>,
+              tr: ({children}) => <tr className="markdown-tr">{children}</tr>,
+              th: ({children}) => <th className="markdown-th">{children}</th>,
+              td: ({children}) => <td className="markdown-td">{children}</td>,
+            }}
+          >
+            {remainingText}
+          </ReactMarkdown>
+        )
+      }
+    }
+
+    return <div className="response-with-inline-questions">{parts}</div>
+  }, [handleQuestionButtonClick, isLoading])
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -694,6 +950,7 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrig
                 </div>
               </div>
               
+              
               {message.response && (
                 <div 
                   ref={message === findLastAgentMessage() ? lastAgentMessageRef : null}
@@ -708,45 +965,11 @@ const Chat: React.FC<ChatProps> = ({ projectId, onTaskGenerated, taskContextTrig
                       </span>
                     </div>
                     <div className="message-text">
-                      <ReactMarkdown
-                        components={{
-                          ul: ({children}) => <ul className="markdown-list">{children}</ul>,
-                          ol: ({children}) => <ol className="markdown-list">{children}</ol>,
-                          li: ({children}) => <li className="markdown-list-item">{children}</li>,
-                          strong: ({children}) => <strong className="markdown-strong">{children}</strong>,
-                          em: ({children}) => <em className="markdown-em">{children}</em>,
-                          code: ({children, className}) => {
-                            const isInline = !className;
-                            return isInline ? (
-                              <code className="markdown-inline-code">{children}</code>
-                            ) : (
-                              <code className="markdown-code">{children}</code>
-                            );
-                          },
-                          pre: ({children}) => <pre className="markdown-code-block">{children}</pre>,
-                          p: ({children}) => <p className="markdown-paragraph">{children}</p>,
-                          h1: ({children}) => <h1 className="markdown-heading markdown-h1">{children}</h1>,
-                          h2: ({children}) => <h2 className="markdown-heading markdown-h2">{children}</h2>,
-                          h3: ({children}) => <h3 className="markdown-heading markdown-h3">{children}</h3>,
-                          h4: ({children}) => <h4 className="markdown-heading markdown-h4">{children}</h4>,
-                          h5: ({children}) => <h5 className="markdown-heading markdown-h5">{children}</h5>,
-                          h6: ({children}) => <h6 className="markdown-heading markdown-h6">{children}</h6>,
-                          blockquote: ({children}) => <blockquote className="markdown-blockquote">{children}</blockquote>,
-                          a: ({href, children}) => <a href={href} className="markdown-link" target="_blank" rel="noopener noreferrer">{children}</a>,
-                          hr: () => <hr className="markdown-hr" />,
-                          table: ({children}) => <table className="markdown-table">{children}</table>,
-                          thead: ({children}) => <thead className="markdown-thead">{children}</thead>,
-                          tbody: ({children}) => <tbody className="markdown-tbody">{children}</tbody>,
-                          tr: ({children}) => <tr className="markdown-tr">{children}</tr>,
-                          th: ({children}) => <th className="markdown-th">{children}</th>,
-                          td: ({children}) => <td className="markdown-td">{children}</td>,
-                        }}
-                      >
-                        {message.response}
-                      </ReactMarkdown>
+                      {renderResponseWithInlineQuestions(message.response, message.interactive_questions)}
                     </div>
                   </div>
                   
+
                   {/* Show Create Tasks button for spec_clarification or feature_exploration intent */}
                   {(message.intent_type === 'spec_clarification' || message.intent_type === 'feature_exploration') && !message.isOptimistic && (
                     <div className="mt-3">

@@ -185,6 +185,42 @@ class LLMProviderService:
         
         return None
     
+    def get_llm_service_by_project_id(self, project_id: str):
+        """
+        Get the appropriate LLM service for a given project.
+        
+        Args:
+            project_id: The project ID
+            
+        Returns:
+            The appropriate LLM service instance, or None if not found
+        """
+        try:
+            # Try to get the project's selected model
+            from .project_settings_service import ProjectSettingsService
+            settings_service = ProjectSettingsService()
+            selected_model = settings_service.get_selected_llm_model(project_id)
+            
+            if selected_model:
+                service = self.get_llm_service_by_model_id(selected_model)
+                if service and service.is_api_key_valid():
+                    return service
+            
+            # If no service found, try to get any available service
+            for provider_name in ['gemini', 'openai', 'claude']:
+                default_model = self.get_default_model_for_provider(provider_name)
+                if default_model:
+                    service = self.get_llm_service_by_model_id(default_model)
+                    if service and service.is_api_key_valid():
+                        return service
+            
+            logger.warning(f"No valid LLM service found for project {project_id}")
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error getting LLM service for project {project_id}: {e}")
+            return None
+    
     def get_provider_status(self) -> Dict[str, Dict[str, Any]]:
         """
         Get the status of all providers.

@@ -171,7 +171,7 @@ export async function sendChatMessage(request: ChatRequest): Promise<ChatRespons
 export async function sendChatMessageWithProgress(
   request: ChatRequest,
   onProgress?: (progress: any) => void,
-  onComplete?: (response: string, intent_type?: string) => void,
+  onComplete?: (response: { response: string, intent_type?: string, interactive_questions?: any[] }) => void,
   onError?: (error: string) => void
 ): Promise<void> {
   // Use the new simplified streaming endpoint
@@ -186,7 +186,12 @@ export async function sendChatMessageWithProgress(
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ message: request.message }),
+      body: JSON.stringify({
+        message: request.message,
+        task_context_id: request.task_context_id,
+        code_context_mode: request.code_context_mode,
+        llm_model_id: request.llm_model_id
+      }),
     })
 
     if (!response.ok) {
@@ -259,7 +264,12 @@ export async function sendChatMessageWithProgress(
               console.log(`✅ [${timeSinceStart}ms] Streaming completed successfully after ${totalTime}ms`)
               console.log(`📊 Total progress updates received: ${progressCount}`)
               console.log(`🎯 Intent type: ${data.intent_type || 'unknown'}`)
-              onComplete(data.response, data.intent_type)
+              console.log(`🎯 Interactive questions: ${data.interactive_questions ? data.interactive_questions.length : 0}`)
+              onComplete({
+                response: data.response,
+                intent_type: data.intent_type,
+                interactive_questions: data.interactive_questions
+              })
               return
             } else if (data.type === 'error' && onError) {
               console.error(`❌ [${timeSinceStart}ms] Streaming error received:`, data.error)

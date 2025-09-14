@@ -337,6 +337,7 @@ async def chat(project_id: str, request: ChatRequest):
         # LLM cost tracking is now handled automatically by GeminiService
 
         # Persist chat
+        interactive_questions = result.get('interactive_questions')
         chat_message = ChatMessage(
             id=str(uuid.uuid4()),
             project_id=project_id,
@@ -344,6 +345,7 @@ async def chat(project_id: str, request: ChatRequest):
             message=request.message,
             response=final_response,
             intent_type=result.get('intent_analysis', {}).get('intent_type'),
+            interactive_questions=interactive_questions,
             created_at=datetime.now()
         )
         file_service.save_chat_message(project_id, chat_message)
@@ -357,7 +359,8 @@ async def chat(project_id: str, request: ChatRequest):
             intent_analysis=result.get("intent_analysis"),
             memory_updated=result.get("memory_updated", False),
             task_context=None,
-            code_context=result.get("code_context")
+            code_context=result.get("code_context"),
+            interactive_questions=interactive_questions
         )
 
     except HTTPException:
@@ -514,6 +517,7 @@ async def chat_with_progress(project_id: str, request: ChatRequest):
             final_response = handle_agent_response(final_response)
             
             # 11. Save chat message
+            interactive_questions = result.get('interactive_questions')
             chat_message = ChatMessage(
                 id=str(uuid.uuid4()),
                 project_id=project_id,
@@ -521,6 +525,7 @@ async def chat_with_progress(project_id: str, request: ChatRequest):
                 message=request.message,
                 response=final_response,
                 intent_type=result.get('intent_analysis', {}).get('intent_type'),
+                interactive_questions=interactive_questions,
                 created_at=datetime.now()
             )
             file_service.save_chat_message(project_id, chat_message)
@@ -528,8 +533,14 @@ async def chat_with_progress(project_id: str, request: ChatRequest):
             # 12. Update session activity
             file_service.update_session_activity(project_id, current_session.id)
             
-            # 13. Send final response with intent_type
-            yield f"data: {json.dumps({'type': 'complete', 'response': final_response, 'intent_type': result.get('intent_analysis', {}).get('intent_type', 'unknown')})}\n\n"
+            # 13. Send final response with intent_type and interactive_questions
+            response_data = {
+                'type': 'complete', 
+                'response': final_response, 
+                'intent_type': result.get('intent_analysis', {}).get('intent_type', 'unknown'),
+                'interactive_questions': interactive_questions
+            }
+            yield f"data: {json.dumps(response_data)}\n\n"
             
         except Exception as e:
             logger.error(f"Chat with progress error: {e}")
@@ -758,6 +769,13 @@ async def chat_stream(project_id: str, request: ChatRequest):
             final_response = handle_agent_response(final_response)
             
             # 7. Save chat message
+            interactive_questions = result.get('interactive_questions')
+            # Convert QuestionSchema objects to dictionaries for proper serialization
+            if interactive_questions:
+                interactive_questions_dict = [q.model_dump() if hasattr(q, 'model_dump') else q for q in interactive_questions]
+            else:
+                interactive_questions_dict = None
+            
             chat_message = ChatMessage(
                 id=str(uuid.uuid4()),
                 project_id=project_id,
@@ -765,13 +783,21 @@ async def chat_stream(project_id: str, request: ChatRequest):
                 message=request.message,
                 response=final_response,
                 intent_type=result.get('intent_analysis', {}).get('intent_type'),
+                interactive_questions=interactive_questions_dict,
                 created_at=datetime.now()
             )
             file_service.save_chat_message(project_id, chat_message)
             file_service.update_session_activity(project_id, current_session.id)
             
-            # 8. Send final response with intent_type
-            yield f"data: {json.dumps({'type': 'complete', 'response': final_response, 'intent_type': result.get('intent_analysis', {}).get('intent_type', 'unknown')})}\n\n"
+            # 8. Send final response with intent_type and interactive_questions
+            
+            response_data = {
+                'type': 'complete', 
+                'response': final_response, 
+                'intent_type': result.get('intent_analysis', {}).get('intent_type', 'unknown'),
+                'interactive_questions': interactive_questions_dict
+            }
+            yield f"data: {json.dumps(response_data)}\n\n"
             
         except Exception as e:
             logger.error(f"Chat stream error: {e}")

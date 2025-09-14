@@ -269,6 +269,20 @@ export interface Memory {
   created_at: string
 }
 
+export interface QuestionSchema {
+  id: string
+  type: 'confirming' | 'option'
+  text: string
+  options: string[]
+}
+
+export interface UserInteractionSchema {
+  question_id: string
+  action_type: 'yes' | 'no' | 'skip' | 'ai_decide' | 'do_not_know' | 'option_selected'
+  selected_option?: string
+  question_text: string
+}
+
 export interface ChatMessage {
   id: string
   project_id: string
@@ -277,6 +291,7 @@ export interface ChatMessage {
   response: string
   created_at: string
   intent_type?: string
+  interactive_questions?: QuestionSchema[]
 }
 
 export enum UserIntentEnum {
