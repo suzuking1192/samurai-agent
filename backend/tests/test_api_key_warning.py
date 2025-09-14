@@ -10,7 +10,7 @@ import pytest
 import os
 import asyncio
 from unittest.mock import patch, MagicMock
-from services.unified_samurai_agent import UnifiedSamuraiAgent
+from backend.services.agent_core.unified_samurai_agent import UnifiedSamuraiAgent
 from services.gemini_service import GeminiService
 from models import ChatMessage, Project
 

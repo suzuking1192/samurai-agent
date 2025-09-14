@@ -15,7 +15,7 @@ from datetime import datetime
 # Add the parent directory to the path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from services.agent_tools import UpdateTaskTool
+from backend.services.tools.agent_tools import UpdateTaskTool
 from models import Task
 
 class TestUpdateTaskTool:

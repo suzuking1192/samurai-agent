@@ -23,7 +23,7 @@ except ImportError:
     # Add parent directory to path
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from models import Project, Memory, Task, ChatMessage
-    from services.embedding_service import embedding_service
+    from .embedding_service import embedding_service
     if TYPE_CHECKING:
         from models import Session
 

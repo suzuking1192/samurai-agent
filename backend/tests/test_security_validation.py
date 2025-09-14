@@ -2,7 +2,7 @@ import unittest
 import os
 import tempfile
 from unittest.mock import patch
-from services.agent_tools import ExtractCodeContextTool
+from backend.services.tools.agent_tools import ExtractCodeContextTool
 
 class TestSecurityValidation(unittest.TestCase):
     """Test that security validation still works correctly."""

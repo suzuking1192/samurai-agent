@@ -6,22 +6,8 @@ import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
-try:
-    from models import Task, TaskWarning
-    from .task_analysis_agent import TaskAnalysisAgent
-    from .file_service import FileService
-except ImportError:
-    import sys
-    import os
-    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from models import Task, TaskWarning
-    from task_analysis_agent import TaskAnalysisAgent
-    from file_service import FileService
-except ImportError:
-    # Try direct import
-    from models import Task, TaskWarning
-    from task_analysis_agent import TaskAnalysisAgent
-    from file_service import FileService
+from models import Task, TaskWarning
+from ..core.file_service import FileService
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +40,6 @@ class TaskService:
             The created Task object
         """
         # Generate warnings using the analysis agent (disabled temporarily)
-        # warnings = await self.analysis_agent.analyze_task(title, description)
         warnings = []
         
         # Determine hierarchy depth with validation (max depth 4)
@@ -111,7 +96,6 @@ class TaskService:
         
         # Re-analyze if description was updated (disabled temporarily)
         if "description" in updates or "title" in updates:
-            # warnings = await self.analysis_agent.analyze_task(task.title, task.description)
             task.review_warnings = []
         
         # Update timestamp

@@ -12,8 +12,8 @@ from datetime import datetime
 from dataclasses import dataclass
 
 from models import ChatMessage, Memory, Project, MemoryCategory, CATEGORY_CONFIG
-from services.gemini_service import GeminiService
-from services.file_service import FileService
+from ..core.file_service import FileService
+from ..llm_providers.llm_provider_service import llm_provider_service
 
 # Configuration constants
 MIN_SESSION_LENGTH = 3  # messages to trigger consolidation
@@ -74,9 +74,30 @@ class IntelligentMemoryConsolidationService:
     """Service for intelligent memory consolidation on session end."""
 
     def __init__(self):
-        self.gemini_service = GeminiService()
+        self.llm_provider_service = llm_provider_service
         self.file_service = FileService()
+        from ..core.project_settings_service import ProjectSettingsService
+        self.project_settings_service = ProjectSettingsService()
         logger.info("IntelligentMemoryConsolidationService initialized")
+    
+    def _get_llm_service_for_project(self, project_id: str):
+        """Get the appropriate LLM service for the given project."""
+        # Try to get the project's selected model
+        selected_model = self.project_settings_service.get_selected_llm_model(project_id)
+        if selected_model:
+            service = self.llm_provider_service.get_llm_service_by_model_id(selected_model)
+            if service and service.is_api_key_valid():
+                return service
+        
+        # If no service found, try to get any available service
+        for provider_name in ['gemini', 'openai', 'claude']:
+            default_model = self.llm_provider_service.get_default_model_for_provider(provider_name)
+            if default_model:
+                service = self.llm_provider_service.get_llm_service_by_model_id(default_model)
+                if service and service.is_api_key_valid():
+                    return service
+        
+        raise ValueError("No LLM service available")
 
     async def consolidate_session_memories(
         self,
@@ -116,7 +137,7 @@ class IntelligentMemoryConsolidationService:
             
             # Step 3: Analyze conversation for insights
             session_analysis = await self._analyze_conversation_for_insights(
-                session_messages, project_context
+                session_messages, project_context, project_id
             )
             
             # Step 4: Check session relevance
@@ -175,7 +196,8 @@ class IntelligentMemoryConsolidationService:
     async def _analyze_conversation_for_insights(
         self, 
         session_messages: List[ChatMessage], 
-        project_context: Dict[str, Any]
+        project_context: Dict[str, Any],
+        project_id: str
     ) -> SessionAnalysis:
         """
         Analyze conversation to extract significant project-relevant insights.
@@ -252,7 +274,8 @@ Set is_new_category: true and provide new_category_suggestion if insight doesn't
 """
             
             # Get LLM analysis
-            response = await self.gemini_service.chat_with_system_prompt(
+            llm_service = self._get_llm_service_for_project(project_id)
+            response = await llm_service.chat_with_system_prompt(
                 "Please analyze this conversation and extract project insights as JSON.",
                 analysis_prompt
             )
@@ -383,7 +406,7 @@ Set is_new_category: true and provide new_category_suggestion if insight doesn't
                     insight, existing_memories
                 )
                 
-                if matching_memory and await self._should_merge_insight(insight, matching_memory):
+                if matching_memory and await self._should_merge_insight(insight, matching_memory, project_id):
                     # Merge with existing memory
                     await self._merge_insight_into_memory(insight, matching_memory, project_id)
                     memories_updated += 1
@@ -565,7 +588,8 @@ Set is_new_category: true and provide new_category_suggestion if insight doesn't
     async def _should_merge_insight(
         self, 
         insight: ConversationInsight, 
-        memory: Memory
+        memory: Memory,
+        project_id: str
     ) -> bool:
         """Check if insight should be merged with existing memory using LLM."""
         try:
@@ -599,7 +623,8 @@ Consider merging if the insight:
 3. Refines or clarifies existing information
 """
             
-            response = await self.gemini_service.chat_with_system_prompt(
+            llm_service = self._get_llm_service_for_project(project_id)
+            response = await llm_service.chat_with_system_prompt(
                 "Analyze for conflicts and merge compatibility",
                 conflict_prompt
             )
@@ -655,7 +680,8 @@ Return JSON:
 }}
 """
             
-            response = await self.gemini_service.chat_with_system_prompt(
+            llm_service = self._get_llm_service_for_project(project_id)
+            response = await llm_service.chat_with_system_prompt(
                 "Merge the insight into existing memory",
                 merge_prompt
             )
@@ -685,7 +711,7 @@ Return JSON:
         """Build Memory model from insight data, including new categories."""
         try:
             # Generate title from content
-            title = await self._generate_memory_title(insight.content)
+            title = await self._generate_memory_title(insight.content, project_id)
             
             # Create new memory
             new_memory = Memory(
@@ -706,7 +732,7 @@ Return JSON:
         except Exception as e:
             logger.error(f"Error creating memory from insight: {e}")
 
-    async def _generate_memory_title(self, content: str) -> str:
+    async def _generate_memory_title(self, content: str, project_id: str) -> str:
         """Generate a concise title for memory content."""
         try:
             title_prompt = f"""
@@ -723,7 +749,8 @@ The title should:
 Return only the title, no extra text or quotes.
 """
             
-            title = await self.gemini_service.chat_with_system_prompt(
+            llm_service = self._get_llm_service_for_project(project_id)
+            title = await llm_service.chat_with_system_prompt(
                 "Generate memory title",
                 title_prompt
             )

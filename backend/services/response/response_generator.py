@@ -10,15 +10,7 @@ import logging
 from typing import List, Dict, Optional, Any
 from dataclasses import dataclass
 
-try:
-    from .gemini_service import GeminiService
-    from models import Task, Memory, Project, ChatMessage
-except ImportError:
-    import sys
-    import os
-    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from gemini_service import GeminiService
-    from models import Task, Memory, Project, ChatMessage
+from models import Task, Memory, Project, ChatMessage
 
 logger = logging.getLogger(__name__)
 
@@ -43,8 +35,8 @@ class ResponseGenerator:
     using LLM calls instead of hardcoded responses.
     """
     
-    def __init__(self):
-        self.gemini_service = GeminiService()
+    def __init__(self, llm_provider_service=None):
+        self.llm_provider_service = llm_provider_service
         
         # Response templates and guidelines
         self.agent_personality = """
@@ -67,6 +59,31 @@ class ResponseGenerator:
             "completion": "Great! I've completed that for you.",
             "deletion": "Done! I've removed that for you."
         }
+    
+    def _get_llm_service(self, project_id: str = None):
+        """Get the appropriate LLM service for the given project."""
+        if not self.llm_provider_service:
+            raise ValueError("LLM provider service not available")
+        
+        # Try to get the project's selected model if project_id is provided
+        if project_id:
+            from ..core.project_settings_service import ProjectSettingsService
+            settings_service = ProjectSettingsService()
+            selected_model = settings_service.get_selected_llm_model(project_id)
+            if selected_model:
+                service = self.llm_provider_service.get_llm_service_by_model_id(selected_model)
+                if service and service.is_api_key_valid():
+                    return service
+        
+        # If no service found, try to get any available service
+        for provider_name in ['gemini', 'openai', 'claude']:
+            default_model = self.llm_provider_service.get_default_model_for_provider(provider_name)
+            if default_model:
+                service = self.llm_provider_service.get_llm_service_by_model_id(default_model)
+                if service and service.is_api_key_valid():
+                    return service
+        
+        raise ValueError("No LLM service available")
 
     def _project_context_block(self, context: ResponseContext) -> str:
         """Format a unified project context block including long-form project detail if available."""
@@ -252,7 +269,8 @@ class ResponseGenerator:
             Remember: You're their vibe coding partner. Be the developer friend they wish they had - knowledgeable, encouraging, curious, and always thinking about how to build great software together.
             """
             
-            response = await self.gemini_service.chat_with_system_prompt(context.user_message, system_prompt)
+            llm_service = self._get_llm_service(context.project_id)
+            response = await llm_service.chat_with_system_prompt(context.user_message, system_prompt)
             return response.strip()
             
         except Exception as e:
@@ -466,7 +484,8 @@ Your existing user state management and API patterns are going to make this feat
 Remember: You're not just gathering requirements - you're helping them think through their feature in the context of their real project, making the path from idea to implementation crystal clear.
 """
             
-            response = await self.gemini_service.chat_with_system_prompt(context.user_message, system_prompt)
+            llm_service = self._get_llm_service(context.project_id)
+            response = await llm_service.chat_with_system_prompt(context.user_message, system_prompt)
             return response.strip()
             
         except Exception as e:
@@ -716,7 +735,8 @@ Your [tech stack/architecture] gives us some great options for implementing this
 Remember: You're guiding them from idea to implementation with the perfect balance of strategic thinking and collaborative energy. Trust your analysis but always respond as their excited coding partner who can't wait to build amazing software together.
 """
             
-            response = await self.gemini_service.chat_with_system_prompt(context.user_message, system_prompt)
+            llm_service = self._get_llm_service(context.project_id)
+            response = await llm_service.chat_with_system_prompt(context.user_message, system_prompt)
             return response.strip()
             
         except Exception as e:
@@ -759,7 +779,8 @@ Remember: You're guiding them from idea to implementation with the perfect balan
             # Create a summary of the task creation for the prompt
             task_summary = f"Successfully created {len(successful_results)} tasks for {context.project_name}"
             
-            response = await self.gemini_service.chat_with_system_prompt(task_summary, system_prompt)
+            llm_service = self._get_llm_service(context.project_id)
+            response = await llm_service.chat_with_system_prompt(task_summary, system_prompt)
             return response.strip()
             
         except Exception as e:
@@ -798,7 +819,8 @@ Remember: You're guiding them from idea to implementation with the perfect balan
             """
             
             completion_summary = f"Completed task: {task.title}"
-            response = await self.gemini_service.chat_with_system_prompt(completion_summary, system_prompt)
+            llm_service = self._get_llm_service(context.project_id)
+            response = await llm_service.chat_with_system_prompt(completion_summary, system_prompt)
             return response.strip()
             
         except Exception as e:
@@ -834,7 +856,8 @@ Remember: You're guiding them from idea to implementation with the perfect balan
             """
             
             deletion_summary = f"Deleted task: {task.title}"
-            response = await self.gemini_service.chat_with_system_prompt(deletion_summary, system_prompt)
+            llm_service = self._get_llm_service(context.project_id)
+            response = await llm_service.chat_with_system_prompt(deletion_summary, system_prompt)
             return response.strip()
             
         except Exception as e:
@@ -870,7 +893,8 @@ Remember: You're guiding them from idea to implementation with the perfect balan
             """
             
             error_summary = f"Error processing: {context.user_message}"
-            response = await self.gemini_service.chat_with_system_prompt(error_summary, system_prompt)
+            llm_service = self._get_llm_service(context.project_id)
+            response = await llm_service.chat_with_system_prompt(error_summary, system_prompt)
             return response.strip()
             
         except Exception as e:
@@ -909,7 +933,8 @@ Remember: You're guiding them from idea to implementation with the perfect balan
             """
             
             completion_summary = f"Session completed with {session_summary.get('memories_created', 0)} memories created"
-            response = await self.gemini_service.chat_with_system_prompt(completion_summary, system_prompt)
+            llm_service = self._get_llm_service(context.project_id)
+            response = await llm_service.chat_with_system_prompt(completion_summary, system_prompt)
             return response.strip()
             
         except Exception as e:
@@ -959,7 +984,8 @@ Remember: You're guiding them from idea to implementation with the perfect balan
             """
             
             welcome_summary = f"Welcome back to {context.project_name}!"
-            response = await self.gemini_service.chat_with_system_prompt(welcome_summary, system_prompt)
+            llm_service = self._get_llm_service(context.project_id)
+            response = await llm_service.chat_with_system_prompt(welcome_summary, system_prompt)
             return response.strip()
             
         except Exception as e:
@@ -1014,7 +1040,8 @@ Remember: You're guiding them from idea to implementation with the perfect balan
             """
             
             error_summary = "Task creation encountered issues"
-            response = await self.gemini_service.chat_with_system_prompt(error_summary, system_prompt)
+            llm_service = self._get_llm_service(context.project_id)
+            response = await llm_service.chat_with_system_prompt(error_summary, system_prompt)
             return response.strip()
             
         except Exception as e:

@@ -411,6 +411,7 @@ class ChatMessage(BaseModel):
         intent_type: Intent type from agent analysis (optional)
         embedding: Vector embedding for semantic search (optional)
         embedding_text: Text used to generate the embedding (optional)
+        interactive_questions: List of interactive questions detected in the response (optional)
     """
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Unique message identifier")
     project_id: str = Field(..., description="Project identifier")
@@ -421,6 +422,7 @@ class ChatMessage(BaseModel):
     intent_type: Optional[str] = Field(None, description="Intent type from agent analysis")
     embedding: Optional[List[float]] = Field(None, description="Vector embedding for semantic search")
     embedding_text: Optional[str] = Field(None, description="Text used to generate the embedding")
+    interactive_questions: Optional[List["QuestionSchema"]] = Field(None, description="Interactive questions detected in the response")
 
     class Config:
         """Pydantic configuration for JSON serialization."""
@@ -471,6 +473,39 @@ class ProjectCreateRequest(BaseModel):
             }
         }
 
+
+class QuestionSchema(BaseModel):
+    """
+    Schema for detected interactive questions.
+    
+    Attributes:
+        id: Unique identifier for the question
+        type: Type of question ('confirming' or 'option')
+        text: The full question sentence
+        options: List of options for option-type questions (empty for confirming)
+    """
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Unique question identifier")
+    type: str = Field(..., description="Question type: 'confirming' or 'option'")
+    text: str = Field(..., description="The full question sentence")
+    options: List[str] = Field(default=[], description="List of options for option-type questions")
+
+
+class UserInteractionSchema(BaseModel):
+    """
+    Schema for user interactions with detected questions.
+    
+    Attributes:
+        question_id: ID of the question being answered
+        action_type: Type of action taken ('yes', 'no', 'skip', 'ai_decide', 'do_not_know', 'option_selected')
+        selected_option: The selected option (for option-type questions)
+        question_text: The original question text for context
+    """
+    question_id: str = Field(..., description="ID of the question being answered")
+    action_type: str = Field(..., description="Action type: 'yes', 'no', 'skip', 'ai_decide', 'do_not_know', 'option_selected'")
+    selected_option: Optional[str] = Field(default=None, description="Selected option for option-type questions")
+    question_text: str = Field(..., description="Original question text for context")
+
+
 class ChatRequest(BaseModel):
     """
     Request model for chat interactions.
@@ -479,10 +514,12 @@ class ChatRequest(BaseModel):
         message: User message content
         task_context_id: Optional task ID to use as context for this chat
         code_context_mode: Optional code context mode for this chat
+        llm_model_id: Optional LLM model ID to use for this chat
     """
     message: str = Field(..., min_length=1, max_length=100000, description="User message")
     task_context_id: Optional[str] = Field(default=None, description="Task ID to use as context for this chat")
     code_context_mode: CodeContextMode = Field(default=CodeContextMode.AUTO, description="Code context mode for this chat")
+    llm_model_id: Optional[str] = Field(default=None, description="LLM model ID to use for this chat")
 
     class Config:
         json_schema_extra = {
@@ -492,6 +529,8 @@ class ChatRequest(BaseModel):
                 "code_context_mode": "auto"
             }
         }
+
+
 
 class ChatResponse(BaseModel):
     """
@@ -505,6 +544,7 @@ class ChatResponse(BaseModel):
         intent_analysis: Optional intent analysis from unified agent
         memory_updated: Whether memory was updated during this interaction
         task_context: Optional task that was used as context for this response
+        interactive_questions: Optional list of detected interactive questions
     """
     response: str = Field(..., max_length=15000, description="Assistant response")
     tasks: Optional[List[Task]] = Field(default=None, description="Generated tasks")
@@ -514,6 +554,7 @@ class ChatResponse(BaseModel):
     memory_updated: Optional[bool] = Field(default=False, description="Whether memory was updated")
     task_context: Optional[Task] = Field(default=None, description="Task used as context for this response")
     code_context: Optional[Dict[str, Any]] = Field(default=None, description="Code context extracted for this response")
+    interactive_questions: Optional[List[QuestionSchema]] = Field(default=None, description="Detected interactive questions")
 
     class Config:
         json_schema_extra = {

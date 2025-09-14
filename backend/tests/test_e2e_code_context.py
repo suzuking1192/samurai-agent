@@ -9,17 +9,9 @@ import asyncio
 import os
 from unittest.mock import patch, AsyncMock
 
-try:
-    from services.unified_samurai_agent import UnifiedSamuraiAgent
-    from services.code_context_storage import code_context_storage
-    from services.agent_tools import ExtractCodeContextTool
-except ImportError:
-    import sys
-    import os
-    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from unified_samurai_agent import UnifiedSamuraiAgent
-    from code_context_storage import code_context_storage
-    from agent_tools import ExtractCodeContextTool
+from backend.services.agent_core.unified_samurai_agent import UnifiedSamuraiAgent
+from backend.services.code_context_storage import code_context_storage
+from backend.services.tools.agent_tools import ExtractCodeContextTool
 
 
 class TestE2ECodeContextExtraction:

@@ -1,7 +1,7 @@
 import unittest
 import os
 from unittest.mock import patch
-from services.agent_tools import ExtractCodeContextTool
+from backend.services.tools.agent_tools import ExtractCodeContextTool
 
 class TestRealScenarioFix(unittest.TestCase):
     """Test the real scenario that was failing."""

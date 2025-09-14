@@ -41,14 +41,14 @@ from models import (
 )
 
 # Import your services  
-from services.gemini_service import GeminiService
-from services.file_service import FileService
-from services.unified_samurai_agent import unified_samurai_agent
-from services.context_service import context_service
-from services.response_service import handle_agent_response, handle_validation_error
-from services.intelligent_memory_consolidation import IntelligentMemoryConsolidationService
-from services.project_detail_service import project_detail_service
-from services.project_settings_service import ProjectSettingsService
+from services.core.file_service import FileService
+from services.agent_core.unified_samurai_agent import unified_samurai_agent
+from services.context.context_service import context_service
+from services.response.response_service import handle_agent_response, handle_validation_error
+from services.memory.intelligent_memory_consolidation import IntelligentMemoryConsolidationService
+from services.memory.project_detail_service import project_detail_service
+from services.core.project_settings_service import ProjectSettingsService
+from services.llm_providers.llm_provider_service import llm_provider_service
 
 
 # Load environment variables
@@ -149,7 +149,6 @@ app.add_middleware(
 
 # Initialize services
 file_service = FileService()
-gemini_service = GeminiService()
 memory_consolidation_service = IntelligentMemoryConsolidationService()
 project_settings_service = ProjectSettingsService()
 
@@ -338,6 +337,7 @@ async def chat(project_id: str, request: ChatRequest):
         # LLM cost tracking is now handled automatically by GeminiService
 
         # Persist chat
+        interactive_questions = result.get('interactive_questions')
         chat_message = ChatMessage(
             id=str(uuid.uuid4()),
             project_id=project_id,
@@ -345,6 +345,7 @@ async def chat(project_id: str, request: ChatRequest):
             message=request.message,
             response=final_response,
             intent_type=result.get('intent_analysis', {}).get('intent_type'),
+            interactive_questions=interactive_questions,
             created_at=datetime.now()
         )
         file_service.save_chat_message(project_id, chat_message)
@@ -358,7 +359,8 @@ async def chat(project_id: str, request: ChatRequest):
             intent_analysis=result.get("intent_analysis"),
             memory_updated=result.get("memory_updated", False),
             task_context=None,
-            code_context=result.get("code_context")
+            code_context=result.get("code_context"),
+            interactive_questions=interactive_questions
         )
 
     except HTTPException:
@@ -515,6 +517,7 @@ async def chat_with_progress(project_id: str, request: ChatRequest):
             final_response = handle_agent_response(final_response)
             
             # 11. Save chat message
+            interactive_questions = result.get('interactive_questions')
             chat_message = ChatMessage(
                 id=str(uuid.uuid4()),
                 project_id=project_id,
@@ -522,6 +525,7 @@ async def chat_with_progress(project_id: str, request: ChatRequest):
                 message=request.message,
                 response=final_response,
                 intent_type=result.get('intent_analysis', {}).get('intent_type'),
+                interactive_questions=interactive_questions,
                 created_at=datetime.now()
             )
             file_service.save_chat_message(project_id, chat_message)
@@ -529,8 +533,14 @@ async def chat_with_progress(project_id: str, request: ChatRequest):
             # 12. Update session activity
             file_service.update_session_activity(project_id, current_session.id)
             
-            # 13. Send final response with intent_type
-            yield f"data: {json.dumps({'type': 'complete', 'response': final_response, 'intent_type': result.get('intent_analysis', {}).get('intent_type', 'unknown')})}\n\n"
+            # 13. Send final response with intent_type and interactive_questions
+            response_data = {
+                'type': 'complete', 
+                'response': final_response, 
+                'intent_type': result.get('intent_analysis', {}).get('intent_type', 'unknown'),
+                'interactive_questions': interactive_questions
+            }
+            yield f"data: {json.dumps(response_data)}\n\n"
             
         except Exception as e:
             logger.error(f"Chat with progress error: {e}")
@@ -570,6 +580,74 @@ async def get_project_mode_selection(project_id: str):
     except Exception as e:
         logger.error(f"Error getting mode selection for project {project_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get mode selection: {str(e)}")
+
+@app.get("/projects/{project_id}/llm-models")
+async def get_project_llm_models(project_id: str):
+    """
+    Get available LLM models for a project and the currently selected model.
+    """
+    try:
+        # Verify project exists
+        project = file_service.get_project_by_id(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Get available models from LLM provider service
+        available_models = llm_provider_service.get_available_llm_models(project_id)
+        
+        # Get the currently selected model from project settings
+        selected_model_id = project_settings_service.get_selected_llm_model(project_id)
+        
+        return {
+            "project_id": project_id,
+            "available_models": available_models,
+            "selected_model_id": selected_model_id
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting LLM models for project {project_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get LLM models: {str(e)}")
+
+@app.post("/projects/{project_id}/llm-model")
+async def set_project_llm_model(project_id: str, request: dict):
+    """
+    Set the selected LLM model for a project.
+    """
+    try:
+        # Verify project exists
+        project = file_service.get_project_by_id(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Get model_id from request
+        model_id = request.get("model_id")
+        if not model_id:
+            raise HTTPException(status_code=400, detail="model_id is required")
+        
+        # Verify the model is available
+        available_models = llm_provider_service.get_available_llm_models(project_id)
+        model_ids = [model["id"] for model in available_models]
+        
+        if model_id not in model_ids:
+            raise HTTPException(status_code=400, detail=f"Model {model_id} is not available")
+        
+        # Set the selected model
+        success = project_settings_service.set_selected_llm_model(project_id, model_id)
+        
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to save LLM model selection")
+        
+        return {
+            "project_id": project_id,
+            "selected_model_id": model_id,
+            "success": True
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error setting LLM model for project {project_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to set LLM model: {str(e)}")
 
 @app.post("/projects/{project_id}/chat-stream")
 async def chat_stream(project_id: str, request: ChatRequest):
@@ -691,6 +769,13 @@ async def chat_stream(project_id: str, request: ChatRequest):
             final_response = handle_agent_response(final_response)
             
             # 7. Save chat message
+            interactive_questions = result.get('interactive_questions')
+            # Convert QuestionSchema objects to dictionaries for proper serialization
+            if interactive_questions:
+                interactive_questions_dict = [q.model_dump() if hasattr(q, 'model_dump') else q for q in interactive_questions]
+            else:
+                interactive_questions_dict = None
+            
             chat_message = ChatMessage(
                 id=str(uuid.uuid4()),
                 project_id=project_id,
@@ -698,13 +783,21 @@ async def chat_stream(project_id: str, request: ChatRequest):
                 message=request.message,
                 response=final_response,
                 intent_type=result.get('intent_analysis', {}).get('intent_type'),
+                interactive_questions=interactive_questions_dict,
                 created_at=datetime.now()
             )
             file_service.save_chat_message(project_id, chat_message)
             file_service.update_session_activity(project_id, current_session.id)
             
-            # 8. Send final response with intent_type
-            yield f"data: {json.dumps({'type': 'complete', 'response': final_response, 'intent_type': result.get('intent_analysis', {}).get('intent_type', 'unknown')})}\n\n"
+            # 8. Send final response with intent_type and interactive_questions
+            
+            response_data = {
+                'type': 'complete', 
+                'response': final_response, 
+                'intent_type': result.get('intent_analysis', {}).get('intent_type', 'unknown'),
+                'interactive_questions': interactive_questions_dict
+            }
+            yield f"data: {json.dumps(response_data)}\n\n"
             
         except Exception as e:
             logger.error(f"Chat stream error: {e}")
@@ -750,7 +843,7 @@ async def complete_task(project_id: str, task_id: str):
         logger.info(f"Completing task {task_id} in project {project_id}")
 
         # Delegate to TaskService to ensure existing post-update logic runs
-        from services.task_service import TaskService
+        from backend.services.tools.task_service import TaskService
         task_service = TaskService()
 
         updates = {"status": "completed"}
@@ -774,7 +867,7 @@ async def update_task(project_id: str, task_id: str, request: dict):
         logger.info(f"Updating task {task_id} in project {project_id}")
         
         # Use TaskService for automatic re-analysis
-        from services.task_service import TaskService
+        from backend.services.tools.task_service import TaskService
         task_service = TaskService()
         
         # Prepare updates
@@ -829,7 +922,7 @@ async def create_task(project_id: str, task_data: dict):
         logger.info(f"Creating task in project {project_id}")
         
         # Use TaskService for automatic analysis
-        from services.task_service import TaskService
+        from backend.services.tools.task_service import TaskService
         task_service = TaskService()
         
         parent_task_id = task_data.get("parent_task_id")

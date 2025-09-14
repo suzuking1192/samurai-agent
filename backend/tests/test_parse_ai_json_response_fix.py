@@ -7,7 +7,7 @@ from unittest.mock import patch, AsyncMock, Mock, mock_open
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from services.utils import parse_ai_json_response, extract_useful_info_from_response
-from services.agent_tools import AgentToolRegistry
+from backend.services.tools.agent_tools import AgentToolRegistry
 
 
 class TestParseAIJSONResponseFix:
@@ -155,7 +155,7 @@ This should definitely trigger the "Failed to parse even after reconstruction" e
             assert "context" in result
             assert "file_path" in result
     
-    @patch('services.utils.clean_ai_json_response')
+    @patch('backend.services.utils.clean_ai_json_response')
     def test_mocked_reconstruction_failure(self, mock_clean):
         """Test with mocked clean_ai_json_response to force the reconstruction error."""
         # Mock clean_ai_json_response to return a JSON that will fail during reconstruction

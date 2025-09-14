@@ -4,7 +4,7 @@ Tests for intent analysis with previous session intent tracking.
 
 import pytest
 from unittest.mock import patch, MagicMock
-from services.unified_samurai_agent import UnifiedSamuraiAgent, ConversationContext, IntentAnalysis
+from backend.services.agent_core.unified_samurai_agent import UnifiedSamuraiAgent, ConversationContext, IntentAnalysis
 from models import UserIntentEnum, Session
 
 

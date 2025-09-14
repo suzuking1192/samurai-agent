@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import AsyncMock, patch
-from services.unified_samurai_agent import UnifiedSamuraiAgent, ConversationContext, IntentAnalysis
+from backend.services.agent_core.unified_samurai_agent import UnifiedSamuraiAgent, ConversationContext, IntentAnalysis
 
 
 class TestFeatureExplorationConversation:

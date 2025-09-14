@@ -11,7 +11,7 @@ from unittest.mock import patch, Mock
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from services.agent_tools import ExtractCodeContextTool
+from backend.services.tools.agent_tools import ExtractCodeContextTool
 from services.file_service import FileService
 from models import Project
 

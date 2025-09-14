@@ -8,7 +8,7 @@ from unittest.mock import patch, MagicMock
 # Add the backend directory to the path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from services.agent_tools import AgentToolRegistry
+from backend.services.tools.agent_tools import AgentToolRegistry
 from services.utils import parse_ai_json_response, extract_json_from_ai_response
 
 

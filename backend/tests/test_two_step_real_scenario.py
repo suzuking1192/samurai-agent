@@ -12,7 +12,7 @@ import logging
 # Add the parent directory to the Python path so we can import our modules
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from services.agent_tools import ExtractCodeContextTool
+from backend.services.tools.agent_tools import ExtractCodeContextTool
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)

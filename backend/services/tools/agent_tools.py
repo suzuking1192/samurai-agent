@@ -9,20 +9,11 @@ from pydantic import BaseModel, Field
 from pathlib import Path
 import re
 
-try:
-    from .file_service import FileService
-    from .code_parser import code_parser
-    from .code_context_storage import code_context_storage
-    from .utils import parse_ai_json_response, clean_ai_json_response, extract_json_from_ai_response
-    from models import Task, Memory, Project
-except ImportError:
-    import sys
-    import os
-    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from file_service import FileService
-    from code_parser import code_parser
-    from code_context_storage import code_context_storage
-    from models import Task, Memory, Project
+from ..core.file_service import FileService
+from ..analysis.code_parser import code_parser
+from ..context.code_context_storage import code_context_storage
+from ..core.utils import parse_ai_json_response, clean_ai_json_response, extract_json_from_ai_response
+from models import Task, Memory, Project
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +34,7 @@ class CreateTaskTool(TaskTool):
         Create a new task with automatic analysis
         """
         try:
-            from .task_service import TaskService
+            from backend.services.tools.task_service import TaskService
             task_service = TaskService()
             
             # Create task with analysis
@@ -110,7 +101,7 @@ class UpdateTaskTool(TaskTool):
             
             # Try to use TaskService first (preferred method)
             try:
-                from .task_service import TaskService
+                from backend.services.tools.task_service import TaskService
                 task_service = TaskService()
                 
                 # Find task by ID or title
@@ -614,8 +605,7 @@ class DeleteMemoryTool(BaseModel):
 class ExtractCodeContextTool(BaseModel):
     name: str = "extract_code_context"
     description: str = "Extract relevant code context from the local codebase based on a natural language request"
-    
-
+    llm_provider_service: Optional[Any] = None
 
     async def execute(self, natural_language_request: str, project_id: str, 
                      connected_codebase_path: Optional[str] = None, session_id: Optional[str] = None,
@@ -694,7 +684,7 @@ class ExtractCodeContextTool(BaseModel):
             # Step 2: Use LLM to identify relevant files and methods
             logger.info(f"Identifying relevant files for request: {natural_language_request}")
             relevant_files_and_methods = await self._identify_relevant_files_and_methods(
-                file_infos, natural_language_request, max_iterations
+                file_infos, natural_language_request, max_iterations, project_id
             )
             logger.info(f"LLM identified {len(relevant_files_and_methods)} relevant files")
             
@@ -709,7 +699,7 @@ class ExtractCodeContextTool(BaseModel):
             
             # Step 3: Extract and analyze code from relevant files and methods
             extracted_context = await self._extract_code_context(
-                relevant_files_and_methods, natural_language_request, max_iterations
+                relevant_files_and_methods, natural_language_request, max_iterations, project_id
             )
             
             # Step 4: Save context if session_id is provided
@@ -736,11 +726,13 @@ class ExtractCodeContextTool(BaseModel):
             }
     
     async def _identify_relevant_files_and_methods(self, file_infos: Dict[str, Any], 
-                                                 request: str, max_iterations: int) -> Dict[str, List[str]]:
+                                                 request: str, max_iterations: int, project_id: str = None) -> Dict[str, List[str]]:
         """Use LLM to identify the most relevant files and methods for the request using a two-step approach."""
         try:
-            from .gemini_service import GeminiService
-            gemini_service = GeminiService()
+            # Get the appropriate LLM service
+            if not self.llm_provider_service:
+                raise ValueError("LLM provider service not available")
+            llm_service = self.llm_provider_service.get_llm_service_by_project_id(project_id)
             
             total_files = len(file_infos)
             logger.info(f"Total files in codebase: {total_files}")
@@ -752,7 +744,7 @@ class ExtractCodeContextTool(BaseModel):
             else:
                 # Step 1: Get all file names and let LLM identify relevant files
                 logger.info("Step 1: Identifying relevant files from all available files")
-                relevant_files = await self._step1_identify_relevant_files(file_infos, request, gemini_service)
+                relevant_files = await self._step1_identify_relevant_files(file_infos, request, llm_service)
                 
                 if not relevant_files:
                     logger.info("No relevant files identified in Step 1")
@@ -763,7 +755,7 @@ class ExtractCodeContextTool(BaseModel):
             # Step 2: For selected files, extract ALL elements and let LLM find relevant ones
             logger.info("Step 2: Extracting all elements from relevant files and identifying specific methods/classes")
             relevant_files_and_methods = await self._step2_identify_relevant_elements(
-                file_infos, relevant_files, request, gemini_service
+                file_infos, relevant_files, request, llm_service
             )
             
             logger.info(f"Step 2 identified {len(relevant_files_and_methods)} files with specific methods")
@@ -776,7 +768,7 @@ class ExtractCodeContextTool(BaseModel):
             return {file_path: [] for file_path in fallback_files}
     
     async def _step1_identify_relevant_files(self, file_infos: Dict[str, Any], 
-                                           request: str, gemini_service) -> List[str]:
+                                           request: str, llm_service) -> List[str]:
         """Step 1: Get all file names and let LLM identify relevant files."""
         try:
             # Create a list of all file names with their structure information
@@ -825,7 +817,7 @@ and filter down to the most relevant elements. So be generous in your selection 
 Return format: ["file1.py", "file2.js", "file3.py"]
 """
             
-            response = await gemini_service.chat_with_system_prompt("", prompt)
+            response = await llm_service.chat_with_system_prompt("", prompt)
             
             # Extract JSON array from response
             try:
@@ -868,7 +860,7 @@ Return format: ["file1.py", "file2.js", "file3.py"]
     
     async def _step2_identify_relevant_elements(self, file_infos: Dict[str, Any], 
                                               relevant_files: List[str], 
-                                              request: str, gemini_service) -> Dict[str, List[str]]:
+                                              request: str, llm_service) -> Dict[str, List[str]]:
         """Step 2: For selected files, extract ALL elements and let LLM find relevant ones."""
         try:
             # Create detailed element information for the selected files
@@ -911,7 +903,7 @@ Return format: {{"file1.py": ["method1", "class1"], "file2.js": ["function1"]}}
 Reasoning: [Explain your selection process and relevance ordering]
 """
             
-            response = await gemini_service.chat_with_system_prompt("", prompt)
+            response = await llm_service.chat_with_system_prompt("", prompt)
             
             logger.info(f"Step 2: Raw LLM response: {response}")
             
@@ -1109,11 +1101,13 @@ Reasoning: [Explain your selection process and relevance ordering]
         return "\n".join(summary_lines)
     
     async def _extract_code_context(self, file_methods_map: Dict[str, List[str]], 
-                                  request: str, max_iterations: int) -> Dict[str, Any]:
+                                  request: str, max_iterations: int, project_id: str = None) -> Dict[str, Any]:
         """Extract and analyze code from the identified relevant files and methods using cost-effective approach."""
         try:
-            from .gemini_service import GeminiService
-            gemini_service = GeminiService()
+            # Get the appropriate LLM service
+            if not self.llm_provider_service:
+                raise ValueError("LLM provider service not available")
+            llm_service = self.llm_provider_service.get_llm_service_by_project_id(project_id)
             
             # Step 1: Collect all relevant code content
             all_code_content = []
@@ -1201,7 +1195,7 @@ Example response format:
 }}
 """.format(request=request, combined_content=combined_content)
             
-            response = await gemini_service.chat_with_system_prompt("", prompt)
+            response = await llm_service.chat_with_system_prompt("", prompt)
             logger.info(f"Code context response: {response}")
             
             # Parse AI response using robust utility function
@@ -1477,7 +1471,8 @@ class AgentToolRegistry:
     Registry of all available tools for the agent
     """
     
-    def __init__(self):
+    def __init__(self, llm_provider_service=None):
+        self.llm_provider_service = llm_provider_service
         self.tools = {
             # Task tools
             "create_task": CreateTaskTool(),
@@ -1493,7 +1488,7 @@ class AgentToolRegistry:
             "delete_memory": DeleteMemoryTool(),
             
             # Code context tools
-            "extract_code_context": ExtractCodeContextTool(),
+            "extract_code_context": ExtractCodeContextTool(llm_provider_service=llm_provider_service),
         }
     
     def get_tool_descriptions(self) -> str:

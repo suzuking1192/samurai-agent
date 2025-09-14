@@ -137,6 +137,72 @@ class ProjectSettingsService:
             logger.error(f"Error reading settings for project {project_id}: {e}")
             return {'code_context_mode': CodeContextMode.AUTO.value}
     
+    def get_selected_llm_model(self, project_id: str) -> Optional[str]:
+        """
+        Get the selected LLM model for a project.
+        
+        Args:
+            project_id: The project ID
+            
+        Returns:
+            The selected LLM model ID, or None if not set
+        """
+        try:
+            settings_file = self._get_settings_file_path(project_id)
+            
+            if not settings_file.exists():
+                logger.info(f"No settings file found for project {project_id}, no LLM model selected")
+                return None
+            
+            with open(settings_file, 'r', encoding='utf-8') as f:
+                settings = json.load(f)
+            
+            selected_model = settings.get('selected_llm_model_id')
+            logger.info(f"Retrieved selected LLM model '{selected_model}' for project {project_id}")
+            return selected_model
+                
+        except Exception as e:
+            logger.error(f"Error reading selected LLM model for project {project_id}: {e}")
+            return None
+    
+    def set_selected_llm_model(self, project_id: str, model_id: str) -> bool:
+        """
+        Set the selected LLM model for a project.
+        
+        Args:
+            project_id: The project ID
+            model_id: The LLM model ID to set
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            settings_file = self._get_settings_file_path(project_id)
+            
+            # Load existing settings if file exists
+            settings = {}
+            if settings_file.exists():
+                try:
+                    with open(settings_file, 'r', encoding='utf-8') as f:
+                        settings = json.load(f)
+                except json.JSONDecodeError:
+                    logger.warning(f"Corrupted settings file for project {project_id}, creating new one")
+                    settings = {}
+            
+            # Update the selected LLM model
+            settings['selected_llm_model_id'] = model_id
+            
+            # Write the updated settings
+            with open(settings_file, 'w', encoding='utf-8') as f:
+                json.dump(settings, f, indent=2, ensure_ascii=False)
+            
+            logger.info(f"Successfully set selected LLM model to '{model_id}' for project {project_id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error setting selected LLM model for project {project_id}: {e}")
+            return False
+
     def delete_project_settings(self, project_id: str) -> bool:
         """
         Delete all settings for a project.

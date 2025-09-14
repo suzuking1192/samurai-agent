@@ -10,7 +10,7 @@ import json
 # Add the parent directory to the path to import the modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from services.unified_samurai_agent import UnifiedSamuraiAgent, ConversationContext
+from backend.services.agent_core.unified_samurai_agent import UnifiedSamuraiAgent, ConversationContext
 from services.utils import convert_task_json_to_markdown
 
 

@@ -8,7 +8,7 @@ when the agent has access to codebase information.
 import pytest
 import json
 from unittest.mock import patch, AsyncMock
-from services.unified_samurai_agent import UnifiedSamuraiAgent, ConversationContext, IntentAnalysis
+from backend.services.agent_core.unified_samurai_agent import UnifiedSamuraiAgent, ConversationContext, IntentAnalysis
 
 
 class TestSpecClarificationRephrasingDemo:

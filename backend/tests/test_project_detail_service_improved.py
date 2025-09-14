@@ -17,7 +17,7 @@ class TestProjectDetailServiceImproved:
     @pytest.fixture
     def mock_file_service(self):
         """Mock file service for testing."""
-        with patch('services.project_detail_service.file_service') as mock_fs:
+        with patch('backend.services.memory.project_detail_service.file_service') as mock_fs:
             yield mock_fs
 
     @pytest.mark.asyncio
