@@ -12,7 +12,7 @@ from unittest.mock import patch, MagicMock, AsyncMock
 # Import the tools
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from services.agent_tools import ExtractCodeContextTool
+from backend.services.tools.agent_tools import ExtractCodeContextTool
 from services.file_service import FileService
 from models import Project
 
@@ -41,9 +41,9 @@ class TestVirtualEnvExclusionIntegration:
         """Clean up test environment."""
         shutil.rmtree(self.temp_dir, ignore_errors=True)
     
-    @patch('services.agent_tools.file_service')
-    @patch('services.agent_tools.code_parser')
-    @patch('services.agent_tools.gemini_service')
+    @patch('backend.services.tools.agent_tools.file_service')
+    @patch('backend.services.tools.agent_tools.code_parser')
+    @patch('backend.services.tools.agent_tools.gemini_service')
     @pytest.mark.asyncio
     async def test_extract_code_context_excludes_venv_files(self, mock_gemini_service, mock_code_parser, mock_file_service):
         """Test that ExtractCodeContextTool excludes virtual environment files during code context extraction."""
@@ -127,9 +127,9 @@ class TestVirtualEnvExclusionIntegration:
         print(f"✓ User files included: {list(scanned_files.keys())}")
         print(f"✓ Virtual env files excluded: {venv_file}")
     
-    @patch('services.agent_tools.file_service')
-    @patch('services.agent_tools.code_parser')
-    @patch('services.agent_tools.gemini_service')
+    @patch('backend.services.tools.agent_tools.file_service')
+    @patch('backend.services.tools.agent_tools.code_parser')
+    @patch('backend.services.tools.agent_tools.gemini_service')
     @pytest.mark.asyncio
     async def test_extract_code_context_only_user_files_processed(self, mock_gemini_service, mock_code_parser, mock_file_service):
         """Test that only user files are processed by the LLM, not virtual environment files."""

@@ -14,19 +14,10 @@ import time
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
-try:
-    from .agent_tools import AgentToolRegistry
-    from .llm_provider_service import llm_provider_service
-    from .context_service import ContextSelectionService
-    from models import Task, Memory, Project
-except ImportError:
-    import sys
-    import os
-    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from agent_tools import AgentToolRegistry
-    from llm_provider_service import llm_provider_service
-    from context_service import ContextSelectionService
-    from models import Task, Memory, Project
+from ..tools.agent_tools import AgentToolRegistry
+from ..llm_providers.llm_provider_service import llm_provider_service
+from ..context.context_service import ContextSelectionService
+from models import Task, Memory, Project
 
 logger = logging.getLogger(__name__)
 

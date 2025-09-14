@@ -3,7 +3,7 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from services.agent_tools import AgentToolRegistry
+from backend.services.tools.agent_tools import AgentToolRegistry
 from services.code_parser import CodeElement, FileInfo
 
 class TestMethodMatchingFix(unittest.TestCase):

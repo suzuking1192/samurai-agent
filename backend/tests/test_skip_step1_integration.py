@@ -2,7 +2,7 @@ import pytest
 import tempfile
 import os
 from unittest.mock import AsyncMock, patch
-from services.agent_tools import ExtractCodeContextTool
+from backend.services.tools.agent_tools import ExtractCodeContextTool
 from services.code_parser import FileInfo, CodeElement
 
 
@@ -43,7 +43,7 @@ class TestSkipStep1Integration:
             max_iterations = 3
             
             # Mock GeminiService
-            with patch('services.gemini_service.GeminiService') as mock_gemini_class:
+            with patch('backend.services.llm_providers.gemini_service.GeminiService') as mock_gemini_class:
                 mock_gemini = AsyncMock()
                 mock_gemini_class.return_value = mock_gemini
                 
@@ -78,7 +78,7 @@ class TestSkipStep1Integration:
             max_iterations = 3
             
             # Mock GeminiService
-            with patch('services.gemini_service.GeminiService') as mock_gemini_class:
+            with patch('backend.services.llm_providers.gemini_service.GeminiService') as mock_gemini_class:
                 mock_gemini = AsyncMock()
                 mock_gemini_class.return_value = mock_gemini
                 
@@ -115,7 +115,7 @@ class TestSkipStep1Integration:
             # Test with 999 files (should skip Step 1)
             file_infos_999 = self.create_test_files(999, temp_dir)
             
-            with patch('services.gemini_service.GeminiService') as mock_gemini_class:
+            with patch('backend.services.llm_providers.gemini_service.GeminiService') as mock_gemini_class:
                 mock_gemini = AsyncMock()
                 mock_gemini_class.return_value = mock_gemini
                 
@@ -138,7 +138,7 @@ class TestSkipStep1Integration:
             # Test with 1000 files (should use Step 1)
             file_infos_1000 = self.create_test_files(1000, temp_dir)
             
-            with patch('services.gemini_service.GeminiService') as mock_gemini_class:
+            with patch('backend.services.llm_providers.gemini_service.GeminiService') as mock_gemini_class:
                 mock_gemini = AsyncMock()
                 mock_gemini_class.return_value = mock_gemini
                 

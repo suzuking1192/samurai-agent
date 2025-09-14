@@ -10,13 +10,7 @@ import logging
 from typing import List, Dict, Optional, Any
 from dataclasses import dataclass
 
-try:
-    from models import Task, Memory, Project, ChatMessage
-except ImportError:
-    import sys
-    import os
-    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from models import Task, Memory, Project, ChatMessage
+from models import Task, Memory, Project, ChatMessage
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +67,7 @@ class ResponseGenerator:
         
         # Try to get the project's selected model if project_id is provided
         if project_id:
-            from .project_settings_service import ProjectSettingsService
+            from ..core.project_settings_service import ProjectSettingsService
             settings_service = ProjectSettingsService()
             selected_model = settings_service.get_selected_llm_model(project_id)
             if selected_model:

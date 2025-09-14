@@ -17,19 +17,10 @@ from pathlib import Path
 from unittest.mock import Mock, patch, AsyncMock
 
 # Import the modules to test
-try:
-    from services.code_parser import CodeParser, code_parser
-    from services.code_context_storage import CodeContextStorage, code_context_storage
-    from services.agent_tools import ExtractCodeContextTool
-    from services.unified_samurai_agent import UnifiedSamuraiAgent, ConversationContext, IntentAnalysis
-except ImportError:
-    import sys
-    import os
-    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from code_parser import CodeParser, code_parser
-    from code_context_storage import CodeContextStorage, code_context_storage
-    from agent_tools import ExtractCodeContextTool
-    from unified_samurai_agent import UnifiedSamuraiAgent, ConversationContext, IntentAnalysis
+from backend.services.code_parser import CodeParser, code_parser
+from backend.services.code_context_storage import CodeContextStorage, code_context_storage
+from backend.services.tools.agent_tools import ExtractCodeContextTool
+from backend.services.agent_core.unified_samurai_agent import UnifiedSamuraiAgent, ConversationContext, IntentAnalysis
 
 
 class TestCodeParser:
@@ -294,7 +285,7 @@ def generate_token(user_id):
     @pytest.mark.asyncio
     async def test_extract_code_context_no_files(self):
         """Test code context extraction when no relevant files are found."""
-        with patch('services.gemini_service.GeminiService') as mock_gemini_class:
+        with patch('backend.services.llm_providers.gemini_service.GeminiService') as mock_gemini_class:
             mock_service = Mock()
             mock_service.generate_response = AsyncMock(return_value='{}')
             mock_service.chat_with_system_prompt = AsyncMock(return_value='{}')

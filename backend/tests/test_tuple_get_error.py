@@ -152,7 +152,7 @@ class TestTupleGetError(unittest.IsolatedAsyncioTestCase):
             # If there's an error, it should be handled gracefully
             self.assertNotIn("tuple.get", str(e), f"Should not have tuple.get error: {e}")
     
-    @patch('services.intelligent_memory_consolidation.GeminiService')
+    @patch('backend.services.intelligent_memory_consolidation.GeminiService')
     async def test_memory_consolidation_with_problematic_insights(self, mock_gemini):
         """Test memory consolidation with insights that could cause tuple.get errors."""
         

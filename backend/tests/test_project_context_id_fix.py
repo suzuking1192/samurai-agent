@@ -1,7 +1,7 @@
 import pytest
 import asyncio
 from unittest.mock import Mock, patch, AsyncMock
-from services.unified_samurai_agent import UnifiedSamuraiAgent
+from backend.services.agent_core.unified_samurai_agent import UnifiedSamuraiAgent
 from services.file_service import FileService
 from models import Project, Session, ChatMessage
 from datetime import datetime
@@ -35,7 +35,7 @@ class TestProjectContextIdFix:
     @pytest.fixture
     def mock_agent(self, mock_file_service):
         """Create a mock unified samurai agent."""
-        with patch('services.unified_samurai_agent.FileService', return_value=mock_file_service):
+        with patch('backend.services.agent_core.unified_samurai_agent.FileService', return_value=mock_file_service):
             agent = UnifiedSamuraiAgent()
             # Mock the tool registry to avoid actual tool execution
             agent.tool_registry = Mock()
@@ -53,7 +53,7 @@ class TestProjectContextIdFix:
             nonlocal captured_project_context
             captured_project_context = project_context
             # Return a mock conversation context
-            from services.unified_samurai_agent import ConversationContext
+            from backend.services.agent_core.unified_samurai_agent import ConversationContext
             return ConversationContext(
                 session_messages=[],
                 conversation_summary="",

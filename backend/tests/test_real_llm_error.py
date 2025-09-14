@@ -7,7 +7,7 @@ import json
 # Add the backend directory to the path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from services.agent_tools import ExtractCodeContextTool
+from backend.services.tools.agent_tools import ExtractCodeContextTool
 from services.gemini_service import GeminiService
 
 

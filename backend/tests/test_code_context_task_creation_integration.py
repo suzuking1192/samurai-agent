@@ -39,7 +39,7 @@ class TestCodeContextTaskCreationIntegration:
         }
         
         # Create a mock context
-        from backend.services.unified_samurai_agent import ConversationContext
+        from backend.services.agent_core.unified_samurai_agent import ConversationContext
         context = ConversationContext(
             session_id="test-session",
             session_messages=[],

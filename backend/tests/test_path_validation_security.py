@@ -6,7 +6,7 @@ from unittest.mock import Mock, patch
 from pathlib import Path
 
 # Import the agent tools to test
-from services.agent_tools import ExtractCodeContextTool
+from backend.services.tools.agent_tools import ExtractCodeContextTool
 from models import Project
 
 
@@ -43,7 +43,7 @@ class TestPathValidationSecurity:
         mock_project = Mock()
         mock_project.codebase_path = self.project_dir
         
-        with patch('services.file_service.file_service') as mock_file_service:
+        with patch('backend.services.file_service.file_service') as mock_file_service:
             mock_file_service.get_project_by_id.return_value = mock_project
             
             # Test with a subdirectory of the project
@@ -64,7 +64,7 @@ class TestPathValidationSecurity:
         mock_project = Mock()
         mock_project.codebase_path = self.project_dir
         
-        with patch('services.file_service.file_service') as mock_file_service:
+        with patch('backend.services.file_service.file_service') as mock_file_service:
             mock_file_service.get_project_by_id.return_value = mock_project
             
             # Test with a path outside the project
@@ -78,7 +78,7 @@ class TestPathValidationSecurity:
     
     def test_nonexistent_project(self):
         """Test that a nonexistent project returns an error."""
-        with patch('services.file_service.file_service') as mock_file_service:
+        with patch('backend.services.file_service.file_service') as mock_file_service:
             mock_file_service.get_project_by_id.return_value = None
             
             is_valid, canonicalized_path, error_message = self.tool._validate_and_canonicalize_path(
@@ -94,7 +94,7 @@ class TestPathValidationSecurity:
         mock_project = Mock()
         mock_project.codebase_path = None
         
-        with patch('services.file_service.file_service') as mock_file_service:
+        with patch('backend.services.file_service.file_service') as mock_file_service:
             mock_file_service.get_project_by_id.return_value = mock_project
             
             is_valid, canonicalized_path, error_message = self.tool._validate_and_canonicalize_path(
@@ -110,7 +110,7 @@ class TestPathValidationSecurity:
         mock_project = Mock()
         mock_project.codebase_path = self.project_dir
         
-        with patch('services.file_service.file_service') as mock_file_service:
+        with patch('backend.services.file_service.file_service') as mock_file_service:
             mock_file_service.get_project_by_id.return_value = mock_project
             
             nonexistent_path = os.path.join(self.project_dir, "nonexistent")
@@ -127,7 +127,7 @@ class TestPathValidationSecurity:
         mock_project = Mock()
         mock_project.codebase_path = self.project_dir
         
-        with patch('services.file_service.file_service') as mock_file_service:
+        with patch('backend.services.file_service.file_service') as mock_file_service:
             mock_file_service.get_project_by_id.return_value = mock_project
             
             file_path = os.path.join(self.project_dir, "test.py")
@@ -144,7 +144,7 @@ class TestPathValidationSecurity:
         mock_project = Mock()
         mock_project.codebase_path = self.project_dir
         
-        with patch('services.file_service.file_service') as mock_file_service:
+        with patch('backend.services.file_service.file_service') as mock_file_service:
             mock_file_service.get_project_by_id.return_value = mock_project
             
             # Create a symlink that points outside the project
@@ -169,7 +169,7 @@ class TestPathValidationSecurity:
         mock_project = Mock()
         mock_project.codebase_path = self.project_dir
         
-        with patch('services.file_service.file_service') as mock_file_service:
+        with patch('backend.services.file_service.file_service') as mock_file_service:
             mock_file_service.get_project_by_id.return_value = mock_project
             
             # Create a directory outside the project to test traversal
@@ -195,7 +195,7 @@ class TestPathValidationSecurity:
         mock_project = Mock()
         mock_project.codebase_path = self.project_dir
         
-        with patch('services.file_service.file_service') as mock_file_service:
+        with patch('backend.services.file_service.file_service') as mock_file_service:
             mock_file_service.get_project_by_id.return_value = mock_project
             
             # Test with absolute path outside project
@@ -212,7 +212,7 @@ class TestPathValidationSecurity:
         mock_project = Mock()
         mock_project.codebase_path = self.project_dir
         
-        with patch('services.file_service.file_service') as mock_file_service:
+        with patch('backend.services.file_service.file_service') as mock_file_service:
             mock_file_service.get_project_by_id.return_value = mock_project
             
             is_valid, canonicalized_path, error_message = self.tool._validate_and_canonicalize_path(
@@ -225,7 +225,7 @@ class TestPathValidationSecurity:
     
     def test_file_service_exception_handling(self):
         """Test that exceptions from file service are handled gracefully."""
-        with patch('services.file_service.file_service') as mock_file_service:
+        with patch('backend.services.file_service.file_service') as mock_file_service:
             mock_file_service.get_project_by_id.side_effect = Exception("Database error")
             
             is_valid, canonicalized_path, error_message = self.tool._validate_and_canonicalize_path(
@@ -241,7 +241,7 @@ class TestPathValidationSecurity:
         mock_project = Mock()
         mock_project.codebase_path = self.project_dir
         
-        with patch('services.file_service.file_service') as mock_file_service:
+        with patch('backend.services.file_service.file_service') as mock_file_service:
             mock_file_service.get_project_by_id.return_value = mock_project
             
             # Test with a path that has redundant separators

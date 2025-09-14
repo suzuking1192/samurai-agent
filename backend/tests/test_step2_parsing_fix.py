@@ -9,7 +9,7 @@ import sys
 # Add the backend directory to the path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from services.agent_tools import ExtractCodeContextTool
+from backend.services.tools.agent_tools import ExtractCodeContextTool
 
 
 class TestStep2ParsingFix:
@@ -158,7 +158,7 @@ The user is asking to identify the backend logic responsible for determining if 
 ```'''
         
         # Mock the gemini service
-        with patch('services.gemini_service.GeminiService') as mock_gemini:
+        with patch('backend.services.llm_providers.gemini_service.GeminiService') as mock_gemini:
             mock_service = Mock()
             mock_service.chat_with_system_prompt = AsyncMock(return_value=mock_response)
             mock_gemini.return_value = mock_service
@@ -197,7 +197,7 @@ The user is asking to identify the backend logic responsible for determining if 
         mock_response = '{"models.py": ["Project", "Task"]}'
         
         # Mock the gemini service
-        with patch('services.gemini_service.GeminiService') as mock_gemini:
+        with patch('backend.services.llm_providers.gemini_service.GeminiService') as mock_gemini:
             mock_service = Mock()
             mock_service.chat_with_system_prompt = AsyncMock(return_value=mock_response)
             mock_gemini.return_value = mock_service
@@ -237,7 +237,7 @@ The user is asking to identify the backend logic responsible for determining if 
         mock_response = '{"models.py": ["Project"]}'
         
         # Mock the gemini service
-        with patch('services.gemini_service.GeminiService') as mock_gemini:
+        with patch('backend.services.llm_providers.gemini_service.GeminiService') as mock_gemini:
             mock_service = Mock()
             mock_service.chat_with_system_prompt = AsyncMock(return_value=mock_response)
             mock_gemini.return_value = mock_service
@@ -290,7 +290,7 @@ The user is asking to identify the backend logic responsible for determining if 
 ```'''
         
         # Mock the gemini service
-        with patch('services.gemini_service.GeminiService') as mock_gemini:
+        with patch('backend.services.llm_providers.gemini_service.GeminiService') as mock_gemini:
             mock_service = Mock()
             mock_service.chat_with_system_prompt = AsyncMock(return_value=mock_response)
             mock_gemini.return_value = mock_service
@@ -385,7 +385,7 @@ The user is asking to identify the backend logic responsible for determining if 
 ```'''
         
         # Mock the gemini service
-        with patch('services.gemini_service.GeminiService') as mock_gemini:
+        with patch('backend.services.llm_providers.gemini_service.GeminiService') as mock_gemini:
             mock_service = Mock()
             mock_service.chat_with_system_prompt = AsyncMock(return_value=mock_response)
             mock_gemini.return_value = mock_service
@@ -528,7 +528,7 @@ The user is asking to identify the backend logic responsible for determining if 
         ]
         
         for i, test_case in enumerate(test_cases):
-            with patch('services.gemini_service.GeminiService') as mock_gemini:
+            with patch('backend.services.llm_providers.gemini_service.GeminiService') as mock_gemini:
                 mock_service = Mock()
                 mock_service.chat_with_system_prompt = AsyncMock(return_value=test_case["response"])
                 mock_gemini.return_value = mock_service
@@ -640,7 +640,7 @@ The user is asking to identify the backend logic responsible for determining if 
         ]
         
         for i, test_case in enumerate(test_cases):
-            with patch('services.gemini_service.GeminiService') as mock_gemini:
+            with patch('backend.services.llm_providers.gemini_service.GeminiService') as mock_gemini:
                 mock_service = Mock()
                 mock_service.chat_with_system_prompt = AsyncMock(return_value=test_case["response"])
                 mock_gemini.return_value = mock_service
@@ -708,7 +708,7 @@ The user is asking to identify the backend logic responsible for determining if 
         ]
         
         for i, test_case in enumerate(test_cases):
-            with patch('services.gemini_service.GeminiService') as mock_gemini:
+            with patch('backend.services.llm_providers.gemini_service.GeminiService') as mock_gemini:
                 mock_service = Mock()
                 mock_service.chat_with_system_prompt = AsyncMock(return_value=test_case["response"])
                 mock_gemini.return_value = mock_service
@@ -955,7 +955,7 @@ The user is asking to identify the backend logic responsible for determining if 
 ```'''
         
         # Mock the gemini service with the exact response from the logs
-        with patch('services.gemini_service.GeminiService') as mock_gemini:
+        with patch('backend.services.llm_providers.gemini_service.GeminiService') as mock_gemini:
             mock_service = Mock()
             mock_service.chat_with_system_prompt = AsyncMock(return_value=exact_log_response)
             mock_gemini.return_value = mock_service
@@ -1144,7 +1144,7 @@ The user is asking to identify the backend logic responsible for determining if 
 ```'''
         
         # Mock the gemini service with the exact response from the logs
-        with patch('services.gemini_service.GeminiService') as mock_gemini:
+        with patch('backend.services.llm_providers.gemini_service.GeminiService') as mock_gemini:
             mock_service = Mock()
             mock_service.chat_with_system_prompt = AsyncMock(return_value=exact_log_response)
             mock_gemini.return_value = mock_service

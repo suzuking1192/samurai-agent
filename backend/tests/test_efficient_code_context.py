@@ -9,7 +9,7 @@ import sys
 # Add the backend directory to the path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from services.agent_tools import ExtractCodeContextTool
+from backend.services.tools.agent_tools import ExtractCodeContextTool
 
 
 class TestEfficientCodeContext:
@@ -89,7 +89,7 @@ class TestEfficientCodeContext:
             }))
             
             # Mock the GeminiService import
-            with patch('services.gemini_service.GeminiService', return_value=mock_service):
+            with patch('backend.services.llm_providers.gemini_service.GeminiService', return_value=mock_service):
                 # Call the method
                 result = await extract_tool._extract_code_context(
                     file_methods_map, request, max_iterations
@@ -134,7 +134,7 @@ class TestEfficientCodeContext:
             }))
             
             # Mock the GeminiService import
-            with patch('services.gemini_service.GeminiService', return_value=mock_service):
+            with patch('backend.services.llm_providers.gemini_service.GeminiService', return_value=mock_service):
                 # Call the method
                 result = await extract_tool._extract_code_context(
                     file_methods_map, request, max_iterations

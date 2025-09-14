@@ -41,14 +41,14 @@ from models import (
 )
 
 # Import your services  
-from services.file_service import FileService
-from services.unified_samurai_agent import unified_samurai_agent
-from services.context_service import context_service
-from services.response_service import handle_agent_response, handle_validation_error
-from services.intelligent_memory_consolidation import IntelligentMemoryConsolidationService
-from services.project_detail_service import project_detail_service
-from services.project_settings_service import ProjectSettingsService
-from services.llm_provider_service import llm_provider_service
+from services.core.file_service import FileService
+from services.agent_core.unified_samurai_agent import unified_samurai_agent
+from services.context.context_service import context_service
+from services.response.response_service import handle_agent_response, handle_validation_error
+from services.memory.intelligent_memory_consolidation import IntelligentMemoryConsolidationService
+from services.memory.project_detail_service import project_detail_service
+from services.core.project_settings_service import ProjectSettingsService
+from services.llm_providers.llm_provider_service import llm_provider_service
 
 
 # Load environment variables
@@ -843,7 +843,7 @@ async def complete_task(project_id: str, task_id: str):
         logger.info(f"Completing task {task_id} in project {project_id}")
 
         # Delegate to TaskService to ensure existing post-update logic runs
-        from services.task_service import TaskService
+        from backend.services.tools.task_service import TaskService
         task_service = TaskService()
 
         updates = {"status": "completed"}
@@ -867,7 +867,7 @@ async def update_task(project_id: str, task_id: str, request: dict):
         logger.info(f"Updating task {task_id} in project {project_id}")
         
         # Use TaskService for automatic re-analysis
-        from services.task_service import TaskService
+        from backend.services.tools.task_service import TaskService
         task_service = TaskService()
         
         # Prepare updates
@@ -922,7 +922,7 @@ async def create_task(project_id: str, task_data: dict):
         logger.info(f"Creating task in project {project_id}")
         
         # Use TaskService for automatic analysis
-        from services.task_service import TaskService
+        from backend.services.tools.task_service import TaskService
         task_service = TaskService()
         
         parent_task_id = task_data.get("parent_task_id")

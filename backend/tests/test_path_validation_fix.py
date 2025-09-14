@@ -3,7 +3,7 @@ import os
 import tempfile
 import shutil
 from pathlib import Path
-from services.agent_tools import ExtractCodeContextTool
+from backend.services.tools.agent_tools import ExtractCodeContextTool
 
 class TestPathValidationFix(unittest.TestCase):
     """Test the path validation fix for nested directories with same name."""

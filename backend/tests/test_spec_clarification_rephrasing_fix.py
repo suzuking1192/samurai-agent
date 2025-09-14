@@ -1,7 +1,7 @@
 import pytest
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
-from services.unified_samurai_agent import UnifiedSamuraiAgent, ConversationContext
+from backend.services.agent_core.unified_samurai_agent import UnifiedSamuraiAgent, ConversationContext
 
 
 class TestSpecClarificationRephrasingFix:

@@ -7,15 +7,8 @@ import logging
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
 
-try:
-    from models import TaskWarning
-    from .llm_provider_service import llm_provider_service
-except ImportError:
-    import sys
-    import os
-    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from models import TaskWarning
-    from llm_provider_service import llm_provider_service
+from backend.models import TaskWarning
+from backend.services.llm_providers.llm_provider_service import llm_provider_service
 
 logger = logging.getLogger(__name__)
 

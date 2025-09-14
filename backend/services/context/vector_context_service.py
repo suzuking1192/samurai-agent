@@ -11,7 +11,7 @@ from typing import List, Dict, Optional, Tuple, Any
 from datetime import datetime
 import json
 
-from .embedding_service import embedding_service
+from ..core.embedding_service import embedding_service
 from models import Memory, ChatMessage
 
 logger = logging.getLogger(__name__)

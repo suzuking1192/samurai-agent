@@ -36,9 +36,9 @@ class TestLLMCostIntegration:
         """Clean up test environment."""
         shutil.rmtree(self.temp_dir)
     
-    @patch('services.unified_samurai_agent.unified_samurai_agent')
+    @patch('backend.services.agent_core.unified_samurai_agent.unified_samurai_agent')
     @patch('main.file_service')
-    @patch('services.gemini_service.GeminiService')
+    @patch('backend.services.llm_providers.gemini_service.GeminiService')
     @pytest.mark.asyncio
     async def test_complete_llm_cost_tracking_flow(self, mock_gemini_service_class, mock_file_service, mock_unified_agent):
         """Test that GeminiService automatically tracks costs during chat flow."""

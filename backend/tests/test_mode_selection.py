@@ -5,7 +5,7 @@ import shutil
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 from services.project_settings_service import ProjectSettingsService
-from services.unified_samurai_agent import UnifiedSamuraiAgent
+from backend.services.agent_core.unified_samurai_agent import UnifiedSamuraiAgent
 from models import CodeContextMode, ChatRequest
 
 class TestProjectSettingsService:

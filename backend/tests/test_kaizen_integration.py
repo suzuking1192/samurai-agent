@@ -3,7 +3,7 @@ import os
 import tempfile
 import shutil
 from unittest.mock import patch
-from services.agent_tools import ExtractCodeContextTool
+from backend.services.tools.agent_tools import ExtractCodeContextTool
 
 class TestKaizenIntegration(unittest.TestCase):
     """Test real-world integration with kaizen-agent-internal and other external paths."""

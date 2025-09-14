@@ -6,22 +6,9 @@ import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
-try:
-    from models import Task, TaskWarning
-    from .task_analysis_agent import TaskAnalysisAgent
-    from .file_service import FileService
-except ImportError:
-    import sys
-    import os
-    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from models import Task, TaskWarning
-    from task_analysis_agent import TaskAnalysisAgent
-    from file_service import FileService
-except ImportError:
-    # Try direct import
-    from models import Task, TaskWarning
-    from task_analysis_agent import TaskAnalysisAgent
-    from file_service import FileService
+from models import Task, TaskWarning
+from ..analysis.task_analysis_agent import TaskAnalysisAgent
+from ..core.file_service import FileService
 
 logger = logging.getLogger(__name__)
 
