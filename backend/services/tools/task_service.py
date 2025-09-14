@@ -7,7 +7,6 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime
 
 from models import Task, TaskWarning
-from ..analysis.task_analysis_agent import TaskAnalysisAgent
 from ..core.file_service import FileService
 
 logger = logging.getLogger(__name__)
@@ -41,7 +40,6 @@ class TaskService:
             The created Task object
         """
         # Generate warnings using the analysis agent (disabled temporarily)
-        # warnings = await self.analysis_agent.analyze_task(title, description)
         warnings = []
         
         # Determine hierarchy depth with validation (max depth 4)
@@ -98,7 +96,6 @@ class TaskService:
         
         # Re-analyze if description was updated (disabled temporarily)
         if "description" in updates or "title" in updates:
-            # warnings = await self.analysis_agent.analyze_task(task.title, task.description)
             task.review_warnings = []
         
         # Update timestamp
