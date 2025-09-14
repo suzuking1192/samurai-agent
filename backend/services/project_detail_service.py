@@ -1,7 +1,7 @@
 import logging
 from typing import List, Optional
 
-from .llm_provider_service import llm_provider_service
+from .llm_provider_service import llm_provider_service as global_llm_provider_service
 from .file_service import file_service
 
 
@@ -18,7 +18,7 @@ class ProjectDetailService:
     """
 
     def __init__(self, llm_provider_service=None):
-        self.llm_provider_service = llm_provider_service or llm_provider_service
+        self.llm_provider_service = llm_provider_service or global_llm_provider_service
 
     async def ingest_project_detail(self, project_id: str, raw_text: str, mode: str = "merge") -> str:
         """
@@ -50,6 +50,9 @@ class ProjectDetailService:
             merge_input = self._build_merge_input(existing_project_detail_content, new_insight_raw_text)
             
             llm_service = self.llm_provider_service.get_llm_service_by_project_id(project_id)
+            if llm_service is None:
+                logger.error(f"No LLM service available for project {project_id}")
+                raise ValueError(f"No LLM service available for project {project_id}")
             final_text = await llm_service.chat_with_system_prompt(
                 "Perform sophisticated merge of existing project detail with new insights", 
                 f"{merge_system_prompt}\n\n{merge_input}"
@@ -58,6 +61,9 @@ class ProjectDetailService:
             # For replace mode or when no existing content, use simpler synthesis
             synthesis_prompt = self._build_synthesis_system_prompt()
             llm_service = self.llm_provider_service.get_llm_service_by_project_id(project_id)
+            if llm_service is None:
+                logger.error(f"No LLM service available for project {project_id}")
+                raise ValueError(f"No LLM service available for project {project_id}")
             final_text = await llm_service.chat_with_system_prompt(
                 "Create new project detail from insights", 
                 f"{synthesis_prompt}\n\nNEW INSIGHTS:\n{new_insight_raw_text}"

@@ -614,8 +614,7 @@ class DeleteMemoryTool(BaseModel):
 class ExtractCodeContextTool(BaseModel):
     name: str = "extract_code_context"
     description: str = "Extract relevant code context from the local codebase based on a natural language request"
-    
-
+    llm_provider_service: Optional[Any] = None
 
     async def execute(self, natural_language_request: str, project_id: str, 
                      connected_codebase_path: Optional[str] = None, session_id: Optional[str] = None,
@@ -1498,7 +1497,7 @@ class AgentToolRegistry:
             "delete_memory": DeleteMemoryTool(),
             
             # Code context tools
-            "extract_code_context": ExtractCodeContextTool(),
+            "extract_code_context": ExtractCodeContextTool(llm_provider_service=llm_provider_service),
         }
     
     def get_tool_descriptions(self) -> str:

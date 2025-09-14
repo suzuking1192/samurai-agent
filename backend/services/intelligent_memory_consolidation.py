@@ -137,7 +137,7 @@ class IntelligentMemoryConsolidationService:
             
             # Step 3: Analyze conversation for insights
             session_analysis = await self._analyze_conversation_for_insights(
-                session_messages, project_context
+                session_messages, project_context, project_id
             )
             
             # Step 4: Check session relevance
@@ -196,7 +196,8 @@ class IntelligentMemoryConsolidationService:
     async def _analyze_conversation_for_insights(
         self, 
         session_messages: List[ChatMessage], 
-        project_context: Dict[str, Any]
+        project_context: Dict[str, Any],
+        project_id: str
     ) -> SessionAnalysis:
         """
         Analyze conversation to extract significant project-relevant insights.
@@ -405,7 +406,7 @@ Set is_new_category: true and provide new_category_suggestion if insight doesn't
                     insight, existing_memories
                 )
                 
-                if matching_memory and await self._should_merge_insight(insight, matching_memory):
+                if matching_memory and await self._should_merge_insight(insight, matching_memory, project_id):
                     # Merge with existing memory
                     await self._merge_insight_into_memory(insight, matching_memory, project_id)
                     memories_updated += 1
@@ -587,7 +588,8 @@ Set is_new_category: true and provide new_category_suggestion if insight doesn't
     async def _should_merge_insight(
         self, 
         insight: ConversationInsight, 
-        memory: Memory
+        memory: Memory,
+        project_id: str
     ) -> bool:
         """Check if insight should be merged with existing memory using LLM."""
         try:
@@ -709,7 +711,7 @@ Return JSON:
         """Build Memory model from insight data, including new categories."""
         try:
             # Generate title from content
-            title = await self._generate_memory_title(insight.content)
+            title = await self._generate_memory_title(insight.content, project_id)
             
             # Create new memory
             new_memory = Memory(
@@ -730,7 +732,7 @@ Return JSON:
         except Exception as e:
             logger.error(f"Error creating memory from insight: {e}")
 
-    async def _generate_memory_title(self, content: str) -> str:
+    async def _generate_memory_title(self, content: str, project_id: str) -> str:
         """Generate a concise title for memory content."""
         try:
             title_prompt = f"""

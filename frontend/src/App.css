@@ -26,6 +26,12 @@
   --chat-link-color: #007bff;
   --chat-quote-border: #007bff;
   --chat-quote-bg: #f8f9fa;
+  
+  /* Interactive question button colors */
+  --question-bg: #f8f9fa;
+  --question-border: #dee2e6;
+  --question-text: #495057;
+  --button-hover-bg: #e9ecef;
 }
 
 /* Reset and base styles */
@@ -2755,6 +2761,234 @@ body {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+/* Interactive Question Buttons Styles */
+.interactive-question-buttons {
+  background: var(--question-bg);
+  border: 1px solid var(--question-border);
+  border-radius: 8px;
+  padding: 12px;
+  margin: 8px 0;
+  font-size: 14px;
+}
+
+.interactive-question-buttons .question-text {
+  color: var(--question-text);
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
+.interactive-question-buttons .button-group {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.interactive-question-buttons .btn {
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 60px;
+}
+
+.interactive-question-buttons .btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.interactive-question-buttons .btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* Confirming question button styles */
+.confirming-buttons .btn-success {
+  background-color: #28a745;
+  color: white;
+  border-color: #28a745;
+}
+
+.confirming-buttons .btn-danger {
+  background-color: #dc3545;
+  color: white;
+  border-color: #dc3545;
+}
+
+.confirming-buttons .btn-secondary {
+  background-color: #6c757d;
+  color: white;
+  border-color: #6c757d;
+}
+
+.confirming-buttons .btn-info {
+  background-color: #17a2b8;
+  color: white;
+  border-color: #17a2b8;
+}
+
+.confirming-buttons .btn-warning {
+  background-color: #ffc107;
+  color: #212529;
+  border-color: #ffc107;
+}
+
+/* Option question button styles */
+.option-buttons .btn-outline-primary {
+  background-color: transparent;
+  color: #007bff;
+  border-color: #007bff;
+}
+
+.option-buttons .btn-outline-primary:hover:not(:disabled) {
+  background-color: #007bff;
+  color: white;
+}
+
+/* Inline Interactive Question Styles */
+.inline-interactive-question {
+  margin: 12px 0;
+  padding: 8px 0;
+}
+
+.inline-interactive-question .interactive-question-buttons {
+  margin: 0;
+  padding: 8px 12px;
+  background: rgba(0, 123, 255, 0.05);
+  border: 1px solid rgba(0, 123, 255, 0.2);
+  border-radius: 6px;
+}
+
+.inline-interactive-question .interactive-question-buttons .question-text {
+  font-size: 13px;
+  margin-bottom: 6px;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+
+/* Style inline code (file paths) in interactive question text */
+.inline-interactive-question .interactive-question-buttons .question-text code {
+  background: rgba(0, 123, 255, 0.1);
+  color: #0066cc;
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 12px;
+  border: 1px solid rgba(0, 123, 255, 0.2);
+  word-break: break-all;
+}
+
+/* Style file paths specifically */
+.inline-interactive-question .interactive-question-buttons .question-text code[class*="file"] {
+  background: rgba(34, 197, 94, 0.1);
+  color: #059669;
+  border-color: rgba(34, 197, 94, 0.2);
+}
+
+.inline-interactive-question .interactive-question-buttons .button-group {
+  gap: 6px;
+}
+
+.inline-interactive-question .interactive-question-buttons .btn {
+  padding: 4px 8px;
+  font-size: 11px;
+  min-width: 50px;
+}
+
+/* Response with inline questions container */
+.response-with-inline-questions > * {
+  margin-bottom: 0;
+}
+
+.response-with-inline-questions .inline-interactive-question {
+  margin: 8px 0;
+}
+
+/* Standalone Interactive Questions Styles */
+.response-with-standalone-questions {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.standalone-interactive-questions {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-color);
+}
+
+.standalone-interactive-question {
+  margin: 12px 0;
+}
+
+.standalone-interactive-question .interactive-question-buttons {
+  background: var(--question-bg);
+  border: 1px solid var(--question-border);
+  border-radius: 8px;
+  padding: 16px;
+  margin: 0;
+}
+
+.standalone-interactive-question .interactive-question-buttons .question-text {
+  color: var(--question-text);
+  margin-bottom: 12px;
+  font-weight: 500;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.standalone-interactive-question .interactive-question-buttons .button-group {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.standalone-interactive-question .interactive-question-buttons .btn {
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 70px;
+}
+
+/* Responsive design for interactive buttons */
+@media (max-width: 768px) {
+  .interactive-question-buttons .button-group {
+    flex-direction: column;
+  }
+  
+  .interactive-question-buttons .btn {
+    width: 100%;
+    justify-content: center;
+  }
+  
+  .inline-interactive-question .interactive-question-buttons .button-group {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  
+  .inline-interactive-question .interactive-question-buttons .btn {
+    flex: 1;
+    min-width: 60px;
+  }
+  
+  .standalone-interactive-question .interactive-question-buttons .button-group {
+    flex-direction: column;
+  }
+  
+  .standalone-interactive-question .interactive-question-buttons .btn {
+    width: 100%;
+    justify-content: center;
+  }
 }
 
  
