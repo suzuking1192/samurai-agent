@@ -34,7 +34,7 @@ class CreateTaskTool(TaskTool):
         Create a new task with automatic analysis
         """
         try:
-            from backend.services.tools.task_service import TaskService
+            from .task_service import TaskService
             task_service = TaskService()
             
             # Create task with analysis
@@ -101,7 +101,7 @@ class UpdateTaskTool(TaskTool):
             
             # Try to use TaskService first (preferred method)
             try:
-                from backend.services.tools.task_service import TaskService
+                from .task_service import TaskService
                 task_service = TaskService()
                 
                 # Find task by ID or title
