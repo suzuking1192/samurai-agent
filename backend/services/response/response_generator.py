@@ -27,6 +27,7 @@ class ResponseContext:
     intent_type: str
     confidence: float
     project_detail: str = ""
+    project_id: str = ""
 
 
 class ResponseGenerator:
