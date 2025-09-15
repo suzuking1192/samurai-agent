@@ -1,0 +1,9 @@
+frontend/
+integration-tests/
+backend/
+data/
+*.log
+*.png
+docker-compose.yml
+LICENSE
+README.md
