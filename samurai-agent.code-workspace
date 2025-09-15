@@ -1,0 +1,31 @@
+{
+	"folders": [
+		{
+			"name": "Samurai Agent Extension",
+			"path": "./vscode/samurai-agent"
+		},
+		{
+			"name": "Backend",
+			"path": "./backend"
+		},
+		{
+			"name": "Frontend",
+			"path": "./frontend"
+		},
+		{
+			"name": "Integration Tests",
+			"path": "./integration-tests"
+		}
+	],
+	"settings": {
+		"extensions.ignoreRecommendations": false,
+		"extensions.autoUpdate": true
+	},
+	"extensions": {
+		"recommendations": [
+			"ms-vscode.vscode-typescript-next",
+			"esbenp.prettier-vscode",
+			"ms-vscode.vscode-eslint"
+		]
+	}
+}

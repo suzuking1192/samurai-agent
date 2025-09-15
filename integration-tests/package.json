@@ -3,6 +3,10 @@
   "version": "1.0.0",
   "description": "Integration tests for Unified Samurai Agent",
   "main": "test-unified-agent-api.js",
+  "engines": {
+    "node": ">=16.0.0",
+    "vscode": "^1.0.0"
+  },
   "scripts": {
     "test": "node test-unified-agent-api.js",
     "test-full": "node test-unified-agent-integration.js",

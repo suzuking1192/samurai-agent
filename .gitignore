@@ -27,7 +27,7 @@ env/
 ENV/
 .venv
 .env
-samurai-agent/
+
 backend/samurai-agent/
 frontend/node_modules/
 
@@ -55,7 +55,7 @@ backend/data/backups/
 .env.production.local
 
 # IDE and Editor files
-.vscode/
+
 .idea/
 *.swp
 *.swo
