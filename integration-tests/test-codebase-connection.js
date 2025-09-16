@@ -89,11 +89,12 @@ class CodebaseConnectionTester {
     }
 
     async testCodebaseConnectionSuccess() {
-        this.log('Testing successful codebase connection...');
+        this.log('Testing successful codebase connection with full relative path...');
         
         try {
+            // Test with full relative path as the new frontend would send
             const codebaseData = {
-                path: path.resolve(__dirname, '..'), // Use the integration-tests directory as test path
+                path: 'integration-tests/test-codebase-connection.js', // Full relative path from frontend
                 project_id: this.testProjectId
             };
 
@@ -101,10 +102,12 @@ class CodebaseConnectionTester {
             
             if (response.status === 200 && response.data.success) {
                 this.log('Codebase connection successful', 'success');
+                this.log(`Resolved codebase path: ${response.data.codebase_path}`, 'info');
                 this.testResults.push({ 
                     test: 'Codebase Connection Success', 
                     status: 'PASS', 
-                    path: codebaseData.path 
+                    path: codebaseData.path,
+                    resolved_path: response.data.codebase_path
                 });
                 return true;
             } else {
@@ -229,6 +232,61 @@ class CodebaseConnectionTester {
         }
     }
 
+    async testCodebaseConnectionFullRelativePath() {
+        this.log('Testing codebase connection with various full relative path formats...');
+        
+        try {
+            // Test different full relative path formats that the frontend might send
+            const testCases = [
+                'my-project/src/components/MyComponent.tsx',
+                'my-project/README.md',
+                'my-project/package.json',
+                'my-project/src/index.js',
+                'my-project/docs/README.md'
+            ];
+
+            let allPassed = true;
+            for (const testPath of testCases) {
+                const codebaseData = {
+                    path: testPath,
+                    project_id: this.testProjectId
+                };
+
+                try {
+                    const response = await axios.post(`${BACKEND_URL}/api/codebase/connect`, codebaseData);
+                    
+                    if (response.status === 200 && response.data.success) {
+                        this.log(`✅ Full relative path test passed: ${testPath} -> ${response.data.codebase_path}`, 'success');
+                    } else {
+                        this.log(`❌ Full relative path test failed: ${testPath}`, 'error');
+                        allPassed = false;
+                    }
+                } catch (error) {
+                    this.log(`❌ Full relative path test failed: ${testPath} - ${error.message}`, 'error');
+                    allPassed = false;
+                }
+            }
+
+            if (allPassed) {
+                this.log('All full relative path tests passed', 'success');
+                this.testResults.push({ test: 'Codebase Connection Full Relative Path', status: 'PASS' });
+                return true;
+            } else {
+                this.log('Some full relative path tests failed', 'error');
+                this.testResults.push({ test: 'Codebase Connection Full Relative Path', status: 'FAIL' });
+                return false;
+            }
+        } catch (error) {
+            this.log(`Full relative path test failed: ${error.message}`, 'error');
+            this.testResults.push({ 
+                test: 'Codebase Connection Full Relative Path', 
+                status: 'FAIL', 
+                error: error.message 
+            });
+            return false;
+        }
+    }
+
     async cleanup() {
         this.log('Cleaning up test data...');
         
@@ -253,6 +311,7 @@ class CodebaseConnectionTester {
             await this.testBackendHealth();
             await this.testProjectCreation();
             await this.testCodebaseConnectionSuccess();
+            await this.testCodebaseConnectionFullRelativePath();
             await this.testCodebaseConnectionMissingPath();
             await this.testCodebaseConnectionInvalidPath();
             await this.testCodebaseConnectionNonexistentProject();
