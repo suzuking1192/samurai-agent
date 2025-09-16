@@ -843,7 +843,7 @@ async def complete_task(project_id: str, task_id: str):
         logger.info(f"Completing task {task_id} in project {project_id}")
 
         # Delegate to TaskService to ensure existing post-update logic runs
-        from backend.services.tools.task_service import TaskService
+        from services.tools.task_service import TaskService
         task_service = TaskService()
 
         updates = {"status": "completed"}
@@ -867,7 +867,7 @@ async def update_task(project_id: str, task_id: str, request: dict):
         logger.info(f"Updating task {task_id} in project {project_id}")
         
         # Use TaskService for automatic re-analysis
-        from backend.services.tools.task_service import TaskService
+        from services.tools.task_service import TaskService
         task_service = TaskService()
         
         # Prepare updates
@@ -922,7 +922,7 @@ async def create_task(project_id: str, task_data: dict):
         logger.info(f"Creating task in project {project_id}")
         
         # Use TaskService for automatic analysis
-        from backend.services.tools.task_service import TaskService
+        from services.tools.task_service import TaskService
         task_service = TaskService()
         
         parent_task_id = task_data.get("parent_task_id")
@@ -1428,7 +1428,7 @@ async def get_task_context(project_id: str, session_id: str):
 
 # Codebase connection endpoint
 class CodebaseConnectRequest(BaseModel):
-    path: str = Field(..., description="Local folder path for the codebase")
+    path: str = Field(..., description="Full relative file path from the codebase (e.g., 'my-project/src/components/MyComponent.tsx'). The system will resolve to the folder containing this file.")
     project_id: str = Field(..., description="Project ID to associate with the codebase")
 
 @app.post("/api/codebase/connect")
@@ -1449,24 +1449,139 @@ async def connect_codebase(request: CodebaseConnectRequest):
         if not request.path or not isinstance(request.path, str):
             raise HTTPException(status_code=400, detail="Path must be a non-empty string")
         
-        # 3. Convert relative paths to absolute paths and validate
-        absolute_path = request.path
+        # 3. Extract folder structure above the lowest level file and resolve to absolute codebase path
+        # The new approach: receive full relative file path from frontend and resolve to codebase root
+        resolved_codebase_path = None
         if not os.path.isabs(request.path):
-            # For relative paths, we need to be smarter about resolution
-            # First, try resolving relative to the user's home directory
-            home_resolved = os.path.expanduser(f"~/{request.path}")
-            if os.path.exists(home_resolved):
-                absolute_path = os.path.abspath(home_resolved)
+            # Remove the lowest level file and keep the folder structure above it
+            # e.g., "my-project/src/components/MyComponent.tsx" -> "my-project/src/components"
+            path_segments = os.path.normpath(request.path).split(os.sep)
+            
+            # If the last segment is likely a file (has extension), remove it
+            if len(path_segments) > 1 and '.' in path_segments[-1]:
+                # Remove the file and keep the directory structure above it
+                folder_path = os.sep.join(path_segments[:-1])
             else:
-                # Try resolving relative to the parent directory of the project root
-                # This handles cases where the folder is a sibling of the project
-                project_parent = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-                parent_resolved = os.path.join(os.path.dirname(project_parent), request.path)
-                if os.path.exists(parent_resolved):
-                    absolute_path = os.path.abspath(parent_resolved)
-                else:
-                    # Fallback: try current working directory (original behavior)
-                    absolute_path = os.path.abspath(request.path)
+                # If it's already a directory or single segment, use as is
+                folder_path = os.sep.join(path_segments)
+            
+            # Extract the top-level directory from the folder path
+            # e.g., "my-project/src/components" -> "my-project"
+            top_level_dir = folder_path.split(os.sep)[0]
+            
+            # Define base directories for search (removed SAMURAI_AGENT_BASE_DIR dependency)
+            base_directories = []
+            
+            # Strategy 1: Project root directory (highest priority)
+            current_file = os.path.abspath(__file__)
+            project_root = os.path.dirname(os.path.dirname(current_file))
+            base_directories.append(("project root", project_root))
+            
+            # Strategy 2: User's home directory
+            home_dir = os.path.expanduser("~")
+            base_directories.append(("home directory", home_dir))
+            
+            # Strategy 3: Current working directory
+            cwd = os.getcwd()
+            base_directories.append(("current working directory", cwd))
+            
+            # Strategy 4: Parent of project root (sibling directories)
+            project_parent = os.path.dirname(project_root)
+            base_directories.append(("project parent", project_parent))
+            
+            # Strategy 5: Common development directories (complete list)
+            common_paths = [
+                os.path.expanduser("~/Documents"),
+                os.path.expanduser("~/Desktop"),
+                os.path.expanduser("~/Projects"),
+                os.path.expanduser("~/Code"),
+                os.path.expanduser("~/Development"),
+                os.path.expanduser("~/workspace"),
+                os.path.expanduser("~/src"),
+                os.path.expanduser("~/repos"),
+                os.path.expanduser("~/repositories"),
+                os.path.expanduser("~/git"),
+                os.path.expanduser("~/github"),
+                os.path.expanduser("~/gitlab"),
+                os.path.expanduser("~/bitbucket"),
+                os.path.expanduser("~/Apps"),
+                os.path.expanduser("~/Applications"),
+                "/opt",
+                "/usr/local",
+                "/usr/local/src",
+                "/var/www",
+                "/srv"
+            ]
+            
+            # Combine common paths with base directories
+            for common_path in common_paths:
+                if os.path.exists(common_path):
+                    base_directories.append((f"common path ({common_path})", common_path))
+            
+            # Search for the codebase root using refined strategy
+            # Step 1: Find all candidate codebase roots
+            candidate_codebase_roots = []
+            
+            for strategy_name, base_dir in base_directories:
+                # Construct candidate codebase root by joining base_dir with top_level_dir
+                candidate_codebase_root = os.path.join(base_dir, top_level_dir)
+                
+                # Check if candidate exists and is a directory
+                if os.path.exists(candidate_codebase_root) and os.path.isdir(candidate_codebase_root):
+                    candidate_codebase_roots.append((strategy_name, candidate_codebase_root))
+                    logger.info(f"Found candidate codebase root: {candidate_codebase_root} using {strategy_name}")
+            
+            # Step 2: Iterative deep path matching for each candidate
+            for strategy_name, candidate_root in candidate_codebase_roots:
+                # Get the path segments from the folder path (without the file)
+                folder_segments = os.path.normpath(folder_path).split(os.sep)
+                
+                # Skip the top-level directory (already matched) and check remaining segments
+                remaining_segments = folder_segments[1:] if len(folder_segments) > 1 else []
+                
+                if not remaining_segments:
+                    # If no remaining segments, the candidate root is the match
+                    resolved_codebase_path = candidate_root
+                    logger.info(f"Resolved codebase root: {resolved_codebase_path} using {strategy_name} (no remaining path segments)")
+                    break
+                
+                # Progressive path matching: check each level of depth
+                current_path = candidate_root
+                match_found = True
+                
+                for i, segment in enumerate(remaining_segments):
+                    next_path = os.path.join(current_path, segment)
+                    
+                    if os.path.exists(next_path):
+                        current_path = next_path
+                        # If this is not the last segment, it should be a directory
+                        if i < len(remaining_segments) - 1 and not os.path.isdir(current_path):
+                            match_found = False
+                            break
+                    else:
+                        match_found = False
+                        break
+                
+                if match_found:
+                    # Found a match - the candidate_root contains the folder structure
+                    # The resolved path should be the folder containing the file, not the top-level directory
+                    resolved_codebase_path = current_path
+                    logger.info(f"Resolved codebase root: {resolved_codebase_path} using {strategy_name} for path '{request.path}' -> folder '{folder_path}'")
+                    break
+            
+            # Step 3: Error handling for unresolved paths
+            if not resolved_codebase_path:
+                logger.error(f"Could not resolve codebase root for path '{request.path}' (folder: '{folder_path}') after checking {len(candidate_codebase_roots)} candidates")
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Could not find codebase root containing folder '{folder_path}'. Please ensure the selected folder contains the specified file or directory."
+                )
+        else:
+            # Handle absolute paths - use them directly
+            resolved_codebase_path = request.path
+        
+        # Convert to absolute path
+        absolute_path = os.path.abspath(resolved_codebase_path)
         
         # 4. Validate the absolute path exists and is a directory
         if not os.path.exists(absolute_path):

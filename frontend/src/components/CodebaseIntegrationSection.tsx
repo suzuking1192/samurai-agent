@@ -27,33 +27,26 @@ export const CodebaseIntegrationSection: React.FC<CodebaseIntegrationSectionProp
     const files = event.target.files
     if (!files || files.length === 0) return
 
-    // Extract the folder path from the first file's webkitRelativePath
+    // Send the full relative path from the first file's webkitRelativePath
     // When using webkitdirectory, the path format is "folderName/filePath"
     const file = files[0]
-    let folderPath = ''
+    let fullRelativePath = ''
     
     if (file.webkitRelativePath) {
-      // Extract the folder name from the relative path
-      const pathParts = file.webkitRelativePath.split('/')
-      if (pathParts.length > 0) {
-        // Use the folder name as the path - this will be resolved to absolute by the backend
-        folderPath = pathParts[0]
-      } else {
-        setError('Invalid folder selection. Please try selecting a folder again.')
-        return
-      }
+      // Send the complete relative path to the backend for robust resolution
+      fullRelativePath = file.webkitRelativePath
     } else {
       // Fallback to file name if webkitRelativePath is not available
-      folderPath = file.name
+      fullRelativePath = file.name
     }
     
-    // Validate that we have a proper folder path
-    if (!folderPath) {
+    // Validate that we have a proper path
+    if (!fullRelativePath) {
       setError('Invalid folder selection. Please try selecting a folder again.')
       return
     }
     
-    console.log('Selected folder path:', folderPath)
+    console.log('Selected full relative path:', fullRelativePath)
     console.log('File webkitRelativePath:', file.webkitRelativePath)
     
     setIsConnecting(true)
@@ -61,7 +54,7 @@ export const CodebaseIntegrationSection: React.FC<CodebaseIntegrationSectionProp
 
     try {
       const request: CodebaseConnectRequest = {
-        path: folderPath,
+        path: fullRelativePath,
         project_id: projectId
       }
 
@@ -131,15 +124,15 @@ export const CodebaseIntegrationSection: React.FC<CodebaseIntegrationSectionProp
           </button>
           
           {/* Hidden file input for folder selection */}
-          <input
-            ref={fileInputRef}
-            type="file"
-            webkitdirectory=""
-            directory=""
-            multiple
-            onChange={handleFileSelect}
-            style={{ display: 'none' }}
-          />
+        <input
+          ref={fileInputRef}
+          type="file"
+          {...({ webkitdirectory: "" } as any)}
+          {...({ directory: "" } as any)}
+          multiple
+          onChange={handleFileSelect}
+          style={{ display: 'none' }}
+        />
         </div>
         ) : (
           <div className="codebase-connected-section">
