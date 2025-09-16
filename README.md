@@ -159,17 +159,6 @@ npm run dev
 - Backend -> http://localhost:8000
 - Frontend -> http://localhost:5173
 
-### 4. Environment Configuration (Optional)
-
-For custom folder structures, you can set the `SAMURAI_AGENT_BASE_DIR` environment variable to specify a custom base directory for codebase folder resolution:
-
-```bash
-export SAMURAI_AGENT_BASE_DIR="/path/to/your/projects"
-```
-
-This helps the system find your codebase folders when they're not in standard locations.
-
-
 ---
 
 ## 🏃 How to Use
