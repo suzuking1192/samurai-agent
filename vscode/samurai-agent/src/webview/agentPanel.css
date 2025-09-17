@@ -1,0 +1,123 @@
+/* Samurai Agent Panel - Multi-tabbed Interface Styles */
+
+/* Ensure the panel fills the full container */
+.agent-panel-container {
+    width: 100%;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    font-family: var(--vscode-font-family);
+    font-size: var(--vscode-font-size);
+    color: var(--vscode-foreground);
+    background-color: var(--vscode-editor-background);
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+}
+
+/* Tab Header Styles */
+.tab-header {
+    display: flex;
+    flex-direction: row;
+    background-color: var(--vscode-panel-background);
+    border-bottom: 1px solid var(--vscode-panel-border);
+    padding: 0;
+    margin: 0;
+    min-height: 40px;
+}
+
+.tab {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 16px;
+    cursor: pointer;
+    border-right: 1px solid var(--vscode-panel-border);
+    background-color: var(--vscode-panel-background);
+    color: var(--vscode-foreground);
+    transition: background-color 0.2s ease;
+    user-select: none;
+}
+
+.tab:last-child {
+    border-right: none;
+}
+
+.tab:hover {
+    background-color: var(--vscode-list-hoverBackground);
+}
+
+.tab.active {
+    background-color: var(--vscode-tab-activeBackground);
+    color: var(--vscode-tab-activeForeground);
+    border-bottom: 2px solid var(--vscode-focusBorder);
+}
+
+.tab span {
+    font-weight: 500;
+    font-size: var(--vscode-font-size);
+}
+
+/* Content Area Styles */
+.content-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.tab-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* Task and Setting Content Containers */
+.task-container,
+.setting-container {
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
+    background-color: var(--vscode-editor-background);
+}
+
+.task-container h3,
+.setting-container h3 {
+    margin-top: 0;
+    margin-bottom: 16px;
+    color: var(--vscode-foreground);
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.task-container p,
+.setting-container p {
+    color: var(--vscode-descriptionForeground);
+    line-height: 1.5;
+    margin: 0;
+}
+
+/* Setting tab specific - designed to be large and flexible */
+.setting-container {
+    flex-grow: 1;
+    min-height: 0; /* Allow flex shrinking */
+}
+
+/* Responsive adjustments */
+@media (max-width: 400px) {
+    .tab {
+        padding: 6px 12px;
+        font-size: 14px;
+    }
+    
+    .tab span {
+        font-size: 14px;
+    }
+    
+    .task-container,
+    .setting-container {
+        padding: 16px;
+    }
+}

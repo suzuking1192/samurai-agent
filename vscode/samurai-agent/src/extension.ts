@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { SamuraiChatWebviewViewProvider } from './webview/SamuraiChatWebviewViewProvider';
+import { SamuraiAgentPanelWebviewViewProvider } from './webview/SamuraiAgentPanelWebviewViewProvider';
 
 export function activate(context: vscode.ExtensionContext) {
 	console.log('TEST: Extension activating...');
@@ -10,14 +10,14 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.window.showInformationMessage('TEST: Hello World!');
 	});
 	
-	// Register the chat webview provider
-	const chatProvider = new SamuraiChatWebviewViewProvider(context.extensionUri);
-	const chatWebviewDisposable = vscode.window.registerWebviewViewProvider(
-		SamuraiChatWebviewViewProvider.viewType,
-		chatProvider
+	// Register the agent panel webview provider
+	const agentPanelProvider = new SamuraiAgentPanelWebviewViewProvider(context.extensionUri);
+	const agentPanelWebviewDisposable = vscode.window.registerWebviewViewProvider(
+		SamuraiAgentPanelWebviewViewProvider.viewType,
+		agentPanelProvider
 	);
 	
-	context.subscriptions.push(disposable, chatWebviewDisposable);
+	context.subscriptions.push(disposable, agentPanelWebviewDisposable);
 	console.log('TEST: Command and webview provider registered');
 }
 

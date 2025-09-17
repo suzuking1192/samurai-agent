@@ -1860,7 +1860,7 @@ If no relevant questions are found, return an empty array [].
                 project_id=project_id,
                 session_id=session_id,
                 connected_codebase_path=codebase_path,
-                max_iterations=3  # Use more iterations since we're processing multiple questions
+                max_iterations=1  # Use more iterations since we're processing multiple questions
             )
             
             # Step 3: Process all questions with the extracted context

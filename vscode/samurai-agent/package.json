@@ -34,8 +34,8 @@
     "views": {
       "samurai-agent": [
         {
-          "id": "samurai-agent.chatView",
-          "name": "Chat",
+          "id": "samurai-agent.agentPanel",
+          "name": "Agent Panel",
           "type": "webview"
         }
       ]
