@@ -117,3 +117,18 @@ pip-delete-this-directory.txt
 
 # Database and data files
 data/
+
+# VS Code Extension Development
+.vscode-test/
+*.vsix
+out/
+*.js.map
+*.ts.map
+.vscode/
+*.code-workspace
+
+# VS Code Extension specific
+.vscode-test/
+vscode/samurai-agent/.vscode-test/
+vscode/samurai-agent/out/
+vscode/samurai-agent/*.vsix
