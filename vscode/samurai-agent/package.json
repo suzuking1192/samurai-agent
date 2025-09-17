@@ -21,7 +21,25 @@
         "title": "Hello World",
         "category": "Samurai Agent"
       }
-    ]
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "samurai-agent",
+          "title": "Samurai Agent",
+          "icon": "$(comment-discussion)"
+        }
+      ]
+    },
+    "views": {
+      "samurai-agent": [
+        {
+          "id": "samurai-agent.chatView",
+          "name": "Chat",
+          "type": "webview"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run package",
