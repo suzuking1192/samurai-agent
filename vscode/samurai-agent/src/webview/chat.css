@@ -9,10 +9,47 @@ body {
     overflow: hidden;
 }
 
+/* Chat Header with API Cost and Start New Conversation Button */
+.chat-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 15px;
+    background-color: var(--vscode-panel-background);
+    border-bottom: 1px solid var(--vscode-panel-border);
+    min-height: 40px;
+}
+
+.api-cost-display {
+    font-size: var(--vscode-font-size);
+    color: var(--vscode-foreground);
+    font-weight: 500;
+}
+
+.start-new-conversation-btn {
+    background-color: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    border: 1px solid var(--vscode-button-border);
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-size: var(--vscode-font-size);
+    font-family: var(--vscode-font-family);
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.start-new-conversation-btn:hover {
+    background-color: var(--vscode-button-hoverBackground);
+}
+
+.start-new-conversation-btn:active {
+    background-color: var(--vscode-button-activeBackground);
+}
+
 .chat-container {
     display: flex;
     flex-direction: column;
-    height: 100vh;
+    height: calc(100vh - 60px); /* Subtract header height */
 }
 
 .chat-messages {
@@ -31,7 +68,7 @@ body {
 
 #chatInput {
     width: 100%;
-    padding: 8px 12px;
+    padding: 16px 12px; /* Increased padding for larger height */
     border: 1px solid var(--vscode-input-border);
     border-radius: 4px;
     background-color: var(--vscode-input-background);
@@ -39,6 +76,8 @@ body {
     font-family: var(--vscode-font-family);
     font-size: var(--vscode-font-size);
     box-sizing: border-box;
+    min-height: 60px; /* Set minimum height to make it twice as tall */
+    resize: vertical; /* Allow vertical resizing */
 }
 
 #chatInput:focus {
@@ -68,4 +107,62 @@ body {
     background-color: var(--vscode-panel-background);
     color: var(--vscode-foreground);
     margin-right: 20px;
+}
+
+/* Chat Controls - LLM Model and Mode Dropdowns */
+.chat-controls {
+    display: flex;
+    gap: 12px;
+    padding: 10px 0 0 0;
+    align-items: flex-end; /* Align dropdowns at the same height */
+}
+
+.dropdown-container {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1; /* Allow equal width distribution */
+}
+
+.dropdown-container label {
+    font-size: 11px; /* Smaller font size */
+    color: var(--vscode-descriptionForeground);
+    font-weight: 500;
+}
+
+.dropdown {
+    padding: 4px 6px; /* Smaller padding */
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 4px;
+    background-color: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    font-family: var(--vscode-font-family);
+    font-size: 10px; /* Even smaller font size */
+    min-width: 120px; /* Smaller minimum width */
+    max-width: 140px; /* Constrain maximum width */
+    cursor: pointer;
+}
+
+.dropdown:focus {
+    outline: none;
+    border-color: var(--vscode-focusBorder);
+}
+
+.dropdown:hover {
+    border-color: var(--vscode-input-border);
+}
+
+/* Responsive adjustments */
+@media (max-width: 350px) {
+    .chat-controls {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+    }
+    
+    .dropdown {
+        min-width: auto;
+        max-width: none;
+        width: 100%;
+    }
 }

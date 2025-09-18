@@ -63,4 +63,49 @@ suite('Samurai Agent Extension Test Suite', () => {
 		assert.ok(html.includes('>Task<'), 'HTML should contain Task tab label');
 		assert.ok(html.includes('>Setting<'), 'HTML should contain Setting tab label');
 	});
+
+	test('Chat content should contain Start New Conversation button and API cost display', () => {
+		const mockExtensionUri = vscode.Uri.file('/mock/path');
+		const provider = new SamuraiAgentPanelWebviewViewProvider(mockExtensionUri);
+		
+		const mockWebview = {
+			asWebviewUri: (uri: vscode.Uri) => uri.toString(),
+			options: {}
+		} as any;
+
+		const html = (provider as any)._getHtmlForWebview(mockWebview);
+		
+		// Verify chat header elements are present
+		assert.ok(html.includes('chat-header'), 'HTML should contain chat-header class');
+		assert.ok(html.includes('id="start-new-conversation-btn"'), 'HTML should contain Start New Conversation button');
+		assert.ok(html.includes('Start New Conversation'), 'HTML should contain Start New Conversation button text');
+		assert.ok(html.includes('id="api-cost-display"'), 'HTML should contain API cost display');
+		assert.ok(html.includes('API Cost: $0.00 this month'), 'HTML should contain API cost display text');
+	});
+
+	test('Chat content should contain LLM Model and Mode dropdowns', () => {
+		const mockExtensionUri = vscode.Uri.file('/mock/path');
+		const provider = new SamuraiAgentPanelWebviewViewProvider(mockExtensionUri);
+		
+		const mockWebview = {
+			asWebviewUri: (uri: vscode.Uri) => uri.toString(),
+			options: {}
+		} as any;
+
+		const html = (provider as any)._getHtmlForWebview(mockWebview);
+		
+		// Verify dropdown elements are present
+		assert.ok(html.includes('chat-controls'), 'HTML should contain chat-controls class');
+		assert.ok(html.includes('id="llm-model-select"'), 'HTML should contain LLM Model dropdown');
+		assert.ok(html.includes('id="mode-select"'), 'HTML should contain Mode dropdown');
+		assert.ok(html.includes('LLM Model:'), 'HTML should contain LLM Model label');
+		assert.ok(html.includes('Mode:'), 'HTML should contain Mode label');
+		
+		// Verify dropdown options are present
+		assert.ok(html.includes('GPT-4'), 'HTML should contain GPT-4 option');
+		assert.ok(html.includes('GPT-3.5 Turbo'), 'HTML should contain GPT-3.5 Turbo option');
+		assert.ok(html.includes('Claude 3 Opus'), 'HTML should contain Claude 3 Opus option');
+		assert.ok(html.includes('Default Mode'), 'HTML should contain Default Mode option');
+		assert.ok(html.includes('Developer Mode'), 'HTML should contain Developer Mode option');
+	});
 });

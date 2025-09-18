@@ -64,12 +64,45 @@ export class SamuraiAgentPanelWebviewViewProvider implements vscode.WebviewViewP
                 <div class="content-area">
                     <!-- Chat Content -->
                     <div class="tab-content" id="chat-content">
+                        <!-- Chat Header with API Cost and Start New Conversation Button -->
+                        <div class="chat-header">
+                            <div class="api-cost-display" id="api-cost-display">
+                                API Cost: $0.00 this month
+                            </div>
+                            <button class="start-new-conversation-btn" id="start-new-conversation-btn">
+                                Start New Conversation
+                            </button>
+                        </div>
+                        
                         <div class="chat-container">
                             <div class="chat-messages" id="chatMessages">
                                 <!-- Messages will appear here -->
                             </div>
                             <div class="chat-input-container">
                                 <input type="text" id="chatInput" placeholder="Type your message here..." />
+                                
+                                <!-- LLM Model and Mode Dropdowns -->
+                                <div class="chat-controls">
+                                    <div class="dropdown-container">
+                                        <label for="llm-model-select">LLM Model:</label>
+                                        <select id="llm-model-select" class="dropdown">
+                                            <option value="gpt-4">GPT-4</option>
+                                            <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+                                            <option value="claude-3-opus">Claude 3 Opus</option>
+                                            <option value="claude-3-sonnet">Claude 3 Sonnet</option>
+                                            <option value="gemini-pro">Gemini Pro</option>
+                                        </select>
+                                    </div>
+                                    <div class="dropdown-container">
+                                        <label for="mode-select">Mode:</label>
+                                        <select id="mode-select" class="dropdown">
+                                            <option value="default">Default Mode</option>
+                                            <option value="developer">Developer Mode</option>
+                                            <option value="creative">Creative Mode</option>
+                                            <option value="analytical">Analytical Mode</option>
+                                        </select>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
