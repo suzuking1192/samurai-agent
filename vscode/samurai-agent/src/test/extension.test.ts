@@ -108,4 +108,57 @@ suite('Samurai Agent Extension Test Suite', () => {
 		assert.ok(html.includes('Default Mode'), 'HTML should contain Default Mode option');
 		assert.ok(html.includes('Developer Mode'), 'HTML should contain Developer Mode option');
 	});
+
+	test('HTML should include task.css and task.js files', () => {
+		const mockExtensionUri = vscode.Uri.file('/mock/path');
+		const provider = new SamuraiAgentPanelWebviewViewProvider(mockExtensionUri);
+		
+		const mockWebview = {
+			asWebviewUri: (uri: vscode.Uri) => uri.toString(),
+			options: {}
+		} as any;
+
+		const html = (provider as any)._getHtmlForWebview(mockWebview);
+		
+		// Verify task CSS and JS files are included
+		assert.ok(html.includes('task.css'), 'HTML should include task.css');
+		assert.ok(html.includes('task.js'), 'HTML should include task.js');
+	});
+
+	test('Task content should be properly structured', () => {
+		const mockExtensionUri = vscode.Uri.file('/mock/path');
+		const provider = new SamuraiAgentPanelWebviewViewProvider(mockExtensionUri);
+		
+		const mockWebview = {
+			asWebviewUri: (uri: vscode.Uri) => uri.toString(),
+			options: {}
+		} as any;
+
+		const html = (provider as any)._getHtmlForWebview(mockWebview);
+		
+		// Verify task content structure
+		assert.ok(html.includes('id="task-content"'), 'HTML should contain task-content div');
+		assert.ok(html.includes('style="display: none;"'), 'Task content should be initially hidden');
+		assert.ok(html.includes('data-tab="task"'), 'HTML should contain task tab with correct data attribute');
+	});
+
+	test('Scripts should be loaded in correct order', () => {
+		const mockExtensionUri = vscode.Uri.file('/mock/path');
+		const provider = new SamuraiAgentPanelWebviewViewProvider(mockExtensionUri);
+		
+		const mockWebview = {
+			asWebviewUri: (uri: vscode.Uri) => uri.toString(),
+			options: {}
+		} as any;
+
+		const html = (provider as any)._getHtmlForWebview(mockWebview);
+		
+		// Verify script loading order (agentPanel.js should load first)
+		const agentPanelIndex = html.indexOf('agentPanel.js');
+		const chatIndex = html.indexOf('chat.js');
+		const taskIndex = html.indexOf('task.js');
+		
+		assert.ok(agentPanelIndex < chatIndex, 'agentPanel.js should load before chat.js');
+		assert.ok(chatIndex < taskIndex, 'chat.js should load before task.js');
+	});
 });

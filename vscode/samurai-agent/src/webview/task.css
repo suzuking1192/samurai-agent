@@ -1,0 +1,251 @@
+/* Task Tab Styles */
+.task-container {
+    padding: 20px;
+    height: 100%;
+    overflow-y: auto;
+}
+
+.task-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.task-filter-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.task-filter-tab {
+    padding: 8px 16px;
+    border: 1px solid #007acc;
+    background-color: transparent;
+    color: #007acc;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.task-filter-tab:hover {
+    background-color: #007acc;
+    color: white;
+}
+
+.task-filter-tab.active {
+    background-color: #007acc;
+    color: white;
+}
+
+.task-header h3 {
+    margin: 0;
+    color: #ffffff;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.task-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.task-card {
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 16px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    transition: all 0.2s ease;
+}
+
+.task-card:hover {
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+    border-color: #007acc;
+}
+
+.task-card.expanded {
+    border-color: #007acc;
+    box-shadow: 0 4px 12px rgba(0, 122, 204, 0.2);
+}
+
+.task-header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.task-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #333;
+    margin: 0;
+    flex: 1;
+}
+
+.task-status {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    margin-left: 8px;
+}
+
+.task-status.completed {
+    background-color: #d4edda;
+    color: #155724;
+}
+
+.task-status.pending {
+    background-color: #fff3cd;
+    color: #856404;
+}
+
+.task-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.task-btn {
+    padding: 6px 12px;
+    border: 1px solid #007acc;
+    background-color: #007acc;
+    color: white;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.task-btn:hover {
+    background-color: #005a9e;
+    border-color: #005a9e;
+}
+
+.task-btn.secondary {
+    background-color: transparent;
+    color: #007acc;
+}
+
+.task-btn.secondary:hover {
+    background-color: #007acc;
+    color: white;
+}
+
+.task-detail {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid #f0f0f0;
+    display: none;
+}
+
+.task-detail.expanded {
+    display: block;
+}
+
+.task-spec {
+    width: 100%;
+    min-height: 120px;
+    padding: 12px;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.4;
+    resize: vertical;
+    background-color: #f8f9fa;
+}
+
+.task-spec:focus {
+    outline: none;
+    border-color: #007acc;
+    box-shadow: 0 0 0 2px rgba(0, 122, 204, 0.2);
+}
+
+.task-detail-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.subtask-container {
+    margin-top: 16px;
+    padding-left: 24px;
+    border-left: 2px solid #e0e0e0;
+}
+
+.subtask-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.subtask-card {
+    background: #f8f9fa;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    padding: 12px;
+    margin-left: 0;
+}
+
+.subtask-card .task-title {
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.subtask-card .task-actions {
+    margin-top: 8px;
+}
+
+.subtask-card .task-btn {
+    font-size: 11px;
+    padding: 4px 8px;
+}
+
+/* Loading and empty states */
+.task-loading {
+    text-align: center;
+    padding: 40px;
+    color: #666;
+}
+
+.task-empty {
+    text-align: center;
+    padding: 40px;
+    color: #999;
+}
+
+.task-empty h4 {
+    margin: 0 0 8px 0;
+    color: #666;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .task-container {
+        padding: 12px;
+    }
+    
+    .task-header-content {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+    
+    .task-actions {
+        width: 100%;
+        justify-content: flex-start;
+    }
+    
+    .subtask-container {
+        padding-left: 16px;
+    }
+}

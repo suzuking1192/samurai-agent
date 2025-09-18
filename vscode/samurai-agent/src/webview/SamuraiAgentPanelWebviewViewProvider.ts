@@ -35,6 +35,12 @@ export class SamuraiAgentPanelWebviewViewProvider implements vscode.WebviewViewP
         const chatJsPath = webview.asWebviewUri(
             vscode.Uri.joinPath(this._extensionUri, 'src', 'webview', 'chat.js')
         );
+        const taskCssPath = webview.asWebviewUri(
+            vscode.Uri.joinPath(this._extensionUri, 'src', 'webview', 'task.css')
+        );
+        const taskJsPath = webview.asWebviewUri(
+            vscode.Uri.joinPath(this._extensionUri, 'src', 'webview', 'task.js')
+        );
 
         return `<!DOCTYPE html>
         <html lang="en">
@@ -44,6 +50,7 @@ export class SamuraiAgentPanelWebviewViewProvider implements vscode.WebviewViewP
             <title>Samurai Agent Panel</title>
             <link href="${agentPanelCssPath}" rel="stylesheet">
             <link href="${chatCssPath}" rel="stylesheet">
+            <link href="${taskCssPath}" rel="stylesheet">
         </head>
         <body>
             <div class="agent-panel-container">
@@ -109,10 +116,7 @@ export class SamuraiAgentPanelWebviewViewProvider implements vscode.WebviewViewP
                     
                     <!-- Task Content -->
                     <div class="tab-content" id="task-content" style="display: none;">
-                        <div class="task-container">
-                            <h3>Task Management</h3>
-                            <p>Task management functionality will be implemented here.</p>
-                        </div>
+                        <!-- Task content will be dynamically rendered by task.js -->
                     </div>
                     
                     <!-- Setting Content -->
@@ -126,6 +130,7 @@ export class SamuraiAgentPanelWebviewViewProvider implements vscode.WebviewViewP
             </div>
             <script src="${agentPanelJsPath}"></script>
             <script src="${chatJsPath}"></script>
+            <script src="${taskJsPath}"></script>
         </body>
         </html>`;
     }
