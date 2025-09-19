@@ -1,0 +1,240 @@
+/* Settings Tab Styles */
+
+.settings-container {
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
+    background-color: var(--vscode-editor-background);
+}
+
+.settings-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.settings-header h3 {
+    margin: 0;
+    color: var(--vscode-foreground);
+}
+
+.settings-save-all-btn {
+    background-color: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: var(--vscode-font-family);
+    font-size: var(--vscode-font-size);
+    font-weight: 500;
+    transition: background-color 0.2s ease;
+}
+
+.settings-save-all-btn:hover {
+    background-color: var(--vscode-button-hoverBackground);
+}
+
+.settings-save-all-btn:active {
+    background-color: var(--vscode-button-activeBackground);
+}
+
+/* LLM Provider Sections */
+.llm-provider-section {
+    margin-bottom: 30px;
+    padding: 20px;
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 8px;
+    background-color: var(--vscode-editor-background);
+}
+
+.llm-provider-section h4 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    color: var(--vscode-foreground);
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.llm-provider-section fieldset {
+    border: none;
+    margin: 0;
+    padding: 0;
+}
+
+.llm-provider-section legend {
+    font-weight: 600;
+    color: var(--vscode-foreground);
+    margin-bottom: 15px;
+    padding: 0 10px;
+}
+
+/* Form Elements */
+.settings-form-group {
+    margin-bottom: 15px;
+}
+
+.settings-form-group label {
+    display: block;
+    margin-bottom: 5px;
+    color: var(--vscode-foreground);
+    font-weight: 500;
+}
+
+.settings-form-group input[type="text"],
+.settings-form-group textarea,
+.settings-form-group select {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 4px;
+    background-color: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    font-family: var(--vscode-font-family);
+    font-size: var(--vscode-font-size);
+    box-sizing: border-box;
+}
+
+.settings-form-group input[type="text"]:focus,
+.settings-form-group textarea:focus,
+.settings-form-group select:focus {
+    outline: none;
+    border-color: var(--vscode-focusBorder);
+    box-shadow: 0 0 0 1px var(--vscode-focusBorder);
+}
+
+.settings-form-group textarea {
+    resize: vertical;
+    min-height: 100px;
+}
+
+.settings-form-group select[multiple] {
+    min-height: 120px;
+}
+
+/* Project Detail Section */
+.project-detail-section {
+    margin-bottom: 30px;
+    padding: 20px;
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 8px;
+    background-color: var(--vscode-editor-background);
+}
+
+.project-detail-section h4 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    color: var(--vscode-foreground);
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.digested-memory-section {
+    margin-top: 20px;
+}
+
+.digested-memory-section button {
+    background-color: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: var(--vscode-font-family);
+    font-size: var(--vscode-font-size);
+    margin-bottom: 10px;
+}
+
+.digested-memory-section button:hover {
+    background-color: var(--vscode-button-hoverBackground);
+}
+
+/* Save Buttons */
+.settings-save-btn {
+    background-color: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    border: none;
+    padding: 10px 20px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: var(--vscode-font-family);
+    font-size: var(--vscode-font-size);
+    font-weight: 500;
+    transition: background-color 0.2s ease;
+    margin-top: 10px;
+}
+
+.settings-save-btn:hover {
+    background-color: var(--vscode-button-hoverBackground);
+}
+
+.settings-save-btn:active {
+    background-color: var(--vscode-button-activeBackground);
+}
+
+/* Success Message */
+.settings-success-message {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background-color: #28a745;
+    color: white;
+    padding: 12px 20px;
+    border-radius: 4px;
+    font-family: var(--vscode-font-family);
+    font-size: var(--vscode-font-size);
+    font-weight: 500;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    z-index: 1000;
+    display: none;
+    animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+.digested-memory-display {
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 4px;
+    padding: 12px;
+    background-color: var(--vscode-editor-background);
+    color: var(--vscode-foreground);
+    min-height: 100px;
+    font-family: var(--vscode-font-family);
+    font-size: var(--vscode-font-size);
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .settings-container {
+        padding: 15px;
+    }
+    
+    .settings-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+    }
+    
+    .settings-save-all-btn {
+        align-self: flex-end;
+    }
+    
+    .llm-provider-section,
+    .project-detail-section {
+        padding: 15px;
+    }
+}

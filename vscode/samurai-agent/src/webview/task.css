@@ -140,6 +140,16 @@
     color: white;
 }
 
+.task-btn.success {
+    background-color: #28a745;
+    border-color: #28a745;
+}
+
+.task-btn.success:hover {
+    background-color: #218838;
+    border-color: #1e7e34;
+}
+
 .task-detail {
     margin-top: 12px;
     padding-top: 12px;

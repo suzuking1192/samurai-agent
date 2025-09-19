@@ -58,6 +58,8 @@ class SamuraiAgentPanelWebviewViewProvider {
         const chatJsPath = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'src', 'webview', 'chat.js'));
         const taskCssPath = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'src', 'webview', 'task.css'));
         const taskJsPath = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'src', 'webview', 'task.js'));
+        const settingsCssPath = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'src', 'webview', 'settings.css'));
+        const settingsJsPath = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'src', 'webview', 'settings.js'));
         return `<!DOCTYPE html>
         <html lang="en">
         <head>
@@ -67,6 +69,7 @@ class SamuraiAgentPanelWebviewViewProvider {
             <link href="${agentPanelCssPath}" rel="stylesheet">
             <link href="${chatCssPath}" rel="stylesheet">
             <link href="${taskCssPath}" rel="stylesheet">
+            <link href="${settingsCssPath}" rel="stylesheet">
         </head>
         <body>
             <div class="agent-panel-container">
@@ -137,16 +140,14 @@ class SamuraiAgentPanelWebviewViewProvider {
                     
                     <!-- Setting Content -->
                     <div class="tab-content" id="setting-content" style="display: none;">
-                        <div class="setting-container">
-                            <h3>Settings</h3>
-                            <p>Settings and configuration options will be implemented here.</p>
-                        </div>
+                        <!-- Settings content will be dynamically rendered by settings.js -->
                     </div>
                 </div>
             </div>
             <script src="${agentPanelJsPath}"></script>
             <script src="${chatJsPath}"></script>
             <script src="${taskJsPath}"></script>
+            <script src="${settingsJsPath}"></script>
         </body>
         </html>`;
     }

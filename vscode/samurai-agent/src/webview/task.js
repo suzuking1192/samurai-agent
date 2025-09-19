@@ -9,7 +9,7 @@ const placeholderTasks = [
         hasSubtasks: true,
         isCompleted: false,
         parentTaskId: null,
-        depth: 0
+        depth: 2
     },
     {
         id: 'task-1-1',
@@ -18,7 +18,7 @@ const placeholderTasks = [
         hasSubtasks: false,
         isCompleted: false,
         parentTaskId: 'task-1',
-        depth: 1
+        depth: 2
     },
     {
         id: 'task-1-2',
@@ -27,7 +27,7 @@ const placeholderTasks = [
         hasSubtasks: false,
         isCompleted: false,
         parentTaskId: 'task-1',
-        depth: 1
+        depth: 2
     },
     {
         id: 'task-1-3',
@@ -36,7 +36,7 @@ const placeholderTasks = [
         hasSubtasks: false,
         isCompleted: false,
         parentTaskId: 'task-1',
-        depth: 1
+        depth: 2
     },
     {
         id: 'task-2',
@@ -45,7 +45,7 @@ const placeholderTasks = [
         hasSubtasks: true,
         isCompleted: false,
         parentTaskId: null,
-        depth: 0
+        depth: 2
     },
     {
         id: 'task-2-1',
@@ -54,7 +54,7 @@ const placeholderTasks = [
         hasSubtasks: false,
         isCompleted: false,
         parentTaskId: 'task-2',
-        depth: 1
+        depth: 2
     },
     {
         id: 'task-2-2',
@@ -63,7 +63,7 @@ const placeholderTasks = [
         hasSubtasks: false,
         isCompleted: false,
         parentTaskId: 'task-2',
-        depth: 1
+        depth: 2
     },
     {
         id: 'task-2-3',
@@ -72,7 +72,7 @@ const placeholderTasks = [
         hasSubtasks: false,
         isCompleted: false,
         parentTaskId: 'task-2',
-        depth: 1
+        depth: 2
     },
     {
         id: 'task-3',
@@ -81,7 +81,7 @@ const placeholderTasks = [
         hasSubtasks: true,
         isCompleted: true,
         parentTaskId: null,
-        depth: 0
+        depth: 2
     },
     {
         id: 'task-3-1',
@@ -90,7 +90,7 @@ const placeholderTasks = [
         hasSubtasks: false,
         isCompleted: true,
         parentTaskId: 'task-3',
-        depth: 1
+        depth: 2
     },
     {
         id: 'task-3-2',
@@ -99,7 +99,7 @@ const placeholderTasks = [
         hasSubtasks: false,
         isCompleted: true,
         parentTaskId: 'task-3',
-        depth: 1
+        depth: 2
     },
     {
         id: 'task-3-3',
@@ -108,7 +108,7 @@ const placeholderTasks = [
         hasSubtasks: false,
         isCompleted: true,
         parentTaskId: 'task-3',
-        depth: 1
+        depth: 2
     }
 ];
 
@@ -117,7 +117,7 @@ let taskState = {
     expandedTasks: new Set(),
     visibleSubtasks: new Set(),
     tasks: [...placeholderTasks],
-    currentFilter: 'all' // 'all', 'pending', 'completed'
+    currentFilter: 'pending' // 'all', 'pending', 'completed'
 };
 
 // Initialize task functionality when DOM is loaded
@@ -163,10 +163,12 @@ function calculateHasSubtasks() {
 
 function renderTasks() {
     const taskContent = document.getElementById('task-content');
-    if (!taskContent) return;
+    if (!taskContent) {
+        return;
+    }
     
-    // Get top-level tasks (depth 0) and apply filter
-    let topLevelTasks = taskState.tasks.filter(task => task.depth === 0);
+    // Get top-level tasks (depth 1) and apply filter
+    let topLevelTasks = taskState.tasks.filter(task => task.depth === 1);
     
     // Apply current filter
     if (taskState.currentFilter === 'pending') {
@@ -176,7 +178,7 @@ function renderTasks() {
     }
     
     // Calculate stats for all tasks (not filtered)
-    const allTopLevelTasks = taskState.tasks.filter(task => task.depth === 0);
+    const allTopLevelTasks = taskState.tasks.filter(task => task.depth === 1);
     const pendingCount = allTopLevelTasks.filter(task => !task.isCompleted).length;
     const completedCount = allTopLevelTasks.filter(task => task.isCompleted).length;
     
@@ -276,6 +278,7 @@ function renderTaskCard(task) {
                 <div class="task-detail-actions">
                     <button class="task-btn" data-action="copy-spec" data-task-id="${task.id}">Copy Spec</button>
                     <button class="task-btn secondary" data-action="save-spec" data-task-id="${task.id}">Save Changes</button>
+                    ${!task.isCompleted ? `<button class="task-btn success" data-action="complete-task" data-task-id="${task.id}">Completed</button>` : ''}
                 </div>
             </div>
             
@@ -325,6 +328,7 @@ function renderSubtaskCard(task) {
                 <div class="task-detail-actions">
                     <button class="task-btn" data-action="copy-spec" data-task-id="${task.id}">Copy Spec</button>
                     <button class="task-btn secondary" data-action="save-spec" data-task-id="${task.id}">Save Changes</button>
+                    ${!task.isCompleted ? `<button class="task-btn success" data-action="complete-task" data-task-id="${task.id}">Completed</button>` : ''}
                 </div>
             </div>
         </div>
@@ -361,6 +365,14 @@ function attachTaskEventListeners() {
         button.addEventListener('click', function() {
             const taskId = this.getAttribute('data-task-id');
             saveTaskSpec(taskId);
+        });
+    });
+    
+    // Complete task
+    document.querySelectorAll('[data-action="complete-task"]').forEach(button => {
+        button.addEventListener('click', function() {
+            const taskId = this.getAttribute('data-task-id');
+            toggleTaskCompletionStatus(taskId);
         });
     });
     
@@ -481,6 +493,28 @@ function saveTaskSpec(taskId) {
     }
 }
 
+function toggleTaskCompletionStatus(taskId) {
+    const task = taskState.tasks.find(t => t.id === taskId);
+    if (task) {
+        task.isCompleted = !task.isCompleted;
+        
+        // Show success message
+        const button = document.querySelector(`[data-action="complete-task"][data-task-id="${taskId}"]`);
+        if (button) {
+            const originalText = button.textContent;
+            button.textContent = task.isCompleted ? 'Completed!' : 'Mark as Completed';
+            button.style.backgroundColor = task.isCompleted ? '#28a745' : '#007bff';
+            setTimeout(() => {
+                button.textContent = originalText;
+                button.style.backgroundColor = '';
+            }, 2000);
+        }
+        
+        // Re-render tasks to update the UI
+        renderTasks();
+    }
+}
+
 // Export functions for potential external use
 window.TaskManager = {
     renderTasks: renderTasks,
@@ -488,6 +522,7 @@ window.TaskManager = {
     toggleSubtasks: toggleSubtasks,
     copyTaskSpec: copyTaskSpec,
     saveTaskSpec: saveTaskSpec,
+    toggleTaskCompletionStatus: toggleTaskCompletionStatus,
     setTaskFilter: setTaskFilter,
     getTasks: () => taskState.tasks,
     getCurrentFilter: () => taskState.currentFilter,

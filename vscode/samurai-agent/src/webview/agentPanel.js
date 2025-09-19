@@ -50,6 +50,11 @@ function switchTab(tabName) {
                 setTimeout(() => chatInput.focus(), 100);
             }
         }
+        
+        // Initialize settings tab if switching to settings
+        if (tabName === 'setting' && window.SettingsManager) {
+            setTimeout(() => window.SettingsManager.renderSettings(), 100);
+        }
     }
 }
 

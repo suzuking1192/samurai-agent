@@ -29,7 +29,11 @@ const mockDOM = {
 
 // Mock global objects
 (global as any).document = mockDOM.document;
-(global as any).navigator = mockDOM.navigator;
+Object.defineProperty(global, 'navigator', {
+	value: mockDOM.navigator,
+	writable: true,
+	configurable: true
+});
 (global as any).window = mockDOM.window;
 
 suite('Task Tab JavaScript Test Suite', () => {
@@ -259,9 +263,15 @@ suite('Task Tab JavaScript Test Suite', () => {
 	test('Task filtering should work correctly', () => {
 		// Mock task filtering logic
 		function filterTasks(tasks: any[], filter: string) {
-			if (filter === 'all') return tasks;
-			if (filter === 'pending') return tasks.filter((task: any) => !task.isCompleted);
-			if (filter === 'completed') return tasks.filter((task: any) => task.isCompleted);
+			if (filter === 'all') {
+				return tasks;
+			}
+			if (filter === 'pending') {
+				return tasks.filter((task: any) => !task.isCompleted);
+			}
+			if (filter === 'completed') {
+				return tasks.filter((task: any) => task.isCompleted);
+			}
 			return tasks;
 		}
 		
