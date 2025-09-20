@@ -1,8 +1,10 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import { DataStore } from '../persistence/dataStore';
 
 export class SamuraiAgentPanelWebviewViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'samurai-agent.agentPanel';
+    private dataStore: DataStore | undefined;
 
     constructor(private readonly _extensionUri: vscode.Uri) {}
 
@@ -19,6 +21,40 @@ export class SamuraiAgentPanelWebviewViewProvider implements vscode.WebviewViewP
         };
 
         webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
+        
+        // Initialize data store with workspace root
+        const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (workspaceRoot && !this.dataStore) {
+            this.dataStore = new DataStore(workspaceRoot);
+        }
+        
+        // Set up message listener
+        webviewView.webview.onDidReceiveMessage(
+            message => this.handleWebviewMessage(webviewView.webview, message)
+        );
+    }
+    
+    /**
+     * Handles messages from the webview
+     */
+    private handleWebviewMessage(webview: vscode.Webview, message: any) {
+        if (!this.dataStore) {
+            console.error('DataStore not initialized');
+            return;
+        }
+        
+        try {
+            const response = this.dataStore.handleWebviewMessage(message);
+            webview.postMessage(response);
+        } catch (error) {
+            console.error('Error handling webview message:', error);
+            webview.postMessage({
+                type: 'error',
+                requestId: message.requestId,
+                error: error instanceof Error ? error.message : 'Unknown error occurred',
+                timestamp: new Date()
+            });
+        }
     }
 
     private _getHtmlForWebview(webview: vscode.Webview) {
@@ -46,6 +82,9 @@ export class SamuraiAgentPanelWebviewViewProvider implements vscode.WebviewViewP
         );
         const settingsJsPath = webview.asWebviewUri(
             vscode.Uri.joinPath(this._extensionUri, 'src', 'webview', 'settings.js')
+        );
+        const webviewApiJsPath = webview.asWebviewUri(
+            vscode.Uri.joinPath(this._extensionUri, 'src', 'webview', 'webviewApi.js')
         );
 
         return `<!DOCTYPE html>
@@ -132,6 +171,7 @@ export class SamuraiAgentPanelWebviewViewProvider implements vscode.WebviewViewP
                     </div>
                 </div>
             </div>
+            <script src="${webviewApiJsPath}"></script>
             <script src="${agentPanelJsPath}"></script>
             <script src="${chatJsPath}"></script>
             <script src="${taskJsPath}"></script>

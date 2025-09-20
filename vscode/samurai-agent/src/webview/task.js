@@ -1,123 +1,12 @@
 // Task Tab JavaScript - Handles task rendering and interactions
 
-// Placeholder task data
-const placeholderTasks = [
-    {
-        id: 'task-1',
-        title: 'Implement User Authentication System',
-        spec: 'Create a comprehensive user authentication system with the following features:\n\n1. User registration with email verification\n2. Secure login with JWT tokens\n3. Password reset functionality\n4. Role-based access control (Admin, User, Guest)\n5. Session management\n6. Two-factor authentication (2FA) support\n7. OAuth integration (Google, GitHub)\n8. Account lockout after failed attempts\n9. Password strength validation\n10. Audit logging for security events\n\nTechnical Requirements:\n- Use bcrypt for password hashing\n- Implement rate limiting for login attempts\n- Store sessions in Redis\n- Use HTTPS for all authentication endpoints\n- Follow OWASP security guidelines',
-        hasSubtasks: true,
-        isCompleted: false,
-        parentTaskId: null,
-        depth: 2
-    },
-    {
-        id: 'task-1-1',
-        title: 'Set up authentication database schema',
-        spec: 'Design and implement the database schema for user authentication:\n\nTables needed:\n- users (id, email, password_hash, created_at, updated_at, email_verified)\n- user_roles (user_id, role_id)\n- roles (id, name, permissions)\n- user_sessions (id, user_id, token, expires_at, created_at)\n- password_resets (id, user_id, token, expires_at, created_at)\n- login_attempts (id, email, ip_address, success, created_at)\n\nIndexes:\n- Unique index on users.email\n- Index on user_sessions.token\n- Index on password_resets.token\n- Index on login_attempts.email and created_at',
-        hasSubtasks: false,
-        isCompleted: false,
-        parentTaskId: 'task-1',
-        depth: 2
-    },
-    {
-        id: 'task-1-2',
-        title: 'Implement JWT token management',
-        spec: 'Create JWT token management system:\n\nFeatures:\n- Generate access tokens (15 min expiry)\n- Generate refresh tokens (7 days expiry)\n- Token refresh endpoint\n- Token blacklisting for logout\n- Token validation middleware\n\nSecurity considerations:\n- Use strong secret keys\n- Implement token rotation\n- Store refresh tokens securely\n- Add token fingerprinting\n- Implement rate limiting on refresh endpoint',
-        hasSubtasks: false,
-        isCompleted: false,
-        parentTaskId: 'task-1',
-        depth: 2
-    },
-    {
-        id: 'task-1-3',
-        title: 'Create authentication API endpoints',
-        spec: 'Implement REST API endpoints for authentication:\n\nEndpoints:\n- POST /auth/register - User registration\n- POST /auth/login - User login\n- POST /auth/logout - User logout\n- POST /auth/refresh - Token refresh\n- POST /auth/forgot-password - Password reset request\n- POST /auth/reset-password - Password reset confirmation\n- POST /auth/verify-email - Email verification\n- GET /auth/me - Get current user info\n\nRequest/Response formats:\n- Use JSON for all requests/responses\n- Include proper HTTP status codes\n- Implement request validation\n- Add rate limiting\n- Include CORS headers',
-        hasSubtasks: false,
-        isCompleted: false,
-        parentTaskId: 'task-1',
-        depth: 2
-    },
-    {
-        id: 'task-2',
-        title: 'Build Real-time Chat System',
-        spec: 'Develop a real-time chat system with the following capabilities:\n\nCore Features:\n1. Real-time messaging using WebSockets\n2. Multiple chat rooms/channels\n3. Private direct messages\n4. Message history and persistence\n5. File and image sharing\n6. Emoji reactions and mentions\n7. Message search and filtering\n8. Online user status indicators\n9. Message threading and replies\n10. Chat moderation tools\n\nTechnical Implementation:\n- Use Socket.IO for WebSocket connections\n- Implement message queuing with Redis\n- Store messages in MongoDB with proper indexing\n- Add message encryption for sensitive chats\n- Implement rate limiting for message sending\n- Add message delivery receipts\n- Support for message editing and deletion\n- Implement chat room permissions and roles',
-        hasSubtasks: true,
-        isCompleted: false,
-        parentTaskId: null,
-        depth: 2
-    },
-    {
-        id: 'task-2-1',
-        title: 'Set up WebSocket server infrastructure',
-        spec: 'Configure WebSocket server for real-time communication:\n\nSetup requirements:\n- Install and configure Socket.IO\n- Set up Redis adapter for scaling\n- Configure CORS for cross-origin requests\n- Implement connection authentication\n- Add connection rate limiting\n- Set up connection monitoring\n- Configure SSL/TLS for secure connections\n\nEvent handling:\n- Connection/disconnection events\n- Join/leave room events\n- Message broadcasting\n- Error handling and reconnection\n- Heartbeat/ping-pong for connection health',
-        hasSubtasks: false,
-        isCompleted: false,
-        parentTaskId: 'task-2',
-        depth: 2
-    },
-    {
-        id: 'task-2-2',
-        title: 'Design chat message data model',
-        spec: 'Create data models for chat messages and rooms:\n\nMessage Schema:\n- id: unique message identifier\n- roomId: chat room identifier\n- userId: sender user ID\n- content: message text content\n- type: message type (text, image, file, system)\n- timestamp: creation timestamp\n- editedAt: last edit timestamp\n- replyTo: parent message ID for threading\n- reactions: emoji reactions object\n- metadata: additional message data\n\nRoom Schema:\n- id: unique room identifier\n- name: room display name\n- type: room type (public, private, direct)\n- members: array of member user IDs\n- permissions: room-specific permissions\n- settings: room configuration\n- createdAt: creation timestamp',
-        hasSubtasks: false,
-        isCompleted: false,
-        parentTaskId: 'task-2',
-        depth: 2
-    },
-    {
-        id: 'task-2-3',
-        title: 'Implement message persistence and retrieval',
-        spec: 'Build message storage and retrieval system:\n\nDatabase operations:\n- Store messages with proper indexing\n- Implement message pagination\n- Add message search functionality\n- Handle message updates and deletions\n- Implement message archiving\n- Add message backup and recovery\n\nPerformance optimizations:\n- Use database indexes for fast queries\n- Implement message caching with Redis\n- Add database connection pooling\n- Optimize query performance\n- Implement lazy loading for message history\n- Add message compression for storage',
-        hasSubtasks: false,
-        isCompleted: false,
-        parentTaskId: 'task-2',
-        depth: 2
-    },
-    {
-        id: 'task-3',
-        title: 'Setup Development Environment',
-        spec: 'Set up the complete development environment for the project:\n\n1. Install Node.js and npm\n2. Configure VS Code with recommended extensions\n3. Set up Git repository and branching strategy\n4. Configure ESLint and Prettier\n5. Set up testing framework (Jest/Mocha)\n6. Configure build tools (Webpack/Vite)\n7. Set up CI/CD pipeline\n8. Configure environment variables\n9. Set up database connections\n10. Configure logging and monitoring\n\nThis task should be completed before starting any development work.',
-        hasSubtasks: true,
-        isCompleted: true,
-        parentTaskId: null,
-        depth: 2
-    },
-    {
-        id: 'task-3-1',
-        title: 'Install and configure Node.js',
-        spec: 'Install Node.js LTS version and configure npm:\n\n- Download and install Node.js LTS from official website\n- Verify installation with node --version and npm --version\n- Configure npm registry if needed\n- Set up npm scripts in package.json\n- Install global packages: nodemon, typescript, eslint\n- Configure .nvmrc file for Node version management',
-        hasSubtasks: false,
-        isCompleted: true,
-        parentTaskId: 'task-3',
-        depth: 2
-    },
-    {
-        id: 'task-3-2',
-        title: 'Configure VS Code workspace',
-        spec: 'Set up VS Code with all necessary extensions and settings:\n\nExtensions to install:\n- ES7+ React/Redux/React-Native snippets\n- Prettier - Code formatter\n- ESLint\n- GitLens\n- Auto Rename Tag\n- Bracket Pair Colorizer\n- Path Intellisense\n\nSettings to configure:\n- Format on save\n- Auto-save enabled\n- Tab size: 2 spaces\n- Font family and size preferences\n- Theme selection',
-        hasSubtasks: false,
-        isCompleted: true,
-        parentTaskId: 'task-3',
-        depth: 2
-    },
-    {
-        id: 'task-3-3',
-        title: 'Set up Git repository',
-        spec: 'Initialize Git repository and configure branching strategy:\n\n- Initialize git repository with git init\n- Create .gitignore file for Node.js projects\n- Set up remote repository (GitHub/GitLab)\n- Configure branch protection rules\n- Set up branching strategy (main, develop, feature branches)\n- Configure commit message conventions\n- Set up pre-commit hooks\n- Add initial commit with project structure',
-        hasSubtasks: false,
-        isCompleted: true,
-        parentTaskId: 'task-3',
-        depth: 2
-    }
-];
-
-// Task management state
+// Task management state - now using persistence API
 let taskState = {
     expandedTasks: new Set(),
     visibleSubtasks: new Set(),
-    tasks: [...placeholderTasks],
-    currentFilter: 'pending' // 'all', 'pending', 'completed'
+    tasks: [], // Will be loaded from persistence
+    currentFilter: 'pending', // 'all', 'pending', 'completed'
+    isLoading: false
 };
 
 // Initialize task functionality when DOM is loaded
@@ -125,15 +14,25 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeTaskTab();
 });
 
-function initializeTaskTab() {
-    // Calculate hasSubtasks property for all tasks
-    calculateHasSubtasks();
+async function initializeTaskTab() {
+    // Load tasks from persistence
+    await loadTasksFromPersistence();
     
     // Render tasks when task tab is shown
     const taskTab = document.getElementById('task-tab');
     if (taskTab) {
-        taskTab.addEventListener('click', function() {
-            setTimeout(renderTasks, 100); // Small delay to ensure tab content is visible
+        taskTab.addEventListener('click', async function() {
+            // Show loading state while fetching fresh data
+            const taskContent = document.getElementById('task-content');
+            if (taskContent) {
+                const hideLoading = window.WebviewApi?.ui?.showGlobalLoading(taskContent, 'Loading tasks...');
+                try {
+                    await loadTasksFromPersistence();
+                    setTimeout(renderTasks, 100); // Small delay to ensure tab content is visible
+                } finally {
+                    if (hideLoading) hideLoading();
+                }
+            }
         });
     }
     
@@ -141,6 +40,42 @@ function initializeTaskTab() {
     const taskContent = document.getElementById('task-content');
     if (taskContent && taskContent.style.display !== 'none') {
         renderTasks();
+    }
+}
+
+// Load tasks from persistence API
+async function loadTasksFromPersistence() {
+    try {
+        taskState.isLoading = true;
+        const tasks = await window.WebviewApi.persistence.loadTasks();
+        taskState.tasks = tasks || [];
+        calculateHasSubtasks();
+        console.log('Tasks loaded from persistence:', taskState.tasks);
+    } catch (error) {
+        console.error('Error loading tasks from persistence:', error);
+        showTaskError(`Failed to load tasks: ${error.message}`);
+        // Keep existing tasks if loading fails
+    } finally {
+        taskState.isLoading = false;
+    }
+}
+
+// Save a task using persistence API
+async function saveTaskWithPersistence(task) {
+    try {
+        const savedTask = await window.WebviewApi.persistence.saveTask(task);
+        // Update the task in our local state
+        const index = taskState.tasks.findIndex(t => t.id === task.id);
+        if (index >= 0) {
+            taskState.tasks[index] = savedTask;
+        } else {
+            taskState.tasks.push(savedTask);
+        }
+        calculateHasSubtasks();
+        return savedTask;
+    } catch (error) {
+        console.error('Error saving task:', error);
+        throw error;
     }
 }
 
@@ -164,6 +99,24 @@ function calculateHasSubtasks() {
 function renderTasks() {
     const taskContent = document.getElementById('task-content');
     if (!taskContent) {
+        return;
+    }
+    
+    // Show loading state if tasks are being loaded
+    if (taskState.isLoading) {
+        taskContent.innerHTML = `
+            <div class="task-container">
+                <div class="task-header">
+                    <h3>Task Management</h3>
+                </div>
+                <div class="task-loading">
+                    <div class="loading-spinner">
+                        <div class="spinner"></div>
+                        <div class="loading-text">Loading tasks...</div>
+                    </div>
+                </div>
+            </div>
+        `;
         return;
     }
     
@@ -362,17 +315,17 @@ function attachTaskEventListeners() {
     
     // Save spec changes
     document.querySelectorAll('[data-action="save-spec"]').forEach(button => {
-        button.addEventListener('click', function() {
+        button.addEventListener('click', async function() {
             const taskId = this.getAttribute('data-task-id');
-            saveTaskSpec(taskId);
+            await saveTaskSpec(taskId);
         });
     });
     
     // Complete task
     document.querySelectorAll('[data-action="complete-task"]').forEach(button => {
-        button.addEventListener('click', function() {
+        button.addEventListener('click', async function() {
             const taskId = this.getAttribute('data-task-id');
-            toggleTaskCompletionStatus(taskId);
+            await toggleTaskCompletionStatus(taskId);
         });
     });
     
@@ -454,13 +407,7 @@ function copyTaskSpec(taskId) {
             // Show temporary success message
             const button = document.querySelector(`[data-action="copy-spec"][data-task-id="${taskId}"]`);
             if (button) {
-                const originalText = button.textContent;
-                button.textContent = 'Copied!';
-                button.style.backgroundColor = '#28a745';
-                setTimeout(() => {
-                    button.textContent = originalText;
-                    button.style.backgroundColor = '';
-                }, 2000);
+                window.WebviewApi?.ui?.showSuccess(button, 'Copied!');
             }
         }).catch(err => {
             console.error('Failed to copy spec:', err);
@@ -469,50 +416,111 @@ function copyTaskSpec(taskId) {
     }
 }
 
-function saveTaskSpec(taskId) {
+async function saveTaskSpec(taskId) {
     const textarea = document.querySelector(`.task-spec[data-task-id="${taskId}"]`);
-    if (textarea) {
-        const task = taskState.tasks.find(t => t.id === taskId);
-        if (task) {
-            task.spec = textarea.value;
-            
-            // Show success message
-            const button = document.querySelector(`[data-action="save-spec"][data-task-id="${taskId}"]`);
-            if (button) {
-                const originalText = button.textContent;
-                button.textContent = 'Saved!';
-                button.style.backgroundColor = '#28a745';
-                textarea.style.borderColor = '#28a745';
-                setTimeout(() => {
-                    button.textContent = originalText;
-                    button.style.backgroundColor = '';
-                    textarea.style.borderColor = '';
-                }, 2000);
-            }
-        }
+    const button = document.querySelector(`[data-action="save-spec"][data-task-id="${taskId}"]`);
+    
+    if (!textarea || !button) return;
+    
+    const task = taskState.tasks.find(t => t.id === taskId);
+    if (!task) return;
+    
+    const hideLoading = window.WebviewApi?.ui?.showLoading(button, 'Saving...');
+    
+    try {
+        // Update the task spec
+        task.spec = textarea.value;
+        
+        // Save using persistence API
+        await saveTaskWithPersistence(task);
+        
+        // Show success feedback
+        window.WebviewApi?.ui?.showSuccess(button, 'Saved!');
+        textarea.style.borderColor = '#28a745';
+        
+        // Reset border color after a delay
+        setTimeout(() => {
+            textarea.style.borderColor = '';
+        }, 2000);
+        
+    } catch (error) {
+        console.error('Error saving task spec:', error);
+        
+        // Revert the spec change
+        textarea.value = task.spec;
+        textarea.style.borderColor = '#dc3545';
+        
+        window.WebviewApi?.ui?.showError(button, `Save failed: ${error.message}`);
+        
+        // Reset border color after a delay
+        setTimeout(() => {
+            textarea.style.borderColor = '';
+        }, 3000);
+    } finally {
+        if (hideLoading) hideLoading();
     }
 }
 
-function toggleTaskCompletionStatus(taskId) {
+async function toggleTaskCompletionStatus(taskId) {
     const task = taskState.tasks.find(t => t.id === taskId);
-    if (task) {
+    if (!task) return;
+    
+    const button = document.querySelector(`[data-action="complete-task"][data-task-id="${taskId}"]`);
+    if (!button) return;
+    
+    const hideLoading = window.WebviewApi?.ui?.showLoading(button, 'Updating...');
+    
+    try {
+        // Update the task completion status
         task.isCompleted = !task.isCompleted;
         
-        // Show success message
-        const button = document.querySelector(`[data-action="complete-task"][data-task-id="${taskId}"]`);
-        if (button) {
-            const originalText = button.textContent;
-            button.textContent = task.isCompleted ? 'Completed!' : 'Mark as Completed';
-            button.style.backgroundColor = task.isCompleted ? '#28a745' : '#007bff';
-            setTimeout(() => {
-                button.textContent = originalText;
-                button.style.backgroundColor = '';
-            }, 2000);
-        }
+        // Save using persistence API
+        await saveTaskWithPersistence(task);
+        
+        // Show success feedback
+        window.WebviewApi?.ui?.showSuccess(button, task.isCompleted ? 'Completed!' : 'Marked as pending');
         
         // Re-render tasks to update the UI
-        renderTasks();
+        setTimeout(() => {
+            renderTasks();
+        }, 1000);
+        
+    } catch (error) {
+        console.error('Error updating task completion status:', error);
+        
+        // Revert the completion status change
+        task.isCompleted = !task.isCompleted;
+        
+        window.WebviewApi?.ui?.showError(button, `Update failed: ${error.message}`);
+    } finally {
+        if (hideLoading) hideLoading();
     }
+}
+
+function showTaskError(message) {
+    // Create or update error message
+    let errorDiv = document.getElementById('task-error-message');
+    if (!errorDiv) {
+        errorDiv = document.createElement('div');
+        errorDiv.id = 'task-error-message';
+        errorDiv.className = 'task-error-message';
+        errorDiv.style.color = '#dc3545';
+        errorDiv.style.backgroundColor = '#f8d7da';
+        errorDiv.style.border = '1px solid #f5c6cb';
+        errorDiv.style.padding = '10px';
+        errorDiv.style.margin = '10px 0';
+        errorDiv.style.borderRadius = '4px';
+        errorDiv.style.display = 'none';
+        document.querySelector('.task-container')?.appendChild(errorDiv);
+    }
+    
+    errorDiv.textContent = message;
+    errorDiv.style.display = 'block';
+    
+    // Hide after 5 seconds
+    setTimeout(() => {
+        errorDiv.style.display = 'none';
+    }, 5000);
 }
 
 // Export functions for potential external use
@@ -526,17 +534,32 @@ window.TaskManager = {
     setTaskFilter: setTaskFilter,
     getTasks: () => taskState.tasks,
     getCurrentFilter: () => taskState.currentFilter,
-    addTask: (task) => {
-        taskState.tasks.push(task);
-        calculateHasSubtasks();
-        renderTasks();
-    },
-    updateTask: (taskId, updates) => {
-        const task = taskState.tasks.find(t => t.id === taskId);
-        if (task) {
-            Object.assign(task, updates);
-            calculateHasSubtasks();
+    loadTasksFromPersistence: loadTasksFromPersistence,
+    saveTaskWithPersistence: saveTaskWithPersistence,
+    addTask: async (task) => {
+        try {
+            const savedTask = await saveTaskWithPersistence(task);
             renderTasks();
+            return savedTask;
+        } catch (error) {
+            console.error('Error adding task:', error);
+            showTaskError(`Failed to add task: ${error.message}`);
+            throw error;
+        }
+    },
+    updateTask: async (taskId, updates) => {
+        try {
+            const task = taskState.tasks.find(t => t.id === taskId);
+            if (task) {
+                Object.assign(task, updates);
+                const savedTask = await saveTaskWithPersistence(task);
+                renderTasks();
+                return savedTask;
+            }
+        } catch (error) {
+            console.error('Error updating task:', error);
+            showTaskError(`Failed to update task: ${error.message}`);
+            throw error;
         }
     }
 };

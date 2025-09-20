@@ -1,0 +1,13 @@
+[
+  {
+    "id": "test-task-1",
+    "title": "Test Task",
+    "spec": "Test specification",
+    "isCompleted": false,
+    "depth": 1,
+    "parentTaskId": null,
+    "hasSubtasks": false,
+    "createdAt": "2025-09-20T15:48:04.848Z",
+    "updatedAt": "2025-09-20T15:48:04.848Z"
+  }
+]

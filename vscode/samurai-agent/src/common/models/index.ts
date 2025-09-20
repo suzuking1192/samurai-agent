@@ -57,16 +57,63 @@ export interface AgentConfig extends BaseModel {
 }
 
 /**
- * Placeholder for future model exports
- * TODO: Add specific model interfaces as they are developed:
- * - TaskModel
- * - MemoryModel
- * - LLMRequestModel
- * - ToolCallModel
- * - ContextModel
- * - ResponseModel
- * - ErrorModel
+ * Session-related data models
+ * Defines the structure for chat sessions and conversation management
  */
+export interface Session extends BaseModel {
+    title: string;
+    description?: string;
+    isActive: boolean;
+    messageCount: number;
+    lastMessageAt?: Date;
+    metadata: Record<string, any>;
+}
+
+/**
+ * Chat message data model
+ * Represents individual messages within a chat session
+ */
+export interface ChatMessage extends BaseModel {
+    sessionId: string;
+    role: 'user' | 'assistant' | 'system';
+    content: string;
+    model?: string;
+    mode?: string;
+    tokens?: number;
+    cost?: number;
+    metadata: Record<string, any>;
+}
+
+/**
+ * Project settings data model
+ * Represents project-specific configuration
+ */
+export interface ProjectSettings extends BaseModel {
+    projectName: string;
+    projectPath: string;
+    projectDetailText: string;
+    digestedMemory: string;
+    llmProvider: 'openai' | 'gemini' | 'claude';
+    defaultModel: string;
+    defaultMode: string;
+    metadata: Record<string, any>;
+}
+
+/**
+ * Global settings data model
+ * Represents extension-wide configuration
+ */
+export interface GlobalSettings extends BaseModel {
+    openaiApiKey: string;
+    openaiModels: string[];
+    geminiApiKey: string;
+    geminiModels: string[];
+    claudeApiKey: string;
+    claudeModels: string[];
+    theme: string;
+    autoSave: boolean;
+    metadata: Record<string, any>;
+}
 
 // Export all models from this central location
 export * from './agent-config';
@@ -77,3 +124,5 @@ export * from './tool-models';
 export * from './context-models';
 export * from './response-models';
 export * from './error-models';
+export * from './chat-models';
+export * from './settings-models';

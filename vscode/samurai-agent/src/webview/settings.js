@@ -22,16 +22,26 @@ const CLAUDE_MODELS = [
     'claude-2.1'
 ];
 
-// Settings state
+// Settings state - now using the new persistence API
 let settingsState = {
-    openaiApiKey: '',
-    openaiModels: [],
-    geminiApiKey: '',
-    geminiModels: [],
-    claudeApiKey: '',
-    claudeModels: [],
-    projectDetailText: '',
-    digestedMemory: ''
+    globalSettings: {
+        openaiApiKey: '',
+        openaiModels: [],
+        geminiApiKey: '',
+        geminiModels: [],
+        claudeApiKey: '',
+        claudeModels: [],
+        theme: 'default',
+        autoSave: true
+    },
+    projectSettings: {
+        projectDetailText: '',
+        digestedMemory: '',
+        llmProvider: 'openai',
+        defaultModel: 'gpt-4',
+        defaultMode: 'default'
+    },
+    isLoading: false
 };
 
 // Initialize settings functionality when DOM is loaded
@@ -39,15 +49,25 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeSettingsTab();
 });
 
-function initializeSettingsTab() {
-    // Load settings from localStorage
-    loadSettingsFromLocalStorage();
+async function initializeSettingsTab() {
+    // Load settings using the new persistence API
+    await loadSettingsFromPersistence();
     
     // Render settings when settings tab is shown
     const settingsTab = document.getElementById('setting-tab');
     if (settingsTab) {
-        settingsTab.addEventListener('click', function() {
-            setTimeout(renderSettings, 100); // Small delay to ensure tab content is visible
+        settingsTab.addEventListener('click', async function() {
+            // Show loading state while fetching fresh data
+            const settingsContent = document.getElementById('setting-content');
+            if (settingsContent) {
+                const hideLoading = window.WebviewApi?.ui?.showGlobalLoading(settingsContent, 'Loading settings...');
+                try {
+                    await loadSettingsFromPersistence();
+                    setTimeout(renderSettings, 100); // Small delay to ensure tab content is visible
+                } finally {
+                    if (hideLoading) hideLoading();
+                }
+            }
         });
     }
     
@@ -86,8 +106,8 @@ function renderSettings() {
 }
 
 function renderLLMProviderSection(providerName, modelsArray, providerKey) {
-    const apiKeyValue = settingsState[`${providerKey}ApiKey`] || '';
-    const selectedModels = settingsState[`${providerKey}Models`] || [];
+    const apiKeyValue = settingsState.globalSettings[`${providerKey}ApiKey`] || '';
+    const selectedModels = settingsState.globalSettings[`${providerKey}Models`] || [];
     
     const modelOptions = modelsArray.map(model => {
         const isSelected = selectedModels.includes(model) ? 'selected' : '';
@@ -123,8 +143,8 @@ function renderLLMProviderSection(providerName, modelsArray, providerKey) {
 }
 
 function renderProjectDetailSection() {
-    const projectDetailValue = settingsState.projectDetailText || '';
-    const digestedMemoryValue = settingsState.digestedMemory || '';
+    const projectDetailValue = settingsState.projectSettings.projectDetailText || '';
+    const digestedMemoryValue = settingsState.projectSettings.digestedMemory || '';
     
     return `
         <div class="project-detail-section">
@@ -151,25 +171,25 @@ function renderProjectDetailSection() {
 }
 
 function attachSettingsEventListeners() {
-    // API Key inputs - save on blur
+    // API Key inputs - save on blur with loading feedback
     document.querySelectorAll('input[type="text"]').forEach(input => {
-        input.addEventListener('blur', function() {
-            saveSettingsToLocalStorage();
+        input.addEventListener('blur', async function() {
+            await saveGlobalSettingsWithFeedback();
         });
     });
     
-    // Model selection dropdowns - save on change
+    // Model selection dropdowns - save on change with loading feedback
     document.querySelectorAll('select[multiple]').forEach(select => {
-        select.addEventListener('change', function() {
-            saveSettingsToLocalStorage();
+        select.addEventListener('change', async function() {
+            await saveGlobalSettingsWithFeedback();
         });
     });
     
-    // Project detail textarea - save on input
+    // Project detail textarea - save on input with loading feedback
     const projectDetailTextarea = document.getElementById('project-detail-text');
     if (projectDetailTextarea) {
-        projectDetailTextarea.addEventListener('input', function() {
-            saveSettingsToLocalStorage();
+        projectDetailTextarea.addEventListener('input', async function() {
+            await saveProjectSettingsWithFeedback();
         });
     }
     
@@ -184,92 +204,140 @@ function attachSettingsEventListeners() {
     // Save All Settings button
     const saveAllBtn = document.getElementById('save-all-settings');
     if (saveAllBtn) {
-        saveAllBtn.addEventListener('click', function() {
-            saveSettingsToLocalStorage();
-            showSaveSuccess('All settings saved successfully!');
+        saveAllBtn.addEventListener('click', async function() {
+            const hideLoading = window.WebviewApi?.ui?.showLoading(this, 'Saving all settings...');
+            try {
+                await saveGlobalSettingsWithFeedback();
+                await saveProjectSettingsWithFeedback();
+                showSaveSuccess('All settings saved successfully!');
+            } catch (error) {
+                showSaveError(`Save failed: ${error.message}`);
+            } finally {
+                if (hideLoading) hideLoading();
+            }
         });
     }
     
     // Individual Save buttons
     document.querySelectorAll('.settings-save-btn').forEach(button => {
-        button.addEventListener('click', function() {
+        button.addEventListener('click', async function() {
             const provider = this.getAttribute('data-provider');
             const section = this.getAttribute('data-section');
             
-            if (provider) {
-                saveProviderSettings(provider);
-            } else if (section === 'project') {
-                saveProjectSettings();
+            const hideLoading = window.WebviewApi?.ui?.showLoading(this, 'Saving...');
+            try {
+                if (provider) {
+                    await saveProviderSettings(provider);
+                } else if (section === 'project') {
+                    await saveProjectSettingsWithFeedback();
+                }
+            } catch (error) {
+                showSaveError(`Save failed: ${error.message}`);
+            } finally {
+                if (hideLoading) hideLoading();
             }
         });
     });
 }
 
-function saveProviderSettings(providerKey) {
-    // Save specific provider settings
+// New persistence-based save functions
+async function loadSettingsFromPersistence() {
+    try {
+        // Load global settings
+        const globalSettings = await window.WebviewApi.persistence.loadGlobalSettings();
+        if (globalSettings) {
+            settingsState.globalSettings = { ...settingsState.globalSettings, ...globalSettings };
+        }
+        
+        // Load project settings
+        const projectSettings = await window.WebviewApi.persistence.loadProjectSettings();
+        if (projectSettings) {
+            settingsState.projectSettings = { ...settingsState.projectSettings, ...projectSettings };
+        }
+        
+        console.log('Settings loaded from persistence:', settingsState);
+    } catch (error) {
+        console.error('Error loading settings from persistence:', error);
+        showSaveError(`Failed to load settings: ${error.message}`);
+    }
+}
+
+async function saveGlobalSettingsWithFeedback() {
+    try {
+        // Update state from UI
+        updateGlobalSettingsFromUI();
+        
+        // Save using persistence API
+        await window.WebviewApi.persistence.saveGlobalSettings(settingsState.globalSettings);
+        
+        showSaveSuccess('Global settings saved successfully!');
+        console.log('Global settings saved:', settingsState.globalSettings);
+    } catch (error) {
+        console.error('Error saving global settings:', error);
+        showSaveError(`Save failed: ${error.message}`);
+        throw error;
+    }
+}
+
+async function saveProjectSettingsWithFeedback() {
+    try {
+        // Update state from UI
+        updateProjectSettingsFromUI();
+        
+        // Save using persistence API
+        await window.WebviewApi.persistence.saveProjectSettings(settingsState.projectSettings);
+        
+        showSaveSuccess('Project settings saved successfully!');
+        console.log('Project settings saved:', settingsState.projectSettings);
+    } catch (error) {
+        console.error('Error saving project settings:', error);
+        showSaveError(`Save failed: ${error.message}`);
+        throw error;
+    }
+}
+
+function updateGlobalSettingsFromUI() {
+    // Update API keys
+    settingsState.globalSettings.openaiApiKey = document.getElementById('openai-api-key')?.value || '';
+    settingsState.globalSettings.geminiApiKey = document.getElementById('gemini-api-key')?.value || '';
+    settingsState.globalSettings.claudeApiKey = document.getElementById('claude-api-key')?.value || '';
+    
+    // Update selected models
+    settingsState.globalSettings.openaiModels = Array.from(document.getElementById('openai-models')?.selectedOptions || [])
+        .map(option => option.value);
+    settingsState.globalSettings.geminiModels = Array.from(document.getElementById('gemini-models')?.selectedOptions || [])
+        .map(option => option.value);
+    settingsState.globalSettings.claudeModels = Array.from(document.getElementById('claude-models')?.selectedOptions || [])
+        .map(option => option.value);
+}
+
+function updateProjectSettingsFromUI() {
+    // Update project detail text
+    settingsState.projectSettings.projectDetailText = document.getElementById('project-detail-text')?.value || '';
+}
+
+async function saveProviderSettings(providerKey) {
+    // Update the specific provider settings in state
     const apiKeyInput = document.getElementById(`${providerKey}-api-key`);
     const modelsSelect = document.getElementById(`${providerKey}-models`);
     
     if (apiKeyInput) {
-        settingsState[`${providerKey}ApiKey`] = apiKeyInput.value || '';
+        settingsState.globalSettings[`${providerKey}ApiKey`] = apiKeyInput.value || '';
     }
     
     if (modelsSelect) {
-        settingsState[`${providerKey}Models`] = Array.from(modelsSelect.selectedOptions || [])
+        settingsState.globalSettings[`${providerKey}Models`] = Array.from(modelsSelect.selectedOptions || [])
             .map(option => option.value);
     }
     
-    // Save to localStorage
-    localStorage.setItem('samuraiAgentSettings', JSON.stringify(settingsState));
+    // Save using persistence API
+    await window.WebviewApi.persistence.saveGlobalSettings(settingsState.globalSettings);
     
-    // Show success feedback
     showSaveSuccess(`${providerKey} settings saved successfully!`);
-    
     console.log(`${providerKey} settings saved:`, {
-        apiKey: settingsState[`${providerKey}ApiKey`],
-        models: settingsState[`${providerKey}Models`]
+        apiKey: settingsState.globalSettings[`${providerKey}ApiKey`],
+        models: settingsState.globalSettings[`${providerKey}Models`]
     });
-}
-
-function saveProjectSettings() {
-    // Save project detail text
-    const projectDetailTextarea = document.getElementById('project-detail-text');
-    if (projectDetailTextarea) {
-        settingsState.projectDetailText = projectDetailTextarea.value || '';
-    }
-    
-    // Save to localStorage
-    localStorage.setItem('samuraiAgentSettings', JSON.stringify(settingsState));
-    
-    // Show success feedback
-    showSaveSuccess('Project details saved successfully!');
-    
-    console.log('Project settings saved:', {
-        projectDetailText: settingsState.projectDetailText
-    });
-}
-
-function saveSettingsToLocalStorage() {
-    // Save API keys
-    settingsState.openaiApiKey = document.getElementById('openai-api-key')?.value || '';
-    settingsState.geminiApiKey = document.getElementById('gemini-api-key')?.value || '';
-    settingsState.claudeApiKey = document.getElementById('claude-api-key')?.value || '';
-    
-    // Save selected models
-    settingsState.openaiModels = Array.from(document.getElementById('openai-models')?.selectedOptions || [])
-        .map(option => option.value);
-    settingsState.geminiModels = Array.from(document.getElementById('gemini-models')?.selectedOptions || [])
-        .map(option => option.value);
-    settingsState.claudeModels = Array.from(document.getElementById('claude-models')?.selectedOptions || [])
-        .map(option => option.value);
-    
-    // Save project detail text
-    settingsState.projectDetailText = document.getElementById('project-detail-text')?.value || '';
-    
-    // Save to localStorage
-    localStorage.setItem('samuraiAgentSettings', JSON.stringify(settingsState));
-    
-    console.log('Settings saved to localStorage:', settingsState);
 }
 
 function showSaveSuccess(message) {
@@ -291,17 +359,29 @@ function showSaveSuccess(message) {
     }, 3000);
 }
 
-function loadSettingsFromLocalStorage() {
-    try {
-        const savedSettings = localStorage.getItem('samuraiAgentSettings');
-        if (savedSettings) {
-            const parsedSettings = JSON.parse(savedSettings);
-            settingsState = { ...settingsState, ...parsedSettings };
-            console.log('Settings loaded from localStorage:', settingsState);
-        }
-    } catch (error) {
-        console.error('Error loading settings from localStorage:', error);
+function showSaveError(message) {
+    // Create or update error message
+    let errorDiv = document.getElementById('settings-error-message');
+    if (!errorDiv) {
+        errorDiv = document.createElement('div');
+        errorDiv.id = 'settings-error-message';
+        errorDiv.className = 'settings-error-message';
+        errorDiv.style.color = '#dc3545';
+        errorDiv.style.backgroundColor = '#f8d7da';
+        errorDiv.style.border = '1px solid #f5c6cb';
+        errorDiv.style.padding = '10px';
+        errorDiv.style.margin = '10px 0';
+        errorDiv.style.borderRadius = '4px';
+        document.querySelector('.settings-container').appendChild(errorDiv);
     }
+    
+    errorDiv.textContent = message;
+    errorDiv.style.display = 'block';
+    
+    // Hide after 5 seconds
+    setTimeout(() => {
+        errorDiv.style.display = 'none';
+    }, 5000);
 }
 
 function toggleDigestedMemory() {
@@ -322,7 +402,7 @@ function toggleDigestedMemory() {
 }
 
 function generateDigestedMemory() {
-    const projectDetailText = settingsState.projectDetailText;
+    const projectDetailText = settingsState.projectSettings.projectDetailText;
     const display = document.getElementById('digested-memory-display');
     
     if (!projectDetailText.trim()) {
@@ -344,19 +424,29 @@ Summary: This project appears to be focused on ${projectDetailText.split(' ').sl
 Last updated: ${new Date().toLocaleString()}`;
     
     display.textContent = digestedMemory;
-    settingsState.digestedMemory = digestedMemory;
-    saveSettingsToLocalStorage();
+    settingsState.projectSettings.digestedMemory = digestedMemory;
+    
+    // Save the digested memory using the persistence API
+    saveProjectSettingsWithFeedback().catch(error => {
+        console.error('Error saving digested memory:', error);
+    });
 }
 
 // Export functions for potential external use
 window.SettingsManager = {
     renderSettings: renderSettings,
-    saveSettingsToLocalStorage: saveSettingsToLocalStorage,
-    loadSettingsFromLocalStorage: loadSettingsFromLocalStorage,
+    loadSettingsFromPersistence: loadSettingsFromPersistence,
+    saveGlobalSettingsWithFeedback: saveGlobalSettingsWithFeedback,
+    saveProjectSettingsWithFeedback: saveProjectSettingsWithFeedback,
     getSettings: () => settingsState,
-    updateSettings: (newSettings) => {
-        settingsState = { ...settingsState, ...newSettings };
-        saveSettingsToLocalStorage();
+    updateGlobalSettings: async (newSettings) => {
+        settingsState.globalSettings = { ...settingsState.globalSettings, ...newSettings };
+        await saveGlobalSettingsWithFeedback();
+        renderSettings();
+    },
+    updateProjectSettings: async (newSettings) => {
+        settingsState.projectSettings = { ...settingsState.projectSettings, ...newSettings };
+        await saveProjectSettingsWithFeedback();
         renderSettings();
     }
 };

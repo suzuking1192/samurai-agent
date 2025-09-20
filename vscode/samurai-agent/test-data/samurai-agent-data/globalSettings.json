@@ -1,0 +1,18 @@
+[
+  {
+    "id": "global-settings",
+    "openaiApiKey": "test-key",
+    "openaiModels": [
+      "gpt-4"
+    ],
+    "geminiApiKey": "",
+    "geminiModels": [],
+    "claudeApiKey": "",
+    "claudeModels": [],
+    "defaultProvider": "openai",
+    "theme": "auto",
+    "autoSave": true,
+    "createdAt": "2025-09-20T15:48:04.849Z",
+    "updatedAt": "2025-09-20T15:48:04.849Z"
+  }
+]

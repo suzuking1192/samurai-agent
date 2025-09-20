@@ -1,0 +1,139 @@
+/**
+ * Chat-related data models
+ * 
+ * Defines the structure for chat messages, sessions, and conversation management
+ * in the Samurai Agent extension.
+ */
+
+import { BaseModel } from './index';
+
+/**
+ * Message types in chat conversations
+ */
+export enum MessageType {
+    USER = 'user',
+    ASSISTANT = 'assistant',
+    SYSTEM = 'system',
+    ERROR = 'error',
+    INFO = 'info'
+}
+
+/**
+ * Chat session status
+ */
+export enum SessionStatus {
+    ACTIVE = 'active',
+    PAUSED = 'paused',
+    COMPLETED = 'completed',
+    ARCHIVED = 'archived'
+}
+
+/**
+ * Main ChatMessage model
+ * Represents a single message in a chat conversation
+ */
+export interface ChatMessage extends BaseModel {
+    session_id: string;
+    type: MessageType;
+    content: string;
+    role: string; // For compatibility with LLM APIs
+    metadata: {
+        model?: string; // LLM model used for assistant messages
+        tokens?: number; // Token count for the message
+        cost?: number; // Cost of the message
+        processingTime?: number; // Time taken to process
+        error?: string; // Error message if any
+        [key: string]: any;
+    };
+    parentMessageId?: string; // For threaded conversations
+    isEdited: boolean;
+    editedAt?: Date;
+}
+
+/**
+ * Chat session model
+ * Represents a conversation session
+ */
+export interface Session extends BaseModel {
+    title: string;
+    status: SessionStatus;
+    messageCount: number;
+    totalTokens: number;
+    totalCost: number;
+    lastMessageAt: Date;
+    tags: string[];
+    metadata: {
+        model?: string; // Default model for the session
+        mode?: string; // Chat mode (default, developer, creative, analytical)
+        projectId?: string; // Associated project
+        [key: string]: any;
+    };
+}
+
+/**
+ * Chat message creation request
+ */
+export interface CreateChatMessageRequest {
+    session_id: string;
+    type: MessageType;
+    content: string;
+    role: string;
+    metadata?: Record<string, any>;
+    parentMessageId?: string;
+}
+
+/**
+ * Chat message update request
+ */
+export interface UpdateChatMessageRequest {
+    id: string;
+    content?: string;
+    metadata?: Record<string, any>;
+}
+
+/**
+ * Session creation request
+ */
+export interface CreateSessionRequest {
+    title: string;
+    model?: string;
+    mode?: string;
+    projectId?: string;
+    tags?: string[];
+    metadata?: Record<string, any>;
+}
+
+/**
+ * Session update request
+ */
+export interface UpdateSessionRequest {
+    id: string;
+    title?: string;
+    status?: SessionStatus;
+    tags?: string[];
+    metadata?: Record<string, any>;
+}
+
+/**
+ * Chat query options
+ */
+export interface ChatQueryOptions {
+    sessionId?: string;
+    messageType?: MessageType[];
+    limit?: number;
+    offset?: number;
+    includeMetadata?: boolean;
+}
+
+/**
+ * Session query options
+ */
+export interface SessionQueryOptions {
+    status?: SessionStatus[];
+    tags?: string[];
+    projectId?: string;
+    limit?: number;
+    offset?: number;
+    sortBy?: 'createdAt' | 'lastMessageAt' | 'title';
+    sortOrder?: 'asc' | 'desc';
+}
