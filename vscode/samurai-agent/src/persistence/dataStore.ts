@@ -93,7 +93,7 @@ export class DataStore {
     }
     
     /**
-     * Reads JSON data from file
+     * Reads JSON data from file (for arrays)
      */
     private readJsonFile<T>(filePath: string): T[] {
         try {
@@ -102,24 +102,94 @@ export class DataStore {
             }
             const data = fs.readFileSync(filePath, 'utf8');
             return JSON.parse(data);
-            } catch (error) {
+        } catch (error) {
             console.error(`Error reading ${filePath}:`, error);
             return [];
         }
     }
-    
+
     /**
-     * Writes JSON data to file
+     * Writes JSON data to file (for arrays)
      */
     private writeJsonFile<T>(filePath: string, data: T[]): void {
         try {
-        fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
-            } catch (error) {
+            fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+        } catch (error) {
             console.error(`Error writing ${filePath}:`, error);
             throw error;
         }
     }
+
+    /**
+     * Reads single JSON object from file
+     */
+    private readSingleJsonFile<T>(filePath: string): T | null {
+        try {
+            if (!fs.existsSync(filePath)) {
+                return null;
+            }
+            const data = fs.readFileSync(filePath, 'utf8');
+            return JSON.parse(data);
+        } catch (error) {
+            console.error(`Error reading single JSON file ${filePath}:`, error);
+            return null;
+        }
+    }
     
+    /**
+     * Writes single JSON object to file
+     */
+    private writeSingleJsonFile<T>(filePath: string, data: T): void {
+        try {
+            fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+        } catch (error) {
+            console.error(`Error writing single JSON file ${filePath}:`, error);
+            throw error;
+        }
+    }
+    
+    /**
+     * Upserts a collection item (update if exists, insert if not)
+     */
+    private upsertCollectionItem<T extends { id: string; createdAt?: Date; updatedAt?: Date }>(
+        filePath: string, 
+        item: T
+    ): T {
+        const items = this.readJsonFile<T>(filePath);
+        const existingIndex = items.findIndex(existing => existing.id === item.id);
+        
+        const now = new Date();
+        if (existingIndex >= 0) {
+            // Update existing item
+            item.updatedAt = now;
+            items[existingIndex] = item;
+        } else {
+            // Add new item
+            item.createdAt = now;
+            item.updatedAt = now;
+            items.push(item);
+        }
+        
+        this.writeJsonFile(filePath, items);
+        return item;
+    }
+
+    /**
+     * Deletes a collection item by ID
+     */
+    private deleteCollectionItem<T extends { id: string }>(filePath: string, id: string): boolean {
+        const items = this.readJsonFile<T>(filePath);
+        const initialLength = items.length;
+        const filteredItems = items.filter(item => item.id !== id);
+        
+        if (filteredItems.length < initialLength) {
+            this.writeJsonFile(filePath, filteredItems);
+            return true;
+        }
+        
+        return false;
+    }
+
     /**
      * Creates a standardized API response
      */
@@ -136,6 +206,20 @@ export class DataStore {
             error,
             timestamp: new Date()
         };
+    }
+
+    /**
+     * Creates a success response
+     */
+    private createSuccessResponse<T>(requestId?: string, payload?: T): ApiResponse<T> {
+        return this.createResponse(ResponseType.SUCCESS, requestId, payload);
+    }
+
+    /**
+     * Creates an error response
+     */
+    private createErrorResponse<T>(requestId?: string, error?: string): ApiResponse<T> {
+        return this.createResponse(ResponseType.ERROR, requestId, undefined as T, error);
     }
 
     /**
@@ -207,199 +291,197 @@ export class DataStore {
             );
         }
     }
-    
-    // Task operation handlers
-    private handleLoadTasks(requestId?: string): ApiResponse<Task[]> {
-        const tasks = this.readJsonFile<Task>(this.getDataFilePath('tasks'));
-        return this.createResponse(ResponseType.SUCCESS, requestId, tasks);
+
+    // GlobalSettings operations
+    private handleLoadGlobalSettings(requestId?: string): ApiResponse<any> {
+        try {
+            const settings = this.readSingleJsonFile<GlobalSettings>(this.getDataFilePath('globalSettings'));
+            return this.createSuccessResponse(requestId, settings);
+        } catch (error) {
+            return this.createErrorResponse(requestId, `Failed to load global settings: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+    }
+
+    private handleSaveGlobalSettings(requestId?: string, settings?: GlobalSettings): ApiResponse<any> {
+        try {
+            if (!settings) {
+                return this.createErrorResponse(requestId, 'Global settings data is required');
+            }
+
+            const now = new Date();
+            settings.updatedAt = now;
+            if (!settings.createdAt) {
+                settings.createdAt = now;
+            }
+
+            this.writeSingleJsonFile(this.getDataFilePath('globalSettings'), settings);
+            return this.createSuccessResponse(requestId, settings);
+        } catch (error) {
+            return this.createErrorResponse(requestId, `Failed to save global settings: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+    }
+
+    // ProjectSettings operations
+    private handleLoadProjectSettings(requestId?: string): ApiResponse<any> {
+        try {
+            const settings = this.readSingleJsonFile<ProjectSettings>(this.getDataFilePath('projectSettings'));
+            return this.createSuccessResponse(requestId, settings);
+        } catch (error) {
+            return this.createErrorResponse(requestId, `Failed to load project settings: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+    }
+
+    private handleSaveProjectSettings(requestId?: string, settings?: ProjectSettings): ApiResponse<any> {
+        try {
+            if (!settings) {
+                return this.createErrorResponse(requestId, 'Project settings data is required');
+            }
+
+            const savedSettings = this.upsertCollectionItem<ProjectSettings>(
+                this.getDataFilePath('projectSettings'), 
+                settings
+            );
+            return this.createSuccessResponse(requestId, savedSettings);
+        } catch (error) {
+            return this.createErrorResponse(requestId, `Failed to save project settings: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
     }
     
+    // Task operation handlers
+    private handleLoadTasks(requestId?: string): ApiResponse<any> {
+        try {
+            const tasks = this.readJsonFile<Task>(this.getDataFilePath('tasks'));
+            return this.createSuccessResponse(requestId, tasks);
+        } catch (error) {
+            return this.createErrorResponse(requestId, `Failed to load tasks: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+    }
+
     private handleSaveTask(requestId?: string, task?: Task): ApiResponse<any> {
-        if (!task) {
-            return this.createResponse(ResponseType.ERROR, requestId, undefined, 'Task data is required');
+        try {
+            if (!task) {
+                return this.createErrorResponse(requestId, 'Task data is required');
+            }
+            
+            const savedTask = this.upsertCollectionItem<Task>(this.getDataFilePath('tasks'), task);
+            return this.createSuccessResponse(requestId, savedTask);
+        } catch (error) {
+            return this.createErrorResponse(requestId, `Failed to save task: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
-        
-        const tasks = this.readJsonFile<Task>(this.getDataFilePath('tasks'));
-        const existingIndex = tasks.findIndex(t => t.id === task.id);
-        
-        const now = new Date();
-        if (existingIndex >= 0) {
-            task.updatedAt = now;
-            tasks[existingIndex] = task;
-        } else {
-            task.createdAt = now;
-            task.updatedAt = now;
-            tasks.push(task);
-        }
-        
-        this.writeJsonFile(this.getDataFilePath('tasks'), tasks);
-        return this.createResponse(ResponseType.SUCCESS, requestId, task);
     }
     
     private handleDeleteTask(requestId?: string, payload?: any): ApiResponse<any> {
-        if (!payload?.taskId) {
-            return this.createResponse(ResponseType.ERROR, requestId, undefined, 'Task ID is required');
+        try {
+            if (!payload?.taskId) {
+                return this.createErrorResponse(requestId, 'Task ID is required');
+            }
+            
+            const deleted = this.deleteCollectionItem<Task>(this.getDataFilePath('tasks'), payload.taskId);
+            return this.createSuccessResponse(requestId, deleted);
+        } catch (error) {
+            return this.createErrorResponse(requestId, `Failed to delete task: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
-        
-        const tasks = this.readJsonFile<Task>(this.getDataFilePath('tasks'));
-        const filteredTasks = tasks.filter(task => task.id !== payload.taskId);
-        
-        this.writeJsonFile(this.getDataFilePath('tasks'), filteredTasks);
-        return this.createResponse(ResponseType.SUCCESS, requestId, true);
     }
-    
+
     // Memory operation handlers
-    private handleLoadMemories(requestId?: string): ApiResponse<Memory[]> {
-        const memories = this.readJsonFile<Memory>(this.getDataFilePath('memories'));
-        return this.createResponse(ResponseType.SUCCESS, requestId, memories);
+    private handleLoadMemories(requestId?: string): ApiResponse<any> {
+        try {
+            const memories = this.readJsonFile<Memory>(this.getDataFilePath('memories'));
+            return this.createSuccessResponse(requestId, memories);
+        } catch (error) {
+            return this.createErrorResponse(requestId, `Failed to load memories: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
     }
     
     private handleSaveMemory(requestId?: string, memory?: Memory): ApiResponse<any> {
-        if (!memory) {
-            return this.createResponse(ResponseType.ERROR, requestId, undefined, 'Memory data is required');
+        try {
+            if (!memory) {
+                return this.createErrorResponse(requestId, 'Memory data is required');
+            }
+            
+            const savedMemory = this.upsertCollectionItem<Memory>(this.getDataFilePath('memories'), memory);
+            return this.createSuccessResponse(requestId, savedMemory);
+        } catch (error) {
+            return this.createErrorResponse(requestId, `Failed to save memory: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
-        
-        const memories = this.readJsonFile<Memory>(this.getDataFilePath('memories'));
-        const existingIndex = memories.findIndex(m => m.id === memory.id);
-        
-        const now = new Date();
-        if (existingIndex >= 0) {
-            memory.updatedAt = now;
-            memories[existingIndex] = memory;
-        } else {
-            memory.createdAt = now;
-            memory.updatedAt = now;
-            memories.push(memory);
-        }
-        
-        this.writeJsonFile(this.getDataFilePath('memories'), memories);
-        return this.createResponse(ResponseType.SUCCESS, requestId, memory);
     }
     
     private handleDeleteMemory(requestId?: string, payload?: any): ApiResponse<any> {
-        if (!payload?.memoryId) {
-            return this.createResponse(ResponseType.ERROR, requestId, undefined, 'Memory ID is required');
+        try {
+            if (!payload?.memoryId) {
+                return this.createErrorResponse(requestId, 'Memory ID is required');
+            }
+            
+            const deleted = this.deleteCollectionItem<Memory>(this.getDataFilePath('memories'), payload.memoryId);
+            return this.createSuccessResponse(requestId, deleted);
+        } catch (error) {
+            return this.createErrorResponse(requestId, `Failed to delete memory: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
-        
-        const memories = this.readJsonFile<Memory>(this.getDataFilePath('memories'));
-        const filteredMemories = memories.filter(memory => memory.id !== payload.memoryId);
-        
-        this.writeJsonFile(this.getDataFilePath('memories'), filteredMemories);
-        return this.createResponse(ResponseType.SUCCESS, requestId, true);
     }
     
     // Session operation handlers
-    private handleLoadSessions(requestId?: string): ApiResponse<Session[]> {
-        const sessions = this.readJsonFile<Session>(this.getDataFilePath('sessions'));
-        return this.createResponse(ResponseType.SUCCESS, requestId, sessions);
+    private handleLoadSessions(requestId?: string): ApiResponse<any> {
+        try {
+            const sessions = this.readJsonFile<Session>(this.getDataFilePath('sessions'));
+            return this.createSuccessResponse(requestId, sessions);
+            } catch (error) {
+            return this.createErrorResponse(requestId, `Failed to load sessions: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
     }
     
     private handleSaveSession(requestId?: string, session?: Session): ApiResponse<any> {
-        if (!session) {
-            return this.createResponse(ResponseType.ERROR, requestId, undefined, 'Session data is required');
+        try {
+            if (!session) {
+                return this.createErrorResponse(requestId, 'Session data is required');
+            }
+            
+            const savedSession = this.upsertCollectionItem<Session>(this.getDataFilePath('sessions'), session);
+            return this.createSuccessResponse(requestId, savedSession);
+        } catch (error) {
+            return this.createErrorResponse(requestId, `Failed to save session: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
-        
-        const sessions = this.readJsonFile<Session>(this.getDataFilePath('sessions'));
-        const existingIndex = sessions.findIndex(s => s.id === session.id);
-        
-        const now = new Date();
-        if (existingIndex >= 0) {
-            session.updatedAt = now;
-            sessions[existingIndex] = session;
-        } else {
-            session.createdAt = now;
-            session.updatedAt = now;
-            sessions.push(session);
-        }
-        
-        this.writeJsonFile(this.getDataFilePath('sessions'), sessions);
-        return this.createResponse(ResponseType.SUCCESS, requestId, session);
     }
     
     private handleDeleteSession(requestId?: string, payload?: any): ApiResponse<any> {
-        if (!payload?.sessionId) {
-            return this.createResponse(ResponseType.ERROR, requestId, undefined, 'Session ID is required');
+        try {
+            if (!payload?.sessionId) {
+                return this.createErrorResponse(requestId, 'Session ID is required');
+            }
+            
+            const deleted = this.deleteCollectionItem<Session>(this.getDataFilePath('sessions'), payload.sessionId);
+            return this.createSuccessResponse(requestId, deleted);
+        } catch (error) {
+            return this.createErrorResponse(requestId, `Failed to delete session: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
-        
-        const sessions = this.readJsonFile<Session>(this.getDataFilePath('sessions'));
-        const filteredSessions = sessions.filter(session => session.id !== payload.sessionId);
-        
-        this.writeJsonFile(this.getDataFilePath('sessions'), filteredSessions);
-        return this.createResponse(ResponseType.SUCCESS, requestId, true);
     }
     
     // Chat message operation handlers
     private handleLoadChatMessagesForSession(requestId?: string, payload?: any): ApiResponse<any> {
-        if (!payload?.sessionId) {
-            return this.createResponse(ResponseType.ERROR, requestId, undefined, 'Session ID is required');
+        try {
+            if (!payload?.sessionId) {
+                return this.createErrorResponse(requestId, 'Session ID is required');
+            }
+            
+            const messages = this.readJsonFile<ChatMessage>(this.getDataFilePath('chatMessages'));
+            const sessionMessages = messages.filter(msg => msg.sessionId === payload.sessionId);
+            
+            return this.createSuccessResponse(requestId, sessionMessages);
+        } catch (error) {
+            return this.createErrorResponse(requestId, `Failed to load chat messages: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
-        
-        const messages = this.readJsonFile<ChatMessage>(this.getDataFilePath('chatMessages'));
-        const sessionMessages = messages.filter(msg => msg.sessionId === payload.sessionId);
-        
-        return this.createResponse(ResponseType.SUCCESS, requestId, sessionMessages);
     }
     
     private handleSaveChatMessage(requestId?: string, message?: ChatMessage): ApiResponse<any> {
-        if (!message) {
-            return this.createResponse(ResponseType.ERROR, requestId, undefined, 'Message data is required');
+        try {
+            if (!message) {
+                return this.createErrorResponse(requestId, 'Message data is required');
+            }
+            
+            const savedMessage = this.upsertCollectionItem<ChatMessage>(this.getDataFilePath('chatMessages'), message);
+            return this.createSuccessResponse(requestId, savedMessage);
+        } catch (error) {
+            return this.createErrorResponse(requestId, `Failed to save chat message: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
-        
-        const messages = this.readJsonFile<ChatMessage>(this.getDataFilePath('chatMessages'));
-        const existingIndex = messages.findIndex(m => m.id === message.id);
-        
-        const now = new Date();
-        if (existingIndex >= 0) {
-            message.updatedAt = now;
-            messages[existingIndex] = message;
-        } else {
-            message.createdAt = now;
-            message.updatedAt = now;
-            messages.push(message);
-        }
-        
-        this.writeJsonFile(this.getDataFilePath('chatMessages'), messages);
-        return this.createResponse(ResponseType.SUCCESS, requestId, message);
     }
     
-    // Settings operation handlers
-    private handleLoadProjectSettings(requestId?: string): ApiResponse<any> {
-        const settings = this.readJsonFile<ProjectSettings>(this.getDataFilePath('projectSettings'));
-        return this.createResponse(ResponseType.SUCCESS, requestId, settings[0] || null);
-    }
-    
-    private handleSaveProjectSettings(requestId?: string, settings?: ProjectSettings): ApiResponse<any> {
-        if (!settings) {
-            return this.createResponse(ResponseType.ERROR, requestId, undefined, 'Project settings data is required');
-        }
-        
-        const now = new Date();
-        settings.updatedAt = now;
-        if (!settings.createdAt) {
-            settings.createdAt = now;
-        }
-        
-        this.writeJsonFile(this.getDataFilePath('projectSettings'), [settings]);
-        return this.createResponse(ResponseType.SUCCESS, requestId, settings);
-    }
-    
-    private handleLoadGlobalSettings(requestId?: string): ApiResponse<any> {
-        const settings = this.readJsonFile<GlobalSettings>(this.getDataFilePath('globalSettings'));
-        return this.createResponse(ResponseType.SUCCESS, requestId, settings[0] || null);
-    }
-    
-    private handleSaveGlobalSettings(requestId?: string, settings?: GlobalSettings): ApiResponse<any> {
-        if (!settings) {
-            return this.createResponse(ResponseType.ERROR, requestId, undefined, 'Global settings data is required');
-        }
-        
-        const now = new Date();
-        settings.updatedAt = now;
-        if (!settings.createdAt) {
-            settings.createdAt = now;
-        }
-        
-        this.writeJsonFile(this.getDataFilePath('globalSettings'), [settings]);
-        return this.createResponse(ResponseType.SUCCESS, requestId, settings);
-    }
 }

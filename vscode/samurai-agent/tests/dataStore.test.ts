@@ -176,6 +176,209 @@ describe('DataStore', () => {
             }));
             expect(mockFs.writeFileSync).toHaveBeenCalled();
         });
+
+        it('should handle upsert operations correctly', () => {
+            // Mock existing task data
+            mockFs.readFileSync.mockReturnValue(JSON.stringify([
+                {
+                    id: 'task-1',
+                    title: 'Original Task',
+                    spec: 'Original spec',
+                    status: 'pending',
+                    priority: 'medium',
+                    isCompleted: false,
+                    depth: 1,
+                    parentTaskId: null,
+                    hasSubtasks: false,
+                    tags: [],
+                    dependencies: [],
+                    metadata: {},
+                    createdAt: new Date('2023-01-01'),
+                    updatedAt: new Date('2023-01-01')
+                }
+            ]));
+
+            const updatedTask = {
+                id: 'task-1',
+                title: 'Updated Task',
+                spec: 'Updated spec',
+                status: 'in_progress',
+                priority: 'high',
+                isCompleted: false,
+                depth: 1,
+                parentTaskId: null,
+                hasSubtasks: false,
+                tags: [],
+                dependencies: [],
+                metadata: {},
+                createdAt: new Date('2023-01-01'),
+                updatedAt: new Date()
+            };
+
+            const message = {
+                command: 'saveTask',
+                requestId: 'test-upsert-1',
+                payload: updatedTask
+            };
+
+            const response = dataStore.handleWebviewMessage(message);
+
+            expect(response.type).toBe('success');
+            expect(response.payload).toEqual(expect.objectContaining({
+                id: 'task-1',
+                title: 'Updated Task',
+                spec: 'Updated spec',
+                status: 'in_progress',
+                priority: 'high'
+            }));
+            
+            // Verify that writeFileSync was called with updated data
+            expect(mockFs.writeFileSync).toHaveBeenCalledWith(
+                expect.stringContaining('tasks.json'),
+                expect.stringContaining('Updated Task')
+            );
+        });
+
+        it('should handle delete operations correctly', () => {
+            // Mock existing task data
+            mockFs.readFileSync.mockReturnValue(JSON.stringify([
+                {
+                    id: 'task-1',
+                    title: 'Task 1',
+                    spec: 'Spec 1',
+                    status: 'pending',
+                    priority: 'medium',
+                    isCompleted: false,
+                    depth: 1,
+                    parentTaskId: null,
+                    hasSubtasks: false,
+                    tags: [],
+                    dependencies: [],
+                    metadata: {},
+                    createdAt: new Date(),
+                    updatedAt: new Date()
+                },
+                {
+                    id: 'task-2',
+                    title: 'Task 2',
+                    spec: 'Spec 2',
+                    status: 'pending',
+                    priority: 'medium',
+                    isCompleted: false,
+                    depth: 1,
+                    parentTaskId: null,
+                    hasSubtasks: false,
+                    tags: [],
+                    dependencies: [],
+                    metadata: {},
+                    createdAt: new Date(),
+                    updatedAt: new Date()
+                }
+            ]));
+
+            const message = {
+                command: 'deleteTask',
+                requestId: 'test-delete-1',
+                payload: { taskId: 'task-1' }
+            };
+
+            const response = dataStore.handleWebviewMessage(message);
+
+            expect(response.type).toBe('success');
+            expect(response.payload).toBe(true);
+            
+            // Verify that writeFileSync was called with filtered data
+            expect(mockFs.writeFileSync).toHaveBeenCalledWith(
+                expect.stringContaining('tasks.json'),
+                expect.not.stringContaining('task-1')
+            );
+        });
+
+        it('should handle loadChatMessagesForSession correctly', () => {
+            // Mock existing chat messages
+            mockFs.readFileSync.mockReturnValue(JSON.stringify([
+                {
+                    id: 'msg-1',
+                    sessionId: 'session-1',
+                    role: 'user',
+                    content: 'Hello',
+                    createdAt: new Date(),
+                    updatedAt: new Date(),
+                    metadata: {}
+                },
+                {
+                    id: 'msg-2',
+                    sessionId: 'session-1',
+                    role: 'assistant',
+                    content: 'Hi there!',
+                    createdAt: new Date(),
+                    updatedAt: new Date(),
+                    metadata: {}
+                },
+                {
+                    id: 'msg-3',
+                    sessionId: 'session-2',
+                    role: 'user',
+                    content: 'Different session',
+                    createdAt: new Date(),
+                    updatedAt: new Date(),
+                    metadata: {}
+                }
+            ]));
+
+            const message = {
+                command: 'loadChatMessagesForSession',
+                requestId: 'test-load-chat-1',
+                payload: { sessionId: 'session-1' }
+            };
+
+            const response = dataStore.handleWebviewMessage(message);
+
+            expect(response.type).toBe('success');
+            expect(response.payload).toHaveLength(2);
+            expect(response.payload).toEqual(
+                expect.arrayContaining([
+                    expect.objectContaining({ id: 'msg-1', sessionId: 'session-1' }),
+                    expect.objectContaining({ id: 'msg-2', sessionId: 'session-1' })
+                ])
+            );
+        });
+
+        it('should handle GlobalSettings as single object', () => {
+            const globalSettings = {
+                id: 'global-settings-1',
+                openaiApiKey: 'test-key',
+                openaiModels: ['gpt-4'],
+                geminiApiKey: '',
+                geminiModels: [],
+                claudeApiKey: '',
+                claudeModels: [],
+                theme: 'default',
+                autoSave: true,
+                metadata: {},
+                createdAt: new Date(),
+                updatedAt: new Date()
+            };
+
+            // Mock readFileSync to return single object (not array)
+            mockFs.readFileSync.mockReturnValue(JSON.stringify(globalSettings));
+
+            const message = {
+                command: 'loadGlobalSettings',
+                requestId: 'test-load-global-1',
+                payload: null
+            };
+
+            const response = dataStore.handleWebviewMessage(message);
+
+            expect(response.type).toBe('success');
+            expect(response.payload).toEqual(globalSettings);
+            
+            // Verify that readFileSync was called with correct file path
+            expect(mockFs.readFileSync).toHaveBeenCalledWith(
+                expect.stringContaining('globalSettings.json')
+            );
+        });
     });
 
     describe('error handling', () => {
