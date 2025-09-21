@@ -96,6 +96,9 @@ export interface ProjectSettings extends BaseModel {
     llmProvider: 'openai' | 'gemini' | 'claude';
     defaultModel: string;
     defaultMode: string;
+    // UI preferences - moved from GlobalSettings
+    theme: string;
+    autoSave: boolean;
     metadata: Record<string, any>;
 }
 
@@ -110,8 +113,7 @@ export interface GlobalSettings extends BaseModel {
     geminiModels: string[];
     claudeApiKey: string;
     claudeModels: string[];
-    theme: string;
-    autoSave: boolean;
+    // UI preferences removed (theme and autoSave moved to ProjectSettings)
     metadata: Record<string, any>;
 }
 

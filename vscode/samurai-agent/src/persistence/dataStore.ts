@@ -46,6 +46,9 @@ interface ProjectSettings {
     llmProvider: 'openai' | 'gemini' | 'claude';
     defaultModel: string;
     defaultMode: string;
+    // UI preferences - moved from GlobalSettings
+    theme: 'light' | 'dark' | 'auto';
+    autoSave: boolean;
     createdAt: Date;
     updatedAt: Date;
     metadata: Record<string, any>;
@@ -324,7 +327,37 @@ export class DataStore {
     // ProjectSettings operations
     private handleLoadProjectSettings(requestId?: string): ApiResponse<any> {
         try {
-            const settings = this.readSingleJsonFile<ProjectSettings>(this.getDataFilePath('projectSettings'));
+            const rawSettings = this.readSingleJsonFile<ProjectSettings>(this.getDataFilePath('projectSettings'));
+            
+            if (!rawSettings) {
+                // Return default project settings if file doesn't exist
+                const defaultSettings: ProjectSettings = {
+                    id: 'project-settings',
+                    projectName: 'Untitled Project',
+                    projectPath: this.workspaceRoot,
+                    projectDetailText: '',
+                    digestedMemory: '',
+                    llmProvider: 'openai',
+                    defaultModel: 'gpt-4',
+                    defaultMode: 'default',
+                    theme: 'auto',
+                    autoSave: true,
+                    createdAt: new Date(),
+                    updatedAt: new Date(),
+                    metadata: {}
+                };
+                return this.createSuccessResponse(requestId, defaultSettings);
+            }
+            
+            // Apply default values for theme and autoSave if they are missing
+            const settings: ProjectSettings = {
+                ...rawSettings,
+                theme: rawSettings.theme || 'auto',
+                autoSave: rawSettings.autoSave !== undefined ? rawSettings.autoSave : true,
+                createdAt: rawSettings.createdAt ? new Date(rawSettings.createdAt) : new Date(),
+                updatedAt: rawSettings.updatedAt ? new Date(rawSettings.updatedAt) : new Date()
+            };
+            
             return this.createSuccessResponse(requestId, settings);
         } catch (error) {
             return this.createErrorResponse(requestId, `Failed to load project settings: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -337,10 +370,22 @@ export class DataStore {
                 return this.createErrorResponse(requestId, 'Project settings data is required');
             }
 
-            const savedSettings = this.upsertCollectionItem<ProjectSettings>(
-                this.getDataFilePath('projectSettings'), 
-                settings
-            );
+            // Ensure theme and autoSave have default values if not provided
+            const settingsWithDefaults: ProjectSettings = {
+                ...settings,
+                theme: settings.theme || 'auto',
+                autoSave: settings.autoSave !== undefined ? settings.autoSave : true
+            };
+
+            // Use writeSingleJsonFile since project settings is a single object, not a collection
+            const now = new Date();
+            const savedSettings: ProjectSettings = {
+                ...settingsWithDefaults,
+                updatedAt: now,
+                createdAt: settings.createdAt || now
+            };
+
+            this.writeSingleJsonFile(this.getDataFilePath('projectSettings'), savedSettings);
             return this.createSuccessResponse(requestId, savedSettings);
         } catch (error) {
             return this.createErrorResponse(requestId, `Failed to save project settings: ${error instanceof Error ? error.message : 'Unknown error'}`);

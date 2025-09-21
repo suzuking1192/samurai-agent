@@ -1,10 +1,12 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { DataStore } from '../persistence/dataStore';
+import { GlobalDataStore } from '../persistence/globalDataStore';
 
 export class SamuraiAgentPanelWebviewViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'samurai-agent.agentPanel';
     private dataStore: DataStore | undefined;
+    private globalDataStore: GlobalDataStore | undefined;
 
     constructor(private readonly _extensionUri: vscode.Uri) {}
 
@@ -22,10 +24,13 @@ export class SamuraiAgentPanelWebviewViewProvider implements vscode.WebviewViewP
 
         webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
         
-        // Initialize data store with workspace root
+        // Initialize data stores
         const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         if (workspaceRoot && !this.dataStore) {
             this.dataStore = new DataStore(workspaceRoot);
+        }
+        if (!this.globalDataStore) {
+            this.globalDataStore = new GlobalDataStore();
         }
         
         // Set up message listener
@@ -38,12 +43,44 @@ export class SamuraiAgentPanelWebviewViewProvider implements vscode.WebviewViewP
      * Handles messages from the webview
      */
     private handleWebviewMessage(webview: vscode.Webview, message: any) {
-        if (!this.dataStore) {
-            console.error('DataStore not initialized');
-            return;
-        }
+        const { command } = message;
         
         try {
+            // Route global settings commands to GlobalDataStore
+            if (command === 'loadGlobalSettings' || command === 'saveGlobalSettings') {
+                if (!this.globalDataStore) {
+                    console.error('GlobalDataStore not initialized');
+                    webview.postMessage({
+                        type: 'error',
+                        requestId: message.requestId,
+                        error: 'GlobalDataStore not initialized',
+                        timestamp: new Date()
+                    });
+                    return;
+                }
+                
+                let response;
+                if (command === 'loadGlobalSettings') {
+                    response = this.globalDataStore.loadGlobalSettings(message.requestId);
+                } else {
+                    response = this.globalDataStore.saveGlobalSettings(message.payload, message.requestId);
+                }
+                webview.postMessage(response);
+                return;
+            }
+            
+            // Route all other commands to DataStore (project-specific)
+            if (!this.dataStore) {
+                console.error('DataStore not initialized');
+                webview.postMessage({
+                    type: 'error',
+                    requestId: message.requestId,
+                    error: 'DataStore not initialized',
+                    timestamp: new Date()
+                });
+                return;
+            }
+            
             const response = this.dataStore.handleWebviewMessage(message);
             webview.postMessage(response);
         } catch (error) {

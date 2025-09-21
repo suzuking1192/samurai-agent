@@ -46,6 +46,9 @@ export interface ProjectSettings extends BaseModel {
         maxTokensPerRequest: number;
         [key: string]: any;
     };
+    // UI preferences - moved from GlobalSettings
+    theme: 'light' | 'dark' | 'auto';
+    autoSave: boolean;
     metadata: Record<string, any>;
 }
 
@@ -68,14 +71,12 @@ export interface GlobalSettings extends BaseModel {
     defaultModel: string;
     defaultMode: ChatMode;
     
-    // UI preferences
-    theme: 'light' | 'dark' | 'auto';
+    // UI preferences (removed theme and autoSave - moved to ProjectSettings)
     fontSize: number;
     showTokenCounts: boolean;
     showCostEstimates: boolean;
     
-    // Behavior settings
-    autoSave: boolean;
+    // Behavior settings (removed autoSave - moved to ProjectSettings)
     autoSaveInterval: number; // seconds
     maxHistoryItems: number;
     enableNotifications: boolean;
@@ -120,6 +121,9 @@ export interface UpdateProjectSettingsRequest {
     defaultMode?: ChatMode;
     customPrompts?: Record<string, string>;
     projectSpecificConfig?: Record<string, any>;
+    // UI preferences - moved from GlobalSettings
+    theme?: 'light' | 'dark' | 'auto';
+    autoSave?: boolean;
     metadata?: Record<string, any>;
 }
 
@@ -137,14 +141,12 @@ export interface UpdateGlobalSettingsRequest {
     defaultModel?: string;
     defaultMode?: ChatMode;
     
-    // UI preferences
-    theme?: 'light' | 'dark' | 'auto';
+    // UI preferences (removed theme - moved to ProjectSettings)
     fontSize?: number;
     showTokenCounts?: boolean;
     showCostEstimates?: boolean;
     
-    // Behavior settings
-    autoSave?: boolean;
+    // Behavior settings (removed autoSave - moved to ProjectSettings)
     autoSaveInterval?: number;
     maxHistoryItems?: number;
     enableNotifications?: boolean;
