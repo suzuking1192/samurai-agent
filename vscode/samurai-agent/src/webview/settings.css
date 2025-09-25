@@ -172,6 +172,42 @@
     min-height: 120px;
 }
 
+/* Model List Styles */
+.model-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 4px;
+    background-color: var(--vscode-editor-background);
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.model-item {
+    padding: 12px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.model-item:last-child {
+    border-bottom: none;
+}
+
+.model-name {
+    font-weight: 600;
+    color: var(--vscode-foreground);
+    font-size: 14px;
+}
+
+.model-description {
+    color: var(--vscode-descriptionForeground);
+    font-size: 12px;
+    line-height: 1.4;
+}
+
 /* Project Detail Section */
 .project-detail-section {
     margin-bottom: 30px;

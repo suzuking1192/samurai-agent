@@ -22,8 +22,9 @@ module.exports = {
     'html'
   ],
   setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],
-  moduleNameMapping: {
-    '^@/(.*)$': '<rootDir>/src/$1'
+  moduleNameMapper: {
+    '^@/(.*)$': '<rootDir>/src/$1',
+    '^vscode$': '<rootDir>/tests/__mocks__/vscode.js'
   },
   testTimeout: 10000
 };

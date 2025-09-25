@@ -1,62 +1,78 @@
 // Settings Tab JavaScript - Handles LLM configuration and project details
+console.log('Settings: settings.js script loaded');
 
-// Available models for each provider
-const OPENAI_MODELS = [
-    'gpt-4',
-    'gpt-4-turbo',
-    'gpt-3.5-turbo',
-    'gpt-3.5-turbo-16k'
-];
+// Guard against missing WebviewApi
+if (!window.WebviewApi) {
+    console.warn('Settings: WebviewApi not ready yet; deferring init...');
+    document.addEventListener('readystatechange', function onReady() {
+        if (window.WebviewApi) {
+            document.removeEventListener('readystatechange', onReady);
+            console.log('Settings: WebviewApi now available, initializing...');
+            // Initialize settings functionality
+            initializeSettings();
+        }
+    });
+} else {
+    console.log('Settings: WebviewApi available, initializing...');
+    // Initialize settings functionality immediately
+    initializeSettings();
+}
 
-const GEMINI_MODELS = [
-    'gemini-pro',
-    'gemini-pro-vision',
-    'gemini-1.5-pro',
-    'gemini-1.5-flash'
-];
+// Initialize settings functionality
+function initializeSettings() {
+    console.log('Settings: Initializing settings functionality...');
 
-const CLAUDE_MODELS = [
-    'claude-3-opus',
-    'claude-3-sonnet',
-    'claude-3-haiku',
-    'claude-2.1'
-];
+// Import LLM models from constants (this will be available via the webview API)
+let LLM_MODELS = {
+    openai: [
+        { id: 'gpt-4o', name: 'GPT-4o', description: 'Most capable GPT-4 model with vision capabilities' },
+        { id: 'gpt-5', name: 'GPT-5', description: 'Next-generation GPT model (placeholder for future release)' }
+    ],
+    google: [
+        { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', description: 'Fast and efficient Gemini model for quick responses' },
+        { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', description: 'Most capable Gemini model for complex tasks' }
+    ],
+    anthropic: [
+        { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4', description: 'Balanced Claude model with strong reasoning capabilities' },
+        { id: 'claude-opus-4-1-20250805', name: 'Claude Opus 4.1', description: 'Most capable Claude model for complex reasoning tasks' },
+        { id: 'claude-3-5-haiku-20241022', name: 'Claude 3.5 Haiku', description: 'Fast and cost-effective Claude model' }
+    ]
+};
 
 // Settings state - now using the new persistence API
 let settingsState = {
     globalSettings: {
         openaiApiKey: '',
-        openaiModels: [],
         geminiApiKey: '',
-        geminiModels: [],
-        claudeApiKey: '',
-        claudeModels: [],
-        theme: 'default',
-        autoSave: true
+        claudeApiKey: ''
     },
     projectSettings: {
         projectDetailText: '',
         digestedMemory: '',
-        llmProvider: 'openai',
-        defaultModel: 'gpt-4',
-        defaultMode: 'default'
+        primaryLLMModel: null
     },
     isLoading: false
 };
 
 // Initialize settings functionality when DOM is loaded
 document.addEventListener('DOMContentLoaded', function() {
+    console.log('Settings: DOMContentLoaded event fired');
     initializeSettingsTab();
 });
 
 async function initializeSettingsTab() {
+    console.log('Settings: initializeSettingsTab called');
+    
     // Load settings using the new persistence API
     await loadSettingsFromPersistence();
     
     // Render settings when settings tab is shown
     const settingsTab = document.getElementById('setting-tab');
+    console.log('Settings: Settings tab element found:', !!settingsTab);
+    
     if (settingsTab) {
         settingsTab.addEventListener('click', async function() {
+            console.log('Settings: Settings tab clicked');
             // Show loading state while fetching fresh data
             const settingsContent = document.getElementById('setting-content');
             if (settingsContent) {
@@ -73,16 +89,25 @@ async function initializeSettingsTab() {
     
     // Initial render if settings tab is already active
     const settingsContent = document.getElementById('setting-content');
+    console.log('Settings: Settings content element found:', !!settingsContent);
+    console.log('Settings: Settings content display:', settingsContent ? settingsContent.style.display : 'not found');
+    
     if (settingsContent && settingsContent.style.display !== 'none') {
+        console.log('Settings: Rendering settings initially');
         renderSettings();
     }
 }
 
 function renderSettings() {
+    console.log('Settings: renderSettings called');
+    
     const settingsContent = document.getElementById('setting-content');
     if (!settingsContent) {
+        console.log('Settings: Settings content element not found');
         return;
     }
+    
+    console.log('Settings: Rendering settings HTML');
     
     settingsContent.innerHTML = `
         <div class="settings-container">
@@ -92,9 +117,9 @@ function renderSettings() {
             </div>
             
             <!-- LLM Provider Sections -->
-            ${renderLLMProviderSection('OpenAI', OPENAI_MODELS, 'openai')}
-            ${renderLLMProviderSection('Gemini', GEMINI_MODELS, 'gemini')}
-            ${renderLLMProviderSection('Claude', CLAUDE_MODELS, 'claude')}
+            ${renderLLMProviderSection('OpenAI', LLM_MODELS.openai, 'openai')}
+            ${renderLLMProviderSection('Gemini', LLM_MODELS.google, 'gemini')}
+            ${renderLLMProviderSection('Claude', LLM_MODELS.anthropic, 'claude')}
             
             <!-- Project Detail Section -->
             ${renderProjectDetailSection()}
@@ -102,16 +127,18 @@ function renderSettings() {
     `;
     
     // Attach event listeners
+    console.log('Settings: About to attach event listeners');
     attachSettingsEventListeners();
 }
 
 function renderLLMProviderSection(providerName, modelsArray, providerKey) {
     const apiKeyValue = settingsState.globalSettings[`${providerKey}ApiKey`] || '';
-    const selectedModels = settingsState.globalSettings[`${providerKey}Models`] || [];
     
-    const modelOptions = modelsArray.map(model => {
-        const isSelected = selectedModels.includes(model) ? 'selected' : '';
-        return `<option value="${model}" ${isSelected}>${model}</option>`;
+    const modelList = modelsArray.map(model => {
+        return `<li class="model-item">
+                    <span class="model-name">${model.name}</span>
+                    <span class="model-description">${model.description}</span>
+                </li>`;
     }).join('');
     
     return `
@@ -128,10 +155,10 @@ function renderLLMProviderSection(providerName, modelsArray, providerKey) {
                 </div>
                 
                 <div class="settings-form-group">
-                    <label for="${providerKey}-models">Available Models:</label>
-                    <select id="${providerKey}-models" multiple>
-                        ${modelOptions}
-                    </select>
+                    <label>Available Models:</label>
+                    <ul class="model-list">
+                        ${modelList}
+                    </ul>
                 </div>
                 
                 <div class="settings-form-group">
@@ -171,19 +198,19 @@ function renderProjectDetailSection() {
 }
 
 function attachSettingsEventListeners() {
+    console.log('Settings: attachSettingsEventListeners called');
+    
     // API Key inputs - save on blur with loading feedback
-    document.querySelectorAll('input[type="text"]').forEach(input => {
+    const textInputs = document.querySelectorAll('input[type="text"]');
+    console.log('Settings: Found text inputs:', textInputs.length);
+    
+    textInputs.forEach(input => {
         input.addEventListener('blur', async function() {
             await saveGlobalSettingsWithFeedback();
         });
     });
     
-    // Model selection dropdowns - save on change with loading feedback
-    document.querySelectorAll('select[multiple]').forEach(select => {
-        select.addEventListener('change', async function() {
-            await saveGlobalSettingsWithFeedback();
-        });
-    });
+    // Model lists are now non-interactive, so no event listeners needed
     
     // Project detail textarea - save on input with loading feedback
     const projectDetailTextarea = document.getElementById('project-detail-text');
@@ -219,19 +246,28 @@ function attachSettingsEventListeners() {
     }
     
     // Individual Save buttons
-    document.querySelectorAll('.settings-save-btn').forEach(button => {
+    const saveButtons = document.querySelectorAll('.settings-save-btn');
+    console.log('Settings: Found save buttons:', saveButtons.length);
+    
+    saveButtons.forEach(button => {
         button.addEventListener('click', async function() {
+            console.log('Settings: Save button clicked');
             const provider = this.getAttribute('data-provider');
             const section = this.getAttribute('data-section');
+            
+            console.log('Settings: Button attributes:', { provider, section });
             
             const hideLoading = window.WebviewApi?.ui?.showLoading(this, 'Saving...');
             try {
                 if (provider) {
+                    console.log('Settings: Calling saveProviderSettings for:', provider);
                     await saveProviderSettings(provider);
                 } else if (section === 'project') {
+                    console.log('Settings: Calling saveProjectSettingsWithFeedback');
                     await saveProjectSettingsWithFeedback();
                 }
             } catch (error) {
+                console.error('Settings: Save error:', error);
                 showSaveError(`Save failed: ${error.message}`);
             } finally {
                 if (hideLoading) hideLoading();
@@ -272,6 +308,8 @@ async function saveGlobalSettingsWithFeedback() {
         
         showSaveSuccess('Global settings saved successfully!');
         console.log('Global settings saved:', settingsState.globalSettings);
+        
+        // Note: globalSettingsUpdated message will be sent by the webview provider
     } catch (error) {
         console.error('Error saving global settings:', error);
         showSaveError(`Save failed: ${error.message}`);
@@ -297,18 +335,10 @@ async function saveProjectSettingsWithFeedback() {
 }
 
 function updateGlobalSettingsFromUI() {
-    // Update API keys
+    // Update API keys only (models are now defined in constants)
     settingsState.globalSettings.openaiApiKey = document.getElementById('openai-api-key')?.value || '';
     settingsState.globalSettings.geminiApiKey = document.getElementById('gemini-api-key')?.value || '';
     settingsState.globalSettings.claudeApiKey = document.getElementById('claude-api-key')?.value || '';
-    
-    // Update selected models
-    settingsState.globalSettings.openaiModels = Array.from(document.getElementById('openai-models')?.selectedOptions || [])
-        .map(option => option.value);
-    settingsState.globalSettings.geminiModels = Array.from(document.getElementById('gemini-models')?.selectedOptions || [])
-        .map(option => option.value);
-    settingsState.globalSettings.claudeModels = Array.from(document.getElementById('claude-models')?.selectedOptions || [])
-        .map(option => option.value);
 }
 
 function updateProjectSettingsFromUI() {
@@ -317,27 +347,31 @@ function updateProjectSettingsFromUI() {
 }
 
 async function saveProviderSettings(providerKey) {
-    // Update the specific provider settings in state
+    console.log('Settings: saveProviderSettings called for:', providerKey);
+    
+    // Update the specific provider API key in state
     const apiKeyInput = document.getElementById(`${providerKey}-api-key`);
-    const modelsSelect = document.getElementById(`${providerKey}-models`);
     
     if (apiKeyInput) {
         settingsState.globalSettings[`${providerKey}ApiKey`] = apiKeyInput.value || '';
+        console.log('Settings: Updated API key for:', providerKey, 'value:', apiKeyInput.value ? '***' : 'empty');
+    } else {
+        console.log('Settings: API key input not found for:', providerKey);
     }
     
-    if (modelsSelect) {
-        settingsState.globalSettings[`${providerKey}Models`] = Array.from(modelsSelect.selectedOptions || [])
-            .map(option => option.value);
-    }
+    console.log('Settings: About to save global settings');
+    console.log('Settings: WebviewApi available:', !!window.WebviewApi);
+    console.log('Settings: WebviewApi.persistence available:', !!window.WebviewApi?.persistence);
     
     // Save using persistence API
     await window.WebviewApi.persistence.saveGlobalSettings(settingsState.globalSettings);
     
     showSaveSuccess(`${providerKey} settings saved successfully!`);
     console.log(`${providerKey} settings saved:`, {
-        apiKey: settingsState.globalSettings[`${providerKey}ApiKey`],
-        models: settingsState.globalSettings[`${providerKey}Models`]
+        apiKey: settingsState.globalSettings[`${providerKey}ApiKey`]
     });
+    
+    // Note: globalSettingsUpdated message will be sent by the webview provider
 }
 
 function showSaveSuccess(message) {
@@ -432,21 +466,22 @@ Last updated: ${new Date().toLocaleString()}`;
     });
 }
 
-// Export functions for potential external use
-window.SettingsManager = {
-    renderSettings: renderSettings,
-    loadSettingsFromPersistence: loadSettingsFromPersistence,
-    saveGlobalSettingsWithFeedback: saveGlobalSettingsWithFeedback,
-    saveProjectSettingsWithFeedback: saveProjectSettingsWithFeedback,
-    getSettings: () => settingsState,
-    updateGlobalSettings: async (newSettings) => {
-        settingsState.globalSettings = { ...settingsState.globalSettings, ...newSettings };
-        await saveGlobalSettingsWithFeedback();
-        renderSettings();
-    },
-    updateProjectSettings: async (newSettings) => {
-        settingsState.projectSettings = { ...settingsState.projectSettings, ...newSettings };
-        await saveProjectSettingsWithFeedback();
-        renderSettings();
-    }
-};
+    // Export functions for potential external use
+    window.SettingsManager = {
+        renderSettings: renderSettings,
+        loadSettingsFromPersistence: loadSettingsFromPersistence,
+        saveGlobalSettingsWithFeedback: saveGlobalSettingsWithFeedback,
+        saveProjectSettingsWithFeedback: saveProjectSettingsWithFeedback,
+        getSettings: () => settingsState,
+        updateGlobalSettings: async (newSettings) => {
+            settingsState.globalSettings = { ...settingsState.globalSettings, ...newSettings };
+            await saveGlobalSettingsWithFeedback();
+            renderSettings();
+        },
+        updateProjectSettings: async (newSettings) => {
+            settingsState.projectSettings = { ...settingsState.projectSettings, ...newSettings };
+            await saveProjectSettingsWithFeedback();
+            renderSettings();
+        }
+    };
+}

@@ -3,11 +3,20 @@
  * Provides a clean interface for communicating with the extension host
  */
 
-// Message passing state
-const messageState = {
-    pendingRequests: new Map(), // requestId -> { resolve, reject, timeout }
-    requestCounter: 0
-};
+// Wrap everything in an IIFE to ensure proper initialization
+(function() {
+    'use strict';
+    
+    // Detect VS Code messaging API
+    const vscodeApi = typeof window !== 'undefined' && window.acquireVsCodeApi
+        ? window.acquireVsCodeApi()
+        : undefined;
+
+    // Message passing state
+    const messageState = {
+        pendingRequests: new Map(), // requestId -> { resolve, reject, timeout }
+        requestCounter: 0
+    };
 
 /**
  * Generates a unique request ID
@@ -53,15 +62,12 @@ function postCommand(command, payload = null, timeout = 10000) {
             requestId,
             payload
         };
-        
+
         try {
-            // Access VS Code API if available
-            if (window.acquireVsCodeApi) {
-                const vscode = window.acquireVsCodeApi();
-                vscode.postMessage(message);
+            if (vscodeApi && typeof vscodeApi.postMessage === 'function') {
+                vscodeApi.postMessage(message);
             } else {
-                console.warn('VS Code API not available');
-                reject(new Error('VS Code API not available'));
+                window.parent.postMessage(message, '*');
             }
         } catch (error) {
             messageState.pendingRequests.delete(requestId);
@@ -207,18 +213,27 @@ const uiFeedback = {
     }
 };
 
-// Listen for messages from extension host
-window.addEventListener('message', (event) => {
-    const message = event.data;
-    handleMessage(message);
-});
+    // Listen for messages from extension host
+    window.addEventListener('message', (event) => {
+        const message = event.data;
+        handleMessage(message);
+    });
 
-// Export the API
-window.WebviewApi = {
-    postCommand,
-    persistence: persistenceApi,
-    ui: uiFeedback
-};
+    if (vscodeApi && typeof vscodeApi.onMessage === 'function') {
+        vscodeApi.onMessage((message) => {
+            handleMessage(message);
+        });
+    }
 
-// Make it globally available for backward compatibility
-window.postCommand = postCommand;
+    // Export the API
+    window.WebviewApi = {
+        postCommand,
+        persistence: persistenceApi,
+        ui: uiFeedback
+    };
+
+    // Make it globally available for backward compatibility
+    window.postCommand = postCommand;
+    
+    console.log('WebviewApi: API initialized and available');
+})();

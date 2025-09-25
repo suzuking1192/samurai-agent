@@ -2,20 +2,7 @@
  * Jest test setup file
  */
 
-// Mock VS Code API
-jest.mock('vscode', () => ({
-    Uri: {
-        file: jest.fn((path: string) => ({ fsPath: path })),
-        joinPath: jest.fn((base: any, ...segments: string[]) => ({
-            fsPath: [base.fsPath, ...segments].join('/')
-        }))
-    },
-    workspace: {
-        workspaceFolders: undefined
-    },
-    WebviewViewProvider: class MockWebviewViewProvider {},
-    CancellationToken: class MockCancellationToken {}
-}));
+// VS Code API is mocked via __mocks__/vscode.js
 
 // Mock fs module
 jest.mock('fs', () => ({

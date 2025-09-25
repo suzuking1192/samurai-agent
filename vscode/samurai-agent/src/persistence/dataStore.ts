@@ -8,6 +8,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { Task } from '../common/models/task-models';
 import { Memory } from '../common/models/memory-models';
+import { ProjectSettings, GlobalSettings } from '../common/models/settings-models';
 import { ApiResponse, ResponseType } from '../common/models/response-models';
 
 // Temporary interfaces until they're moved to proper model files
@@ -32,38 +33,6 @@ interface Session {
     isActive: boolean;
     messageCount: number;
     lastMessageAt?: Date;
-    createdAt: Date;
-    updatedAt: Date;
-    metadata: Record<string, any>;
-}
-
-interface ProjectSettings {
-    id: string;
-    projectName: string;
-    projectPath: string;
-    projectDetailText: string;
-    digestedMemory: string;
-    llmProvider: 'openai' | 'gemini' | 'claude';
-    defaultModel: string;
-    defaultMode: string;
-    // UI preferences - moved from GlobalSettings
-    theme: 'light' | 'dark' | 'auto';
-    autoSave: boolean;
-    createdAt: Date;
-    updatedAt: Date;
-    metadata: Record<string, any>;
-}
-
-interface GlobalSettings {
-    id: string;
-    openaiApiKey: string;
-    openaiModels: string[];
-    geminiApiKey: string;
-    geminiModels: string[];
-    claudeApiKey: string;
-    claudeModels: string[];
-    theme: string;
-    autoSave: boolean;
     createdAt: Date;
     updatedAt: Date;
     metadata: Record<string, any>;
@@ -324,6 +293,15 @@ export class DataStore {
         }
     }
 
+    // Public ProjectSettings methods
+    public readProjectSettings(requestId?: string): ApiResponse<ProjectSettings> {
+        return this.handleLoadProjectSettings(requestId);
+    }
+
+    public saveProjectSettings(settings: ProjectSettings, requestId?: string): ApiResponse<ProjectSettings> {
+        return this.handleSaveProjectSettings(requestId, settings);
+    }
+
     // ProjectSettings operations
     private handleLoadProjectSettings(requestId?: string): ApiResponse<any> {
         try {
@@ -333,27 +311,35 @@ export class DataStore {
                 // Return default project settings if file doesn't exist
                 const defaultSettings: ProjectSettings = {
                     id: 'project-settings',
+                    projectId: 'default-project',
                     projectName: 'Untitled Project',
-                    projectPath: this.workspaceRoot,
                     projectDetailText: '',
                     digestedMemory: '',
-                    llmProvider: 'openai',
-                    defaultModel: 'gpt-4',
-                    defaultMode: 'default',
+                    defaultModel: 'gpt-4o',
+                    defaultMode: 'default' as any,
+                    customPrompts: {},
+                    projectSpecificConfig: {
+                        codeAnalysisEnabled: true,
+                        autoTaskGeneration: true,
+                        memoryRetentionDays: 30,
+                        maxTokensPerRequest: 4000
+                    },
                     theme: 'auto',
                     autoSave: true,
+                    primaryLLMModel: null,
+                    metadata: {},
                     createdAt: new Date(),
-                    updatedAt: new Date(),
-                    metadata: {}
+                    updatedAt: new Date()
                 };
                 return this.createSuccessResponse(requestId, defaultSettings);
             }
             
-            // Apply default values for theme and autoSave if they are missing
+            // Apply default values for theme, autoSave, and primaryLLMModel if they are missing
             const settings: ProjectSettings = {
                 ...rawSettings,
                 theme: rawSettings.theme || 'auto',
                 autoSave: rawSettings.autoSave !== undefined ? rawSettings.autoSave : true,
+                primaryLLMModel: rawSettings.primaryLLMModel !== undefined ? rawSettings.primaryLLMModel : null,
                 createdAt: rawSettings.createdAt ? new Date(rawSettings.createdAt) : new Date(),
                 updatedAt: rawSettings.updatedAt ? new Date(rawSettings.updatedAt) : new Date()
             };
@@ -370,11 +356,12 @@ export class DataStore {
                 return this.createErrorResponse(requestId, 'Project settings data is required');
             }
 
-            // Ensure theme and autoSave have default values if not provided
+            // Ensure theme, autoSave, and primaryLLMModel have default values if not provided
             const settingsWithDefaults: ProjectSettings = {
                 ...settings,
                 theme: settings.theme || 'auto',
-                autoSave: settings.autoSave !== undefined ? settings.autoSave : true
+                autoSave: settings.autoSave !== undefined ? settings.autoSave : true,
+                primaryLLMModel: settings.primaryLLMModel !== undefined ? settings.primaryLLMModel : null
             };
 
             // Use writeSingleJsonFile since project settings is a single object, not a collection

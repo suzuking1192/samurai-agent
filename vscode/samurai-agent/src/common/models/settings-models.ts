@@ -49,6 +49,8 @@ export interface ProjectSettings extends BaseModel {
     // UI preferences - moved from GlobalSettings
     theme: 'light' | 'dark' | 'auto';
     autoSave: boolean;
+    // Primary LLM model selection for this project
+    primaryLLMModel: string | null;
     metadata: Record<string, any>;
 }
 
@@ -58,13 +60,10 @@ export interface ProjectSettings extends BaseModel {
  */
 export interface GlobalSettings extends BaseModel {
     userId: string;
-    // LLM Provider Settings
+    // LLM Provider API Keys (models are now defined in constants)
     openaiApiKey: string;
-    openaiModels: string[];
     geminiApiKey: string;
-    geminiModels: string[];
     claudeApiKey: string;
-    claudeModels: string[];
     
     // Default preferences
     defaultProvider: LLMProvider;
@@ -124,17 +123,16 @@ export interface UpdateProjectSettingsRequest {
     // UI preferences - moved from GlobalSettings
     theme?: 'light' | 'dark' | 'auto';
     autoSave?: boolean;
+    // Primary LLM model selection for this project
+    primaryLLMModel?: string | null;
     metadata?: Record<string, any>;
 }
 
 export interface UpdateGlobalSettingsRequest {
-    // LLM Provider Settings
+    // LLM Provider API Keys (models are now defined in constants)
     openaiApiKey?: string;
-    openaiModels?: string[];
     geminiApiKey?: string;
-    geminiModels?: string[];
     claudeApiKey?: string;
-    claudeModels?: string[];
     
     // Default preferences
     defaultProvider?: LLMProvider;

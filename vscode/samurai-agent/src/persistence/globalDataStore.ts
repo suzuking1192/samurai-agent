@@ -70,8 +70,16 @@ export class GlobalDataStore {
     }
     
     /**
+     * Reads global settings from the user-specific config directory
+     * Alias for loadGlobalSettings for consistency with requirements
+     */
+    public readGlobalSettings(requestId?: string): ApiResponse<GlobalSettings> {
+        return this.loadGlobalSettings(requestId);
+    }
+
+    /**
      * Loads global settings from the user-specific config directory
-     * Ignores theme and autoSave fields if they exist in old format files
+     * Ignores theme, autoSave, and model arrays if they exist in old format files
      */
     public loadGlobalSettings(requestId?: string): ApiResponse<GlobalSettings> {
         try {
@@ -81,13 +89,10 @@ export class GlobalDataStore {
                     id: 'global-settings',
                     userId: 'default-user',
                     openaiApiKey: '',
-                    openaiModels: ['gpt-4', 'gpt-3.5-turbo'],
                     geminiApiKey: '',
-                    geminiModels: ['gemini-pro'],
                     claudeApiKey: '',
-                    claudeModels: ['claude-3-opus', 'claude-3-sonnet'],
                     defaultProvider: 'openai' as any,
-                    defaultModel: 'gpt-4',
+                    defaultModel: 'gpt-4o',
                     defaultMode: 'default' as any,
                     fontSize: 14,
                     showTokenCounts: true,
@@ -106,21 +111,18 @@ export class GlobalDataStore {
             const data = fs.readFileSync(this.globalSettingsFile, 'utf8');
             const rawSettings = JSON.parse(data);
             
-            // Filter out theme and autoSave if they exist (migration from old format)
-            const { theme, autoSave, ...cleanSettings } = rawSettings;
+            // Filter out theme, autoSave, and model arrays if they exist (migration from old format)
+            const { theme, autoSave, openaiModels, geminiModels, claudeModels, ...cleanSettings } = rawSettings;
             
             // Ensure required fields exist with defaults
             const settings: GlobalSettings = {
                 id: cleanSettings.id || 'global-settings',
                 userId: cleanSettings.userId || 'default-user',
                 openaiApiKey: cleanSettings.openaiApiKey || '',
-                openaiModels: cleanSettings.openaiModels || ['gpt-4', 'gpt-3.5-turbo'],
                 geminiApiKey: cleanSettings.geminiApiKey || '',
-                geminiModels: cleanSettings.geminiModels || ['gemini-pro'],
                 claudeApiKey: cleanSettings.claudeApiKey || '',
-                claudeModels: cleanSettings.claudeModels || ['claude-3-opus', 'claude-3-sonnet'],
                 defaultProvider: cleanSettings.defaultProvider || 'openai',
-                defaultModel: cleanSettings.defaultModel || 'gpt-4',
+                defaultModel: cleanSettings.defaultModel || 'gpt-4o',
                 defaultMode: cleanSettings.defaultMode || 'default',
                 fontSize: cleanSettings.fontSize || 14,
                 showTokenCounts: cleanSettings.showTokenCounts !== undefined ? cleanSettings.showTokenCounts : true,
