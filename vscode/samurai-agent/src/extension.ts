@@ -20,7 +20,7 @@ import { LLMProviderService } from "./agent/llm/llmProviderService";
 import { OpenAIChatClient } from "./agent/llm/openaiChatClient";
 import { GeminiChatClient } from "./agent/llm/geminiChatClient";
 import { AnthropicChatClient } from "./agent/llm/anthropicChatClient";
-import { ProjectDetailService } from "./memory/projectDetailService";
+import { ProjectDetailService } from "./agent/memory/projectDetailService";
 
 /**
  * Extension activation function - main backend entry point

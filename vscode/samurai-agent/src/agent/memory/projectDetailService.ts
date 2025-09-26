@@ -1,9 +1,9 @@
 import * as fs from "fs";
 import * as path from "path";
-import { LLMProviderService } from "../agent/llm/llmProviderService";
-import { DataStore } from "../persistence/dataStore";
-import { IProjectSettings } from "../common/models/settings-models";
-import { LLMMessage, LLMResponse } from "../common/models/llm-models";
+import { LLMProviderService } from "../llm/llmProviderService";
+import { DataStore } from "../../persistence/dataStore";
+import { IProjectSettings } from "../../common/models/settings-models";
+import { LLMMessage, LLMResponse } from "../../common/models/llm-models";
 
 export class ProjectDetailService {
   constructor(
@@ -144,6 +144,7 @@ export class ProjectDetailService {
       path.join(
         this.extensionRoot,
         "src",
+        "agent",
         "prompts",
         "projectDetail",
         fileName,

@@ -56,7 +56,7 @@ const llmProviderService_1 = require("./agent/llm/llmProviderService");
 const openaiChatClient_1 = require("./agent/llm/openaiChatClient");
 const geminiChatClient_1 = require("./agent/llm/geminiChatClient");
 const anthropicChatClient_1 = require("./agent/llm/anthropicChatClient");
-const projectDetailService_1 = require("./memory/projectDetailService");
+const projectDetailService_1 = require("./agent/memory/projectDetailService");
 /**
  * Extension activation function - main backend entry point
  * Registers all commands, webview providers, and initializes the agent system

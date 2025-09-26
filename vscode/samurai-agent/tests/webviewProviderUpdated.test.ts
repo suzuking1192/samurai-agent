@@ -12,7 +12,7 @@ import { LLM_MODELS } from '../src/common/constants/llm-models';
 import { GlobalDataStore } from '../src/persistence/globalDataStore';
 import { DataStore } from '../src/persistence/dataStore';
 import { LLMProviderService } from '../src/agent/llm/llmProviderService';
-import { ProjectDetailService } from '../src/memory/projectDetailService';
+import { ProjectDetailService } from '../src/agent/memory/projectDetailService';
 
 // Use real fs and path modules for these tests
 jest.unmock('fs');

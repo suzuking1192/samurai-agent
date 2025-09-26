@@ -21,7 +21,7 @@ import { OpenAIChatClient } from './src/agent/llm/openaiChatClient';
 import { GeminiChatClient } from './src/agent/llm/geminiChatClient';
 import { AnthropicChatClient } from './src/agent/llm/anthropicChatClient';
 import { LLMProviderService } from './src/agent/llm/llmProviderService';
-import { ProjectDetailService } from './src/memory/projectDetailService';
+import { ProjectDetailService } from './src/agent/memory/projectDetailService';
 import { GlobalDataStore } from './src/persistence/globalDataStore';
 import { LLMRequest, LLMMessage } from './src/common/models/llm-models';
 import { LLM_MODELS } from './src/common/constants/llm-models';

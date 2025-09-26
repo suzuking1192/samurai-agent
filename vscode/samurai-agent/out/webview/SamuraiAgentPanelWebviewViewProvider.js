@@ -39,15 +39,15 @@ const fs = __importStar(require("fs"));
 const llm_models_1 = require("../common/constants/llm-models");
 // Resolve each asset to whichever folder actually has that file
 const assetUri = (webview, extUri, filename) => {
-    const out = vscode.Uri.joinPath(extUri, 'out', 'webview', filename);
-    const src = vscode.Uri.joinPath(extUri, 'src', 'webview', filename);
+    const out = vscode.Uri.joinPath(extUri, "out", "webview", filename);
+    const src = vscode.Uri.joinPath(extUri, "src", "webview", filename);
     return fs.existsSync(out.fsPath)
         ? webview.asWebviewUri(out)
         : webview.asWebviewUri(src);
 };
 class SamuraiAgentPanelWebviewViewProvider {
     _extensionUri;
-    static viewType = 'samurai-agent.agentPanel';
+    static viewType = "samurai-agent.agentPanel";
     dataStore;
     globalDataStore;
     llmProviderService;
@@ -60,41 +60,41 @@ class SamuraiAgentPanelWebviewViewProvider {
         this.globalDataStore = dependencies.globalDataStore;
     }
     resolveWebviewView(webviewView, context, _token) {
-        console.log('Webview Provider: resolveWebviewView called');
-        console.log('Webview Provider: webviewView visible:', webviewView.visible);
+        console.log("Webview Provider: resolveWebviewView called");
+        console.log("Webview Provider: webviewView visible:", webviewView.visible);
         // Allow both src and out roots for maximum compatibility
-        const srcRoot = vscode.Uri.joinPath(this._extensionUri, 'src', 'webview');
-        const outRoot = vscode.Uri.joinPath(this._extensionUri, 'out', 'webview');
-        console.log('Webview Provider: Allowing both roots:', {
+        const srcRoot = vscode.Uri.joinPath(this._extensionUri, "src", "webview");
+        const outRoot = vscode.Uri.joinPath(this._extensionUri, "out", "webview");
+        console.log("Webview Provider: Allowing both roots:", {
             src: srcRoot.toString(),
-            out: outRoot.toString()
+            out: outRoot.toString(),
         });
         webviewView.webview.options = {
             enableScripts: true,
             enableCommandUris: true,
-            localResourceRoots: [srcRoot, outRoot] // include BOTH
+            localResourceRoots: [srcRoot, outRoot], // include BOTH
         };
         webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
-        console.log('Webview Provider: HTML set for webview');
+        console.log("Webview Provider: HTML set for webview");
         // Send initial settings to webview after a short delay to ensure it's loaded
         setTimeout(() => {
             this.sendInitialSettingsToWebview(webviewView.webview);
         }, 100);
         // Send a test message to verify communication
         setTimeout(() => {
-            console.log('Webview Provider: Sending test message to webview');
+            console.log("Webview Provider: Sending test message to webview");
             webviewView.webview.postMessage({
-                type: 'test',
-                message: 'Hello from webview provider!'
+                type: "test",
+                message: "Hello from webview provider!",
             });
         }, 200);
         // Set up message listener
-        webviewView.webview.onDidReceiveMessage(message => this.handleWebviewMessage(webviewView.webview, message));
+        webviewView.webview.onDidReceiveMessage((message) => this.handleWebviewMessage(webviewView.webview, message));
         // Add debugging for script loading
-        console.log('Webview Provider: Setting up webview with options:', {
+        console.log("Webview Provider: Setting up webview with options:", {
             enableScripts: true,
             enableCommandUris: true,
-            localResourceRoots: [srcRoot.toString(), outRoot.toString()]
+            localResourceRoots: [srcRoot.toString(), outRoot.toString()],
         });
     }
     /**
@@ -104,74 +104,77 @@ class SamuraiAgentPanelWebviewViewProvider {
         const { command } = message;
         try {
             // LLM chat handling
-            if (command === 'llm.chat') {
-                const command = vscode.commands.executeCommand('samurai-agent.llm.chat', message.payload);
-                if (command && typeof command.then === 'function') {
+            if (command === "llm.chat") {
+                const command = vscode.commands.executeCommand("samurai-agent.llm.chat", message.payload);
+                if (command && typeof command.then === "function") {
                     command.then((result) => {
                         webview.postMessage({
-                            type: 'success',
+                            type: "success",
                             requestId: message.requestId,
                             payload: result,
-                            timestamp: new Date()
+                            timestamp: new Date(),
                         });
                     }, (error) => {
                         webview.postMessage({
-                            type: 'error',
+                            type: "error",
                             requestId: message.requestId,
-                            error: error instanceof Error ? error.message : 'LLM chat failed',
-                            timestamp: new Date()
+                            error: error instanceof Error ? error.message : "LLM chat failed",
+                            timestamp: new Date(),
                         });
                     });
                 }
                 return;
             }
-            if (command === 'projectDetail.ingest') {
-                const commandPromise = vscode.commands.executeCommand('samurai-agent.projectDetail.ingest', message.payload);
-                if (commandPromise && typeof commandPromise.then === 'function') {
+            if (command === "projectDetail.ingest") {
+                const commandPromise = vscode.commands.executeCommand("samurai-agent.projectDetail.ingest", message.payload);
+                if (commandPromise && typeof commandPromise.then === "function") {
                     commandPromise.then((result) => {
                         webview.postMessage({
-                            type: 'success',
+                            type: "success",
                             requestId: message.requestId,
                             payload: { finalText: result },
-                            timestamp: new Date()
+                            timestamp: new Date(),
                         });
                     }, (error) => {
                         webview.postMessage({
-                            type: 'error',
+                            type: "error",
                             requestId: message.requestId,
-                            error: error instanceof Error ? error.message : 'Project detail ingestion failed',
-                            timestamp: new Date()
+                            error: error instanceof Error
+                                ? error.message
+                                : "Project detail ingestion failed",
+                            timestamp: new Date(),
                         });
                     });
                 }
                 return;
             }
             // Route global settings commands to GlobalDataStore
-            if (command === 'loadGlobalSettings' || command === 'saveGlobalSettings') {
+            if (command === "loadGlobalSettings" ||
+                command === "saveGlobalSettings") {
                 if (!this.globalDataStore) {
-                    console.error('GlobalDataStore not initialized');
+                    console.error("GlobalDataStore not initialized");
                     webview.postMessage({
-                        type: 'error',
+                        type: "error",
                         requestId: message.requestId,
-                        error: 'GlobalDataStore not initialized',
-                        timestamp: new Date()
+                        error: "GlobalDataStore not initialized",
+                        timestamp: new Date(),
                     });
                     return;
                 }
                 let response;
-                if (command === 'loadGlobalSettings') {
+                if (command === "loadGlobalSettings") {
                     response = this.globalDataStore.loadGlobalSettings(message.requestId);
                 }
                 else {
                     response = this.globalDataStore.saveGlobalSettings(message.payload, message.requestId);
-                    console.log('Webview Provider: Save response:', response.type);
+                    console.log("Webview Provider: Save response:", response.type);
                     // If save was successful, notify all tabs that global settings have been updated
-                    if (response.type === 'success') {
-                        console.log('Webview Provider: Sending globalSettingsUpdated notification');
+                    if (response.type === "success") {
+                        console.log("Webview Provider: Sending globalSettingsUpdated notification");
                         webview.postMessage({
-                            type: 'globalSettingsUpdated',
+                            type: "globalSettingsUpdated",
                             payload: message.payload,
-                            timestamp: new Date()
+                            timestamp: new Date(),
                         });
                     }
                 }
@@ -180,12 +183,12 @@ class SamuraiAgentPanelWebviewViewProvider {
             }
             // Route all other commands to DataStore (project-specific)
             if (!this.dataStore) {
-                console.error('DataStore not initialized');
+                console.error("DataStore not initialized");
                 webview.postMessage({
-                    type: 'error',
+                    type: "error",
                     requestId: message.requestId,
-                    error: 'DataStore not initialized',
-                    timestamp: new Date()
+                    error: "DataStore not initialized",
+                    timestamp: new Date(),
                 });
                 return;
             }
@@ -193,12 +196,12 @@ class SamuraiAgentPanelWebviewViewProvider {
             webview.postMessage(response);
         }
         catch (error) {
-            console.error('Error handling webview message:', error);
+            console.error("Error handling webview message:", error);
             webview.postMessage({
-                type: 'error',
+                type: "error",
                 requestId: message.requestId,
-                error: error instanceof Error ? error.message : 'Unknown error occurred',
-                timestamp: new Date()
+                error: error instanceof Error ? error.message : "Unknown error occurred",
+                timestamp: new Date(),
             });
         }
     }
@@ -207,18 +210,18 @@ class SamuraiAgentPanelWebviewViewProvider {
         try {
             const response = await this.llmProviderService.chat(payload);
             webview.postMessage({
-                type: 'success',
+                type: "success",
                 requestId,
                 payload: response,
-                timestamp: new Date()
+                timestamp: new Date(),
             });
         }
         catch (error) {
             webview.postMessage({
-                type: 'error',
+                type: "error",
                 requestId,
-                error: error instanceof Error ? error.message : 'LLM chat failed',
-                timestamp: new Date()
+                error: error instanceof Error ? error.message : "LLM chat failed",
+                timestamp: new Date(),
             });
         }
     }
@@ -227,18 +230,18 @@ class SamuraiAgentPanelWebviewViewProvider {
         try {
             const finalText = await this.projectDetailService?.ingestProjectDetail(payload.projectId, payload.rawText, payload.mode);
             webview.postMessage({
-                type: 'success',
+                type: "success",
                 requestId,
                 payload: { finalText },
-                timestamp: new Date()
+                timestamp: new Date(),
             });
         }
         catch (error) {
             webview.postMessage({
-                type: 'error',
+                type: "error",
                 requestId,
-                error: error instanceof Error ? error.message : 'Unknown error occurred',
-                timestamp: new Date()
+                error: error instanceof Error ? error.message : "Unknown error occurred",
+                timestamp: new Date(),
             });
         }
     }
@@ -246,17 +249,17 @@ class SamuraiAgentPanelWebviewViewProvider {
         // Generate a nonce for CSP
         const nonce = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
         // Resolve each asset to whichever folder actually has that file
-        const agentPanelCssPath = assetUri(webview, this._extensionUri, 'agentPanel.css');
-        const agentPanelJsPath = assetUri(webview, this._extensionUri, 'agentPanel.js');
-        const chatCssPath = assetUri(webview, this._extensionUri, 'chat.css');
-        const chatJsPath = assetUri(webview, this._extensionUri, 'chat.js');
-        const taskCssPath = assetUri(webview, this._extensionUri, 'task.css');
-        const taskJsPath = assetUri(webview, this._extensionUri, 'task.js');
-        const settingsCssPath = assetUri(webview, this._extensionUri, 'settings.css');
-        const settingsJsPath = assetUri(webview, this._extensionUri, 'settings.js');
-        const webviewApiJsPath = assetUri(webview, this._extensionUri, 'webviewApi.js');
-        const testJsPath = assetUri(webview, this._extensionUri, 'test.js');
-        console.log('Webview Provider: Asset paths:', {
+        const agentPanelCssPath = assetUri(webview, this._extensionUri, "agentPanel.css");
+        const agentPanelJsPath = assetUri(webview, this._extensionUri, "agentPanel.js");
+        const chatCssPath = assetUri(webview, this._extensionUri, "chat.css");
+        const chatJsPath = assetUri(webview, this._extensionUri, "chat.js");
+        const taskCssPath = assetUri(webview, this._extensionUri, "task.css");
+        const taskJsPath = assetUri(webview, this._extensionUri, "task.js");
+        const settingsCssPath = assetUri(webview, this._extensionUri, "settings.css");
+        const settingsJsPath = assetUri(webview, this._extensionUri, "settings.js");
+        const webviewApiJsPath = assetUri(webview, this._extensionUri, "webviewApi.js");
+        const testJsPath = assetUri(webview, this._extensionUri, "test.js");
+        console.log("Webview Provider: Asset paths:", {
             // CSS paths
             agentPanelCssPath: agentPanelCssPath.toString(),
             chatCssPath: chatCssPath.toString(),
@@ -268,7 +271,7 @@ class SamuraiAgentPanelWebviewViewProvider {
             chatJsPath: chatJsPath.toString(),
             taskJsPath: taskJsPath.toString(),
             settingsJsPath: settingsJsPath.toString(),
-            testJsPath: testJsPath.toString()
+            testJsPath: testJsPath.toString(),
         });
         return `<!DOCTYPE html>
         <html lang="en">
@@ -458,7 +461,7 @@ class SamuraiAgentPanelWebviewViewProvider {
                         // Update project settings with the initial model
                         const updatedProjectSettings = {
                             ...projectSettings,
-                            primaryLLMModel: initialPrimaryLLMModel
+                            primaryLLMModel: initialPrimaryLLMModel,
                         };
                         // Save the updated project settings
                         this.dataStore?.saveProjectSettings(updatedProjectSettings);
@@ -468,22 +471,22 @@ class SamuraiAgentPanelWebviewViewProvider {
                 const availableModels = this.getAvailableModels(globalSettings);
                 // Send settings to webview
                 webview.postMessage({
-                    type: 'initialSettings',
+                    type: "initialSettings",
                     payload: {
                         globalSettings,
                         projectSettings: {
                             ...projectSettings,
-                            primaryLLMModel: initialPrimaryLLMModel
+                            primaryLLMModel: initialPrimaryLLMModel,
                         },
                         availableModels,
-                        llmModels: llm_models_1.LLM_MODELS
+                        llmModels: llm_models_1.LLM_MODELS,
                     },
-                    timestamp: new Date()
+                    timestamp: new Date(),
                 });
             }
         }
         catch (error) {
-            console.error('Error sending initial settings to webview:', error);
+            console.error("Error sending initial settings to webview:", error);
         }
     }
     /**

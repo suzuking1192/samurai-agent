@@ -1,297 +1,339 @@
-import * as vscode from 'vscode';
-import * as path from 'path';
-import * as fs from 'fs';
-import { DataStore } from '../persistence/dataStore';
-import { GlobalDataStore } from '../persistence/globalDataStore';
-import { LLM_MODELS } from '../common/constants/llm-models';
-import { LLMProviderService } from '../agent/llm/llmProviderService';
-import { ProjectDetailService } from '../memory/projectDetailService';
+import * as vscode from "vscode";
+import * as path from "path";
+import * as fs from "fs";
+import { DataStore } from "../persistence/dataStore";
+import { GlobalDataStore } from "../persistence/globalDataStore";
+import { LLM_MODELS } from "../common/constants/llm-models";
+import { LLMProviderService } from "../agent/llm/llmProviderService";
+import { ProjectDetailService } from "../agent/memory/projectDetailService";
 
 // Resolve each asset to whichever folder actually has that file
 const assetUri = (
-    webview: vscode.Webview,
-    extUri: vscode.Uri,
-    filename: string
+  webview: vscode.Webview,
+  extUri: vscode.Uri,
+  filename: string,
 ): vscode.Uri => {
-    const out = vscode.Uri.joinPath(extUri, 'out', 'webview', filename);
-    const src = vscode.Uri.joinPath(extUri, 'src', 'webview', filename);
-    return fs.existsSync(out.fsPath)
-        ? webview.asWebviewUri(out)
-        : webview.asWebviewUri(src);
+  const out = vscode.Uri.joinPath(extUri, "out", "webview", filename);
+  const src = vscode.Uri.joinPath(extUri, "src", "webview", filename);
+  return fs.existsSync(out.fsPath)
+    ? webview.asWebviewUri(out)
+    : webview.asWebviewUri(src);
 };
 
 export interface SamuraiAgentPanelDependencies {
-    llmProviderService: LLMProviderService;
-    projectDetailService?: ProjectDetailService;
-    dataStore?: DataStore;
-    globalDataStore: GlobalDataStore;
+  llmProviderService: LLMProviderService;
+  projectDetailService?: ProjectDetailService;
+  dataStore?: DataStore;
+  globalDataStore: GlobalDataStore;
 }
 
-export class SamuraiAgentPanelWebviewViewProvider implements vscode.WebviewViewProvider {
-    public static readonly viewType = 'samurai-agent.agentPanel';
-    private dataStore: DataStore | undefined;
-    private globalDataStore: GlobalDataStore;
-    private llmProviderService: LLMProviderService;
-    private projectDetailService: ProjectDetailService | undefined;
+export class SamuraiAgentPanelWebviewViewProvider
+  implements vscode.WebviewViewProvider
+{
+  public static readonly viewType = "samurai-agent.agentPanel";
+  private dataStore: DataStore | undefined;
+  private globalDataStore: GlobalDataStore;
+  private llmProviderService: LLMProviderService;
+  private projectDetailService: ProjectDetailService | undefined;
 
-    constructor(
-        private readonly _extensionUri: vscode.Uri,
-        dependencies: SamuraiAgentPanelDependencies
-    ) {
-        this.llmProviderService = dependencies.llmProviderService;
-        this.projectDetailService = dependencies.projectDetailService;
-        this.dataStore = dependencies.dataStore;
-        this.globalDataStore = dependencies.globalDataStore;
-    }
+  constructor(
+    private readonly _extensionUri: vscode.Uri,
+    dependencies: SamuraiAgentPanelDependencies,
+  ) {
+    this.llmProviderService = dependencies.llmProviderService;
+    this.projectDetailService = dependencies.projectDetailService;
+    this.dataStore = dependencies.dataStore;
+    this.globalDataStore = dependencies.globalDataStore;
+  }
 
-    public resolveWebviewView(
-        webviewView: vscode.WebviewView,
-        context: vscode.WebviewViewResolveContext,
-        _token: vscode.CancellationToken,
-    ) {
-        console.log('Webview Provider: resolveWebviewView called');
-        console.log('Webview Provider: webviewView visible:', webviewView.visible);
-        
-        // Allow both src and out roots for maximum compatibility
-        const srcRoot = vscode.Uri.joinPath(this._extensionUri, 'src', 'webview');
-        const outRoot = vscode.Uri.joinPath(this._extensionUri, 'out', 'webview');
-        
-        console.log('Webview Provider: Allowing both roots:', {
-            src: srcRoot.toString(),
-            out: outRoot.toString()
-        });
-        
-        webviewView.webview.options = {
-            enableScripts: true,
-            enableCommandUris: true,
-            localResourceRoots: [srcRoot, outRoot] // include BOTH
-        };
+  public resolveWebviewView(
+    webviewView: vscode.WebviewView,
+    context: vscode.WebviewViewResolveContext,
+    _token: vscode.CancellationToken,
+  ) {
+    console.log("Webview Provider: resolveWebviewView called");
+    console.log("Webview Provider: webviewView visible:", webviewView.visible);
 
-        webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
-        console.log('Webview Provider: HTML set for webview');
-        
-        // Send initial settings to webview after a short delay to ensure it's loaded
-        setTimeout(() => {
-            this.sendInitialSettingsToWebview(webviewView.webview);
-        }, 100);
-        
-        // Send a test message to verify communication
-        setTimeout(() => {
-            console.log('Webview Provider: Sending test message to webview');
-            webviewView.webview.postMessage({
-                type: 'test',
-                message: 'Hello from webview provider!'
-            });
-        }, 200);
-        
-        // Set up message listener
-        webviewView.webview.onDidReceiveMessage(message =>
-            this.handleWebviewMessage(webviewView.webview, message)
+    // Allow both src and out roots for maximum compatibility
+    const srcRoot = vscode.Uri.joinPath(this._extensionUri, "src", "webview");
+    const outRoot = vscode.Uri.joinPath(this._extensionUri, "out", "webview");
+
+    console.log("Webview Provider: Allowing both roots:", {
+      src: srcRoot.toString(),
+      out: outRoot.toString(),
+    });
+
+    webviewView.webview.options = {
+      enableScripts: true,
+      enableCommandUris: true,
+      localResourceRoots: [srcRoot, outRoot], // include BOTH
+    };
+
+    webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
+    console.log("Webview Provider: HTML set for webview");
+
+    // Send initial settings to webview after a short delay to ensure it's loaded
+    setTimeout(() => {
+      this.sendInitialSettingsToWebview(webviewView.webview);
+    }, 100);
+
+    // Send a test message to verify communication
+    setTimeout(() => {
+      console.log("Webview Provider: Sending test message to webview");
+      webviewView.webview.postMessage({
+        type: "test",
+        message: "Hello from webview provider!",
+      });
+    }, 200);
+
+    // Set up message listener
+    webviewView.webview.onDidReceiveMessage((message) =>
+      this.handleWebviewMessage(webviewView.webview, message),
+    );
+
+    // Add debugging for script loading
+    console.log("Webview Provider: Setting up webview with options:", {
+      enableScripts: true,
+      enableCommandUris: true,
+      localResourceRoots: [srcRoot.toString(), outRoot.toString()],
+    });
+  }
+
+  /**
+   * Handles messages from the webview
+   */
+  private handleWebviewMessage(webview: vscode.Webview, message: any) {
+    const { command } = message;
+
+    try {
+      // LLM chat handling
+      if (command === "llm.chat") {
+        const command = vscode.commands.executeCommand(
+          "samurai-agent.llm.chat",
+          message.payload,
         );
-        
-        // Add debugging for script loading
-        console.log('Webview Provider: Setting up webview with options:', {
-            enableScripts: true,
-            enableCommandUris: true,
-            localResourceRoots: [srcRoot.toString(), outRoot.toString()]
-        });
-    }
-    
-    /**
-     * Handles messages from the webview
-     */
-    private handleWebviewMessage(webview: vscode.Webview, message: any) {
-        const { command } = message;
-        
-        try {
-            // LLM chat handling
-            if (command === 'llm.chat') {
-                const command = vscode.commands.executeCommand('samurai-agent.llm.chat', message.payload);
-                if (command && typeof command.then === 'function') {
-                    command.then(
-                        (result: unknown) => {
-                            webview.postMessage({
-                                type: 'success',
-                                requestId: message.requestId,
-                                payload: result,
-                                timestamp: new Date()
-                            });
-                        },
-                        (error: unknown) => {
-                            webview.postMessage({
-                                type: 'error',
-                                requestId: message.requestId,
-                                error: error instanceof Error ? error.message : 'LLM chat failed',
-                                timestamp: new Date()
-                            });
-                        }
-                    );
-                }
-                return;
-            }
-
-            if (command === 'projectDetail.ingest') {
-                const commandPromise = vscode.commands.executeCommand('samurai-agent.projectDetail.ingest', message.payload);
-                if (commandPromise && typeof commandPromise.then === 'function') {
-                    commandPromise.then(
-                        (result: unknown) => {
-                            webview.postMessage({
-                                type: 'success',
-                                requestId: message.requestId,
-                                payload: { finalText: result },
-                                timestamp: new Date()
-                            });
-                        },
-                        (error: unknown) => {
-                            webview.postMessage({
-                                type: 'error',
-                                requestId: message.requestId,
-                                error: error instanceof Error ? error.message : 'Project detail ingestion failed',
-                                timestamp: new Date()
-                            });
-                        }
-                    );
-                }
-                return;
-            }
-
-            // Route global settings commands to GlobalDataStore
-            if (command === 'loadGlobalSettings' || command === 'saveGlobalSettings') {
-                if (!this.globalDataStore) {
-                    console.error('GlobalDataStore not initialized');
-                    webview.postMessage({
-                        type: 'error',
-                        requestId: message.requestId,
-                        error: 'GlobalDataStore not initialized',
-                        timestamp: new Date()
-                    });
-                    return;
-                }
-                
-                let response;
-                if (command === 'loadGlobalSettings') {
-                    response = this.globalDataStore.loadGlobalSettings(message.requestId);
-                } else {
-                    response = this.globalDataStore.saveGlobalSettings(message.payload, message.requestId);
-                    
-                    console.log('Webview Provider: Save response:', response.type);
-                    
-                    // If save was successful, notify all tabs that global settings have been updated
-                    if (response.type === 'success') {
-                        console.log('Webview Provider: Sending globalSettingsUpdated notification');
-                        webview.postMessage({
-                            type: 'globalSettingsUpdated',
-                            payload: message.payload,
-                            timestamp: new Date()
-                        });
-                    }
-                }
-                webview.postMessage(response);
-                return;
-            }
-            
-            // Route all other commands to DataStore (project-specific)
-            if (!this.dataStore) {
-                console.error('DataStore not initialized');
-                webview.postMessage({
-                    type: 'error',
-                    requestId: message.requestId,
-                    error: 'DataStore not initialized',
-                    timestamp: new Date()
-                });
-                return;
-            }
-            
-            const response = this.dataStore.handleWebviewMessage(message);
-            webview.postMessage(response);
-        } catch (error) {
-            console.error('Error handling webview message:', error);
-            webview.postMessage({
-                type: 'error',
+        if (command && typeof command.then === "function") {
+          command.then(
+            (result: unknown) => {
+              webview.postMessage({
+                type: "success",
                 requestId: message.requestId,
-                error: error instanceof Error ? error.message : 'Unknown error occurred',
-                timestamp: new Date()
-            });
+                payload: result,
+                timestamp: new Date(),
+              });
+            },
+            (error: unknown) => {
+              webview.postMessage({
+                type: "error",
+                requestId: message.requestId,
+                error:
+                  error instanceof Error ? error.message : "LLM chat failed",
+                timestamp: new Date(),
+              });
+            },
+          );
         }
-    }
+        return;
+      }
 
-    private async handleLLMChat(webview: vscode.Webview, message: any) {
-        const { requestId, payload } = message;
-        try {
-            const response = await this.llmProviderService.chat(payload);
-            webview.postMessage({
-                type: 'success',
-                requestId,
-                payload: response,
-                timestamp: new Date()
-            });
-        } catch (error) {
-            webview.postMessage({
-                type: 'error',
-                requestId,
-                error: error instanceof Error ? error.message : 'LLM chat failed',
-                timestamp: new Date()
-            });
+      if (command === "projectDetail.ingest") {
+        const commandPromise = vscode.commands.executeCommand(
+          "samurai-agent.projectDetail.ingest",
+          message.payload,
+        );
+        if (commandPromise && typeof commandPromise.then === "function") {
+          commandPromise.then(
+            (result: unknown) => {
+              webview.postMessage({
+                type: "success",
+                requestId: message.requestId,
+                payload: { finalText: result },
+                timestamp: new Date(),
+              });
+            },
+            (error: unknown) => {
+              webview.postMessage({
+                type: "error",
+                requestId: message.requestId,
+                error:
+                  error instanceof Error
+                    ? error.message
+                    : "Project detail ingestion failed",
+                timestamp: new Date(),
+              });
+            },
+          );
         }
-    }
+        return;
+      }
 
-    private async handleProjectDetailIngest(webview: vscode.Webview, message: any) {
-        const { requestId, payload } = message;
-        try {
-            const finalText = await this.projectDetailService?.ingestProjectDetail(
-                payload.projectId,
-                payload.rawText,
-                payload.mode
+      // Route global settings commands to GlobalDataStore
+      if (
+        command === "loadGlobalSettings" ||
+        command === "saveGlobalSettings"
+      ) {
+        if (!this.globalDataStore) {
+          console.error("GlobalDataStore not initialized");
+          webview.postMessage({
+            type: "error",
+            requestId: message.requestId,
+            error: "GlobalDataStore not initialized",
+            timestamp: new Date(),
+          });
+          return;
+        }
+
+        let response;
+        if (command === "loadGlobalSettings") {
+          response = this.globalDataStore.loadGlobalSettings(message.requestId);
+        } else {
+          response = this.globalDataStore.saveGlobalSettings(
+            message.payload,
+            message.requestId,
+          );
+
+          console.log("Webview Provider: Save response:", response.type);
+
+          // If save was successful, notify all tabs that global settings have been updated
+          if (response.type === "success") {
+            console.log(
+              "Webview Provider: Sending globalSettingsUpdated notification",
             );
-
             webview.postMessage({
-                type: 'success',
-                requestId,
-                payload: { finalText },
-                timestamp: new Date()
+              type: "globalSettingsUpdated",
+              payload: message.payload,
+              timestamp: new Date(),
             });
-        } catch (error) {
-            webview.postMessage({
-                type: 'error',
-                requestId,
-                error: error instanceof Error ? error.message : 'Unknown error occurred',
-                timestamp: new Date()
-            });
+          }
         }
-    }
+        webview.postMessage(response);
+        return;
+      }
 
-    private _getHtmlForWebview(webview: vscode.Webview) {
-        // Generate a nonce for CSP
-        const nonce = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
-        
-        // Resolve each asset to whichever folder actually has that file
-        const agentPanelCssPath = assetUri(webview, this._extensionUri, 'agentPanel.css');
-        const agentPanelJsPath = assetUri(webview, this._extensionUri, 'agentPanel.js');
-        const chatCssPath = assetUri(webview, this._extensionUri, 'chat.css');
-        const chatJsPath = assetUri(webview, this._extensionUri, 'chat.js');
-        const taskCssPath = assetUri(webview, this._extensionUri, 'task.css');
-        const taskJsPath = assetUri(webview, this._extensionUri, 'task.js');
-        const settingsCssPath = assetUri(webview, this._extensionUri, 'settings.css');
-        const settingsJsPath = assetUri(webview, this._extensionUri, 'settings.js');
-        const webviewApiJsPath = assetUri(webview, this._extensionUri, 'webviewApi.js');
-        const testJsPath = assetUri(webview, this._extensionUri, 'test.js');
-        
-        console.log('Webview Provider: Asset paths:', {
-            // CSS paths
-            agentPanelCssPath: agentPanelCssPath.toString(),
-            chatCssPath: chatCssPath.toString(),
-            taskCssPath: taskCssPath.toString(),
-            settingsCssPath: settingsCssPath.toString(),
-            // JS paths
-            webviewApiJsPath: webviewApiJsPath.toString(),
-            agentPanelJsPath: agentPanelJsPath.toString(),
-            chatJsPath: chatJsPath.toString(),
-            taskJsPath: taskJsPath.toString(),
-            settingsJsPath: settingsJsPath.toString(),
-            testJsPath: testJsPath.toString()
+      // Route all other commands to DataStore (project-specific)
+      if (!this.dataStore) {
+        console.error("DataStore not initialized");
+        webview.postMessage({
+          type: "error",
+          requestId: message.requestId,
+          error: "DataStore not initialized",
+          timestamp: new Date(),
         });
+        return;
+      }
 
-        return `<!DOCTYPE html>
+      const response = this.dataStore.handleWebviewMessage(message);
+      webview.postMessage(response);
+    } catch (error) {
+      console.error("Error handling webview message:", error);
+      webview.postMessage({
+        type: "error",
+        requestId: message.requestId,
+        error:
+          error instanceof Error ? error.message : "Unknown error occurred",
+        timestamp: new Date(),
+      });
+    }
+  }
+
+  private async handleLLMChat(webview: vscode.Webview, message: any) {
+    const { requestId, payload } = message;
+    try {
+      const response = await this.llmProviderService.chat(payload);
+      webview.postMessage({
+        type: "success",
+        requestId,
+        payload: response,
+        timestamp: new Date(),
+      });
+    } catch (error) {
+      webview.postMessage({
+        type: "error",
+        requestId,
+        error: error instanceof Error ? error.message : "LLM chat failed",
+        timestamp: new Date(),
+      });
+    }
+  }
+
+  private async handleProjectDetailIngest(
+    webview: vscode.Webview,
+    message: any,
+  ) {
+    const { requestId, payload } = message;
+    try {
+      const finalText = await this.projectDetailService?.ingestProjectDetail(
+        payload.projectId,
+        payload.rawText,
+        payload.mode,
+      );
+
+      webview.postMessage({
+        type: "success",
+        requestId,
+        payload: { finalText },
+        timestamp: new Date(),
+      });
+    } catch (error) {
+      webview.postMessage({
+        type: "error",
+        requestId,
+        error:
+          error instanceof Error ? error.message : "Unknown error occurred",
+        timestamp: new Date(),
+      });
+    }
+  }
+
+  private _getHtmlForWebview(webview: vscode.Webview) {
+    // Generate a nonce for CSP
+    const nonce =
+      Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+
+    // Resolve each asset to whichever folder actually has that file
+    const agentPanelCssPath = assetUri(
+      webview,
+      this._extensionUri,
+      "agentPanel.css",
+    );
+    const agentPanelJsPath = assetUri(
+      webview,
+      this._extensionUri,
+      "agentPanel.js",
+    );
+    const chatCssPath = assetUri(webview, this._extensionUri, "chat.css");
+    const chatJsPath = assetUri(webview, this._extensionUri, "chat.js");
+    const taskCssPath = assetUri(webview, this._extensionUri, "task.css");
+    const taskJsPath = assetUri(webview, this._extensionUri, "task.js");
+    const settingsCssPath = assetUri(
+      webview,
+      this._extensionUri,
+      "settings.css",
+    );
+    const settingsJsPath = assetUri(webview, this._extensionUri, "settings.js");
+    const webviewApiJsPath = assetUri(
+      webview,
+      this._extensionUri,
+      "webviewApi.js",
+    );
+    const testJsPath = assetUri(webview, this._extensionUri, "test.js");
+
+    console.log("Webview Provider: Asset paths:", {
+      // CSS paths
+      agentPanelCssPath: agentPanelCssPath.toString(),
+      chatCssPath: chatCssPath.toString(),
+      taskCssPath: taskCssPath.toString(),
+      settingsCssPath: settingsCssPath.toString(),
+      // JS paths
+      webviewApiJsPath: webviewApiJsPath.toString(),
+      agentPanelJsPath: agentPanelJsPath.toString(),
+      chatJsPath: chatJsPath.toString(),
+      taskJsPath: taskJsPath.toString(),
+      settingsJsPath: settingsJsPath.toString(),
+      testJsPath: testJsPath.toString(),
+    });
+
+    return `<!DOCTYPE html>
         <html lang="en">
         <head>
             <meta charset="UTF-8">
@@ -456,96 +498,94 @@ export class SamuraiAgentPanelWebviewViewProvider implements vscode.WebviewViewP
             </script>
         </body>
         </html>`;
-    }
-    
-    /**
-     * Sends initial settings to the webview, including determining the initial primaryLLMModel
-     */
-    private async sendInitialSettingsToWebview(webview: vscode.Webview) {
-        try {
-            // Load global settings to check API keys
-            const globalSettingsResponse = this.globalDataStore?.loadGlobalSettings();
-            const globalSettings = globalSettingsResponse?.payload;
-            
-            
-            // Load project settings
-            const projectSettingsResponse = this.dataStore?.readProjectSettings();
-            const projectSettings = projectSettingsResponse?.payload;
-            
-            if (globalSettings && projectSettings) {
-                // Determine initial primaryLLMModel if it's null
-                let initialPrimaryLLMModel = projectSettings.primaryLLMModel;
-                
-                if (!initialPrimaryLLMModel) {
-                    // Find the first available model based on API keys
-                    const availableModels = this.getAvailableModels(globalSettings);
-                    if (availableModels.length > 0) {
-                        initialPrimaryLLMModel = availableModels[0].id;
-                        
-                        // Update project settings with the initial model
-                        const updatedProjectSettings = {
-                            ...projectSettings,
-                            primaryLLMModel: initialPrimaryLLMModel
-                        };
-                        
-                        // Save the updated project settings
-                        this.dataStore?.saveProjectSettings(updatedProjectSettings);
-                    }
-                }
-                
-                // Get available models
-                const availableModels = this.getAvailableModels(globalSettings);
-                
-                
-                // Send settings to webview
-                webview.postMessage({
-                    type: 'initialSettings',
-                    payload: {
-                        globalSettings,
-                        projectSettings: {
-                            ...projectSettings,
-                            primaryLLMModel: initialPrimaryLLMModel
-                        },
-                        availableModels,
-                        llmModels: LLM_MODELS
-                    },
-                    timestamp: new Date()
-                });
-            }
-        } catch (error) {
-            console.error('Error sending initial settings to webview:', error);
+  }
+
+  /**
+   * Sends initial settings to the webview, including determining the initial primaryLLMModel
+   */
+  private async sendInitialSettingsToWebview(webview: vscode.Webview) {
+    try {
+      // Load global settings to check API keys
+      const globalSettingsResponse = this.globalDataStore?.loadGlobalSettings();
+      const globalSettings = globalSettingsResponse?.payload;
+
+      // Load project settings
+      const projectSettingsResponse = this.dataStore?.readProjectSettings();
+      const projectSettings = projectSettingsResponse?.payload;
+
+      if (globalSettings && projectSettings) {
+        // Determine initial primaryLLMModel if it's null
+        let initialPrimaryLLMModel = projectSettings.primaryLLMModel;
+
+        if (!initialPrimaryLLMModel) {
+          // Find the first available model based on API keys
+          const availableModels = this.getAvailableModels(globalSettings);
+          if (availableModels.length > 0) {
+            initialPrimaryLLMModel = availableModels[0].id;
+
+            // Update project settings with the initial model
+            const updatedProjectSettings = {
+              ...projectSettings,
+              primaryLLMModel: initialPrimaryLLMModel,
+            };
+
+            // Save the updated project settings
+            this.dataStore?.saveProjectSettings(updatedProjectSettings);
+          }
         }
-    }
-    
-    /**
-     * Gets available models based on configured API keys
-     */
-    private getAvailableModels(globalSettings: any) {
-        const availableModels = [];
-        
-        // Check OpenAI models
-        if (globalSettings.openaiApiKey && globalSettings.openaiApiKey.trim()) {
-            availableModels.push(...LLM_MODELS.openai);
-        }
-        
-        // Check Google models
-        if (globalSettings.geminiApiKey && globalSettings.geminiApiKey.trim()) {
-            availableModels.push(...LLM_MODELS.google);
-        }
-        
-        // Check Anthropic models
-        if (globalSettings.claudeApiKey && globalSettings.claudeApiKey.trim()) {
-            availableModels.push(...LLM_MODELS.anthropic);
-        }
-        
-        // Sort alphabetically by provider, then by model name
-        return availableModels.sort((a, b) => {
-            const providerA = a.provider;
-            const providerB = b.provider;
-            if (providerA !== providerB) {
-                return providerA.localeCompare(providerB);
-            }
-            return a.name.localeCompare(b.name);
+
+        // Get available models
+        const availableModels = this.getAvailableModels(globalSettings);
+
+        // Send settings to webview
+        webview.postMessage({
+          type: "initialSettings",
+          payload: {
+            globalSettings,
+            projectSettings: {
+              ...projectSettings,
+              primaryLLMModel: initialPrimaryLLMModel,
+            },
+            availableModels,
+            llmModels: LLM_MODELS,
+          },
+          timestamp: new Date(),
         });
+      }
+    } catch (error) {
+      console.error("Error sending initial settings to webview:", error);
     }
+  }
+
+  /**
+   * Gets available models based on configured API keys
+   */
+  private getAvailableModels(globalSettings: any) {
+    const availableModels = [];
+
+    // Check OpenAI models
+    if (globalSettings.openaiApiKey && globalSettings.openaiApiKey.trim()) {
+      availableModels.push(...LLM_MODELS.openai);
+    }
+
+    // Check Google models
+    if (globalSettings.geminiApiKey && globalSettings.geminiApiKey.trim()) {
+      availableModels.push(...LLM_MODELS.google);
+    }
+
+    // Check Anthropic models
+    if (globalSettings.claudeApiKey && globalSettings.claudeApiKey.trim()) {
+      availableModels.push(...LLM_MODELS.anthropic);
+    }
+
+    // Sort alphabetically by provider, then by model name
+    return availableModels.sort((a, b) => {
+      const providerA = a.provider;
+      const providerB = b.provider;
+      if (providerA !== providerB) {
+        return providerA.localeCompare(providerB);
+      }
+      return a.name.localeCompare(b.name);
+    });
+  }
 }
