@@ -298,26 +298,44 @@ describe("Webview Routing Integration", () => {
       assert(Array.isArray(response.payload));
     });
 
-    it("should route session commands to DataStore", () => {
-      // Reset messages
+    it("should route persistence session commands to DataStore", () => {
       mockWebview.messages = [];
 
-      const message = {
-        command: "loadSessions",
-        requestId: "test-sessions-load",
+      const createMessage = {
+        command: "samurai-agent.persistence.createSession",
+        requestId: "test-session-create",
+        payload: { title: "Test", projectId: "project-1" },
       };
 
-      // Access the private method for testing
-      (provider as any).handleWebviewMessage(mockWebview, message);
+      (provider as any).handleWebviewMessage(mockWebview, createMessage);
 
-      // Verify message was sent back
       assert.strictEqual(mockWebview.messages.length, 1);
-      const response = mockWebview.messages[0];
+      const createResponse = mockWebview.messages[0];
 
-      // Should be a successful response from DataStore (empty array for new workspace)
-      assert.strictEqual(response.type, "success");
-      assert.strictEqual(response.requestId, "test-sessions-load");
-      assert(Array.isArray(response.payload));
+      assert.strictEqual(createResponse.type, "success");
+      assert.strictEqual(createResponse.requestId, "test-session-create");
+      const createdSession = createResponse.payload;
+      assert(createdSession);
+
+      mockWebview.messages = [];
+      const loadMessage = {
+        command: "samurai-agent.persistence.loadSession",
+        requestId: "test-session-load",
+        payload: { sessionId: createdSession?.id },
+      };
+      (provider as any).handleWebviewMessage(mockWebview, loadMessage);
+      const loadResponse = mockWebview.messages[0];
+      assert.strictEqual(loadResponse.type, "success");
+
+      mockWebview.messages = [];
+      const updateMessage = {
+        command: "samurai-agent.persistence.updateSession",
+        requestId: "test-session-update",
+        payload: { sessionId: createdSession?.id, updates: { title: "Updated" } },
+      };
+      (provider as any).handleWebviewMessage(mockWebview, updateMessage);
+      const updateResponse = mockWebview.messages[0];
+      assert.strictEqual(updateResponse.type, "success");
     });
   });
 

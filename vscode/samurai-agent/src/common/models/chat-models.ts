@@ -33,7 +33,8 @@ export enum SessionStatus {
  * Represents a single message in a chat conversation
  */
 export interface ChatMessage extends BaseModel {
-    session_id: string;
+    sessionId: string;
+    projectId: string;
     type: MessageType;
     content: string;
     role: string; // For compatibility with LLM APIs
@@ -65,7 +66,7 @@ export interface Session extends BaseModel {
     metadata: {
         model?: string; // Default model for the session
         mode?: string; // Chat mode (default, developer, creative, analytical)
-        projectId?: string; // Associated project
+        projectId: string; // Associated project
         [key: string]: any;
     };
 }
@@ -74,7 +75,8 @@ export interface Session extends BaseModel {
  * Chat message creation request
  */
 export interface CreateChatMessageRequest {
-    session_id: string;
+    sessionId: string;
+    projectId: string;
     type: MessageType;
     content: string;
     role: string;
@@ -98,7 +100,7 @@ export interface CreateSessionRequest {
     title: string;
     model?: string;
     mode?: string;
-    projectId?: string;
+    projectId: string;
     tags?: string[];
     metadata?: Record<string, any>;
 }

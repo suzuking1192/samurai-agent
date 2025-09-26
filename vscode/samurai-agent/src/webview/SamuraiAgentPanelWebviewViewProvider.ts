@@ -107,13 +107,13 @@ export class SamuraiAgentPanelWebviewViewProvider
 
     try {
       // LLM chat handling
-      if (command === "llm.chat") {
-        const command = vscode.commands.executeCommand(
+      if (command === "samurai-agent.llm.chat") {
+        const commandPromise = vscode.commands.executeCommand(
           "samurai-agent.llm.chat",
           message.payload,
         );
-        if (command && typeof command.then === "function") {
-          command.then(
+        if (commandPromise && typeof commandPromise.then === "function") {
+          commandPromise.then(
             (result: unknown) => {
               webview.postMessage({
                 type: "success",
@@ -206,6 +206,28 @@ export class SamuraiAgentPanelWebviewViewProvider
             });
           }
         }
+        webview.postMessage(response);
+        return;
+      }
+
+      // Route namespaced persistence commands to DataStore
+      if (command?.startsWith("samurai-agent.persistence.")) {
+        if (!this.dataStore) {
+          console.error("DataStore not initialized");
+          webview.postMessage({
+            type: "error",
+            requestId: message.requestId,
+            error: "DataStore not initialized",
+            timestamp: new Date(),
+          });
+          return;
+        }
+
+        const mappedMessage = {
+          ...message,
+          command: command.replace("samurai-agent.persistence.", ""),
+        };
+        const response = this.dataStore.handleWebviewMessage(mappedMessage);
         webview.postMessage(response);
         return;
       }
@@ -517,6 +539,13 @@ export class SamuraiAgentPanelWebviewViewProvider
         // Determine initial primaryLLMModel if it's null
         let initialPrimaryLLMModel = projectSettings.primaryLLMModel;
 
+        if (
+          initialPrimaryLLMModel &&
+          !this.isModelAvailable(initialPrimaryLLMModel, globalSettings)
+        ) {
+          initialPrimaryLLMModel = null;
+        }
+
         if (!initialPrimaryLLMModel) {
           // Find the first available model based on API keys
           const availableModels = this.getAvailableModels(globalSettings);
@@ -587,5 +616,10 @@ export class SamuraiAgentPanelWebviewViewProvider
       }
       return a.name.localeCompare(b.name);
     });
+  }
+
+  private isModelAvailable(modelId: string, globalSettings: any): boolean {
+    const availableModels = this.getAvailableModels(globalSettings);
+    return availableModels.some((model) => model.id === modelId);
   }
 }

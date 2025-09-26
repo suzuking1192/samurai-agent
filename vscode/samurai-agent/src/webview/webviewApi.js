@@ -117,9 +117,9 @@ const persistenceApi = {
     deleteMemory: (memoryId) => postCommand('deleteMemory', { memoryId }),
     
     // Session operations
-    loadSessions: () => postCommand('loadSessions'),
-    saveSession: (session) => postCommand('saveSession', session),
-    deleteSession: (sessionId) => postCommand('deleteSession', { sessionId }),
+    createSession: (request) => postCommand('createSession', request),
+    loadSession: (sessionId) => postCommand('loadSession', { sessionId }),
+    updateSession: (sessionId, updates) => postCommand('updateSession', { sessionId, updates }),
     
     // Chat message operations
     loadChatMessagesForSession: (sessionId) => postCommand('loadChatMessagesForSession', { sessionId }),
@@ -136,7 +136,7 @@ const persistenceApi = {
  * LLM operations exposed to the webview
  */
 const llmApi = {
-    chat: (request) => postCommand('llm.chat', request)
+    chat: (request) => postCommand('samurai-agent.llm.chat', request)
 };
 
 /**
@@ -231,21 +231,48 @@ const uiFeedback = {
     window.addEventListener('message', (event) => {
         const message = event.data;
         handleMessage(message);
+        notifySubscribers(message);
     });
 
     if (vscodeApi && typeof vscodeApi.onMessage === 'function') {
         vscodeApi.onMessage((message) => {
             handleMessage(message);
+            notifySubscribers(message);
         });
+    }
+
+    const subscribers = new Set();
+
+    function notifySubscribers(message) {
+        subscribers.forEach(callback => {
+            try {
+                callback(message);
+            } catch (error) {
+                console.error('WebviewApi subscriber error:', error);
+            }
+        });
+    }
+
+    function subscribe(callback) {
+        if (typeof callback === 'function') {
+            subscribers.add(callback);
+            return () => subscribers.delete(callback);
+        }
+        return () => {};
     }
 
     // Export the API
     window.WebviewApi = {
         postCommand,
+        subscribe,
         persistence: persistenceApi,
         llm: llmApi,
         projectDetail: projectDetailApi,
-        ui: uiFeedback
+        ui: uiFeedback,
+        chat: {
+            loadChatHistoryForCurrentSession: (sessionId) =>
+                postCommand('chat.loadHistoryForCurrentSession', { sessionId })
+        }
     };
 
     // Make it globally available for backward compatibility

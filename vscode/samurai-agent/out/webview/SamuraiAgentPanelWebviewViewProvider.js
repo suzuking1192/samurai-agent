@@ -453,6 +453,10 @@ class SamuraiAgentPanelWebviewViewProvider {
             if (globalSettings && projectSettings) {
                 // Determine initial primaryLLMModel if it's null
                 let initialPrimaryLLMModel = projectSettings.primaryLLMModel;
+                if (initialPrimaryLLMModel &&
+                    !this.isModelAvailable(initialPrimaryLLMModel, globalSettings)) {
+                    initialPrimaryLLMModel = null;
+                }
                 if (!initialPrimaryLLMModel) {
                     // Find the first available model based on API keys
                     const availableModels = this.getAvailableModels(globalSettings);
@@ -515,6 +519,10 @@ class SamuraiAgentPanelWebviewViewProvider {
             }
             return a.name.localeCompare(b.name);
         });
+    }
+    isModelAvailable(modelId, globalSettings) {
+        const availableModels = this.getAvailableModels(globalSettings);
+        return availableModels.some((model) => model.id === modelId);
     }
 }
 exports.SamuraiAgentPanelWebviewViewProvider = SamuraiAgentPanelWebviewViewProvider;

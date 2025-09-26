@@ -166,3 +166,39 @@ body {
         width: 100%;
     }
 }
+
+.chat-message {
+    margin-bottom: 12px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    line-height: 1.5;
+    word-break: break-word;
+    max-width: 90%;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+.user-message {
+    background-color: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    margin-left: auto;
+    text-align: right;
+}
+
+.assistant-message {
+    background-color: var(--vscode-panel-background);
+    color: var(--vscode-foreground);
+    margin-right: auto;
+    text-align: left;
+}
+
+.system-message {
+    background-color: rgba(255, 255, 255, 0.06);
+    color: var(--vscode-descriptionForeground);
+    margin: 0 auto;
+    text-align: center;
+}
+
+.assistant-message.pending {
+    opacity: 0.7;
+    font-style: italic;
+}

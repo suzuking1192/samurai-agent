@@ -10,33 +10,26 @@ import { Task } from '../common/models/task-models';
 import { Memory } from '../common/models/memory-models';
 import { ProjectSettings, GlobalSettings, IProjectSettings } from '../common/models/settings-models';
 import { ApiResponse, ResponseType } from '../common/models/response-models';
+import {
+    ChatMessage,
+    CreateChatMessageRequest,
+    CreateSessionRequest,
+    MessageType,
+    Session,
+    SessionStatus
+} from '../common/models/chat-models';
+import { randomUUID } from 'crypto';
 
-// Temporary interfaces until they're moved to proper model files
-interface ChatMessage {
-    id: string;
-    sessionId: string;
-    role: 'user' | 'assistant' | 'system';
-    content: string;
-    model?: string;
-    mode?: string;
-    tokens?: number;
-    cost?: number;
-    createdAt: Date;
-    updatedAt: Date;
-    metadata: Record<string, any>;
-}
+type StoredSession = Omit<Session, 'createdAt' | 'updatedAt' | 'lastMessageAt'> & {
+    createdAt: string;
+    updatedAt: string;
+    lastMessageAt: string | null;
+};
 
-interface Session {
-    id: string;
-    title: string;
-    description?: string;
-    isActive: boolean;
-    messageCount: number;
-    lastMessageAt?: Date;
-    createdAt: Date;
-    updatedAt: Date;
-    metadata: Record<string, any>;
-}
+type StoredChatMessage = Omit<ChatMessage, 'createdAt' | 'updatedAt'> & {
+    createdAt: string;
+    updatedAt: string;
+};
 
 export class DataStore {
     private workspaceRoot: string;
@@ -118,6 +111,207 @@ export class DataStore {
             console.error(`Error writing single JSON file ${filePath}:`, error);
             throw error;
         }
+    }
+
+    private getSessionsFilePath(): string {
+        return this.getDataFilePath('sessions');
+    }
+
+    private getChatMessagesFilePath(): string {
+        return this.getDataFilePath('chatMessages');
+    }
+
+    private readStoredSessions(): StoredSession[] {
+        return this.readJsonFile<StoredSession>(this.getSessionsFilePath());
+    }
+
+    private writeStoredSessions(sessions: StoredSession[]): void {
+        this.writeJsonFile(this.getSessionsFilePath(), sessions);
+    }
+
+    private readStoredChatMessages(): StoredChatMessage[] {
+        return this.readJsonFile<StoredChatMessage>(this.getChatMessagesFilePath());
+    }
+
+    private writeStoredChatMessages(messages: StoredChatMessage[]): void {
+        this.writeJsonFile(this.getChatMessagesFilePath(), messages);
+    }
+
+    private toStoredSession(session: Session): StoredSession {
+        return {
+            ...session,
+            createdAt: session.createdAt.toISOString(),
+            updatedAt: session.updatedAt.toISOString(),
+            lastMessageAt: session.lastMessageAt ? session.lastMessageAt.toISOString() : null
+        };
+    }
+
+    private fromStoredSession(stored: StoredSession): Session {
+        return {
+            ...stored,
+            createdAt: new Date(stored.createdAt),
+            updatedAt: new Date(stored.updatedAt),
+            lastMessageAt: stored.lastMessageAt ? new Date(stored.lastMessageAt) : new Date(stored.createdAt),
+            metadata: stored.metadata ?? {
+                projectId: ''
+            }
+        };
+    }
+
+    private toStoredChatMessage(message: ChatMessage): StoredChatMessage {
+        return {
+            ...message,
+            createdAt: message.createdAt.toISOString(),
+            updatedAt: message.updatedAt.toISOString()
+        };
+    }
+
+    private fromStoredChatMessage(stored: StoredChatMessage): ChatMessage {
+        return {
+            ...stored,
+            createdAt: new Date(stored.createdAt),
+            updatedAt: new Date(stored.updatedAt),
+            metadata: stored.metadata ?? {}
+        };
+    }
+
+    private loadSessionInternal(sessionId: string): Session | undefined {
+        if (!sessionId) {
+            return undefined;
+        }
+        const storedSessions = this.readStoredSessions();
+        const stored = storedSessions.find((session) => session.id === sessionId);
+        return stored ? this.fromStoredSession(stored) : undefined;
+    }
+
+    private loadSessionsInternal(): Session[] {
+        const storedSessions = this.readStoredSessions();
+        return storedSessions.map((session) => this.fromStoredSession(session));
+    }
+
+    private createSessionInternal(request: CreateSessionRequest): Session {
+        if (!request?.projectId) {
+            throw new Error('Project ID is required to create a session');
+        }
+
+        const now = new Date();
+        const session: Session = {
+            id: randomUUID(),
+            title: request.title?.trim() || 'New Conversation',
+            status: SessionStatus.ACTIVE,
+            messageCount: 0,
+            totalTokens: 0,
+            totalCost: 0,
+            lastMessageAt: now,
+            tags: request.tags ?? [],
+            metadata: {
+                projectId: request.projectId,
+                ...(request.model ? { model: request.model } : {}),
+                ...(request.mode ? { mode: request.mode } : {}),
+                ...(request.metadata ?? {})
+            },
+            createdAt: now,
+            updatedAt: now
+        };
+
+        const storedSessions = this.readStoredSessions();
+        storedSessions.push(this.toStoredSession(session));
+        this.writeStoredSessions(storedSessions);
+
+        return session;
+    }
+
+    private updateSessionInternal(sessionId: string, updates: Partial<Session>): Session {
+        if (!sessionId) {
+            throw new Error('Session ID is required to update a session');
+        }
+
+        const storedSessions = this.readStoredSessions();
+        const sessionIndex = storedSessions.findIndex((session) => session.id === sessionId);
+
+        if (sessionIndex < 0) {
+            throw new Error(`Session not found: ${sessionId}`);
+        }
+
+        const currentSession = this.fromStoredSession(storedSessions[sessionIndex]);
+        const now = new Date();
+
+        const mergedMetadata = updates.metadata
+            ? { ...currentSession.metadata, ...updates.metadata }
+            : currentSession.metadata;
+
+        const updatedSession: Session = {
+            ...currentSession,
+            ...updates,
+            metadata: mergedMetadata,
+            lastMessageAt: updates.lastMessageAt ?? currentSession.lastMessageAt,
+            tags: updates.tags ?? currentSession.tags,
+            status: updates.status ?? currentSession.status,
+            updatedAt: now
+        };
+
+        storedSessions[sessionIndex] = this.toStoredSession(updatedSession);
+        this.writeStoredSessions(storedSessions);
+
+        return updatedSession;
+    }
+
+    private saveChatMessageInternal(request: CreateChatMessageRequest): ChatMessage {
+        if (!request?.sessionId) {
+            throw new Error('Session ID is required to save a chat message');
+        }
+        if (!request?.projectId) {
+            throw new Error('Project ID is required to save a chat message');
+        }
+
+        const session = this.loadSessionInternal(request.sessionId);
+        if (!session) {
+            throw new Error(`Session not found: ${request.sessionId}`);
+        }
+
+        const now = new Date();
+        const chatMessage: ChatMessage = {
+            id: randomUUID(),
+            sessionId: request.sessionId,
+            projectId: request.projectId,
+            type: request.type ?? MessageType.USER,
+            content: request.content,
+            role: request.role,
+            metadata: { ...(request.metadata ?? {}) },
+            parentMessageId: request.parentMessageId,
+            isEdited: false,
+            createdAt: now,
+            updatedAt: now
+        };
+
+        const messages = this.readStoredChatMessages();
+        messages.push(this.toStoredChatMessage(chatMessage));
+        this.writeStoredChatMessages(messages);
+
+        const tokensDelta = typeof chatMessage.metadata?.tokens === 'number' ? chatMessage.metadata.tokens : 0;
+        const costDelta = typeof chatMessage.metadata?.cost === 'number' ? chatMessage.metadata.cost : 0;
+
+        this.updateSessionInternal(session.id, {
+            messageCount: session.messageCount + 1,
+            totalTokens: session.totalTokens + tokensDelta,
+            totalCost: session.totalCost + costDelta,
+            lastMessageAt: chatMessage.createdAt
+        });
+
+        return chatMessage;
+    }
+
+    private loadChatMessagesForSessionInternal(sessionId: string): ChatMessage[] {
+        if (!sessionId) {
+            return [];
+        }
+
+        const messages = this.readStoredChatMessages()
+            .filter((message) => message.sessionId === sessionId)
+            .map((message) => this.fromStoredChatMessage(message))
+            .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+
+        return messages;
     }
     
     /**
@@ -221,18 +415,18 @@ export class DataStore {
                     return this.handleDeleteMemory(requestId, payload);
                 
                 // Session operations
-                case 'loadSessions':
-                    return this.handleLoadSessions(requestId);
-                case 'saveSession':
-                    return this.handleSaveSession(requestId, payload);
-                case 'deleteSession':
-                    return this.handleDeleteSession(requestId, payload);
-                
+                case 'createSession':
+                    return this.handleCreateSessionCommand(requestId, payload);
+                case 'loadSession':
+                    return this.handleLoadSessionCommand(requestId, payload);
+                case 'updateSession':
+                    return this.handleUpdateSessionCommand(requestId, payload);
+        
                 // Chat message operations
                 case 'loadChatMessagesForSession':
-                    return this.handleLoadChatMessagesForSession(requestId, payload);
+                    return this.handleLoadChatMessagesForSessionCommand(requestId, payload);
                 case 'saveChatMessage':
-                    return this.handleSaveChatMessage(requestId, payload);
+                    return this.handleSaveChatMessageCommand(requestId, payload);
                 
                 // Settings operations
                 case 'loadProjectSettings':
@@ -309,7 +503,7 @@ export class DataStore {
             
             if (!rawSettings) {
                 // Return default project settings if file doesn't exist
-const defaultSettings: ProjectSettings = {
+                const defaultSettings: ProjectSettings = {
                     id: 'project-settings',
                     projectId: 'default-project',
                     projectName: 'Untitled Project',
@@ -327,6 +521,7 @@ const defaultSettings: ProjectSettings = {
                     theme: 'auto',
                     autoSave: true,
                     primaryLLMModel: null,
+                    currentSessionId: null,
                     metadata: {},
                     createdAt: new Date(),
                     updatedAt: new Date()
@@ -340,6 +535,7 @@ const defaultSettings: ProjectSettings = {
                 theme: rawSettings.theme || 'auto',
                 autoSave: rawSettings.autoSave !== undefined ? rawSettings.autoSave : true,
                 primaryLLMModel: rawSettings.primaryLLMModel !== undefined ? rawSettings.primaryLLMModel : null,
+                currentSessionId: rawSettings.currentSessionId ?? null,
                 rawProjectDetailContent: rawSettings.rawProjectDetailContent ?? rawSettings.projectDetailText ?? '',
                 digestedProjectDetailContent: rawSettings.digestedProjectDetailContent ?? rawSettings.digestedMemory ?? '',
                 createdAt: rawSettings.createdAt ? new Date(rawSettings.createdAt) : new Date(),
@@ -364,6 +560,7 @@ const defaultSettings: ProjectSettings = {
                 theme: settings.theme || 'auto',
                 autoSave: settings.autoSave !== undefined ? settings.autoSave : true,
                 primaryLLMModel: settings.primaryLLMModel !== undefined ? settings.primaryLLMModel : null,
+                currentSessionId: settings.currentSessionId ?? null,
                 rawProjectDetailContent: settings.rawProjectDetailContent ?? settings.projectDetailText ?? '',
                 digestedProjectDetailContent: settings.digestedProjectDetailContent ?? settings.digestedMemory ?? ''
             };
@@ -456,64 +653,66 @@ const defaultSettings: ProjectSettings = {
     }
     
     // Session operation handlers
-    private handleLoadSessions(requestId?: string): ApiResponse<any> {
+    private handleCreateSessionCommand(requestId?: string, payload?: CreateSessionRequest): ApiResponse<any> {
         try {
-            const sessions = this.readJsonFile<Session>(this.getDataFilePath('sessions'));
-            return this.createSuccessResponse(requestId, sessions);
-            } catch (error) {
-            return this.createErrorResponse(requestId, `Failed to load sessions: ${error instanceof Error ? error.message : 'Unknown error'}`);
-        }
-    }
-    
-    private handleSaveSession(requestId?: string, session?: Session): ApiResponse<any> {
-        try {
-            if (!session) {
-                return this.createErrorResponse(requestId, 'Session data is required');
+            if (!payload) {
+                return this.createErrorResponse(requestId, 'Session request is required');
             }
-            
-            const savedSession = this.upsertCollectionItem<Session>(this.getDataFilePath('sessions'), session);
-            return this.createSuccessResponse(requestId, savedSession);
+
+            const session = this.createSessionInternal(payload);
+            return this.createSuccessResponse(requestId, session);
         } catch (error) {
-            return this.createErrorResponse(requestId, `Failed to save session: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            return this.createErrorResponse(requestId, `Failed to create session: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
     }
-    
-    private handleDeleteSession(requestId?: string, payload?: any): ApiResponse<any> {
+
+    private handleLoadSessionCommand(requestId?: string, payload?: { sessionId: string }): ApiResponse<any> {
         try {
             if (!payload?.sessionId) {
                 return this.createErrorResponse(requestId, 'Session ID is required');
             }
-            
-            const deleted = this.deleteCollectionItem<Session>(this.getDataFilePath('sessions'), payload.sessionId);
-            return this.createSuccessResponse(requestId, deleted);
+
+            const session = this.loadSessionInternal(payload.sessionId);
+            return this.createSuccessResponse(requestId, session);
         } catch (error) {
-            return this.createErrorResponse(requestId, `Failed to delete session: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            return this.createErrorResponse(requestId, `Failed to load session: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
     }
-    
-    // Chat message operation handlers
-    private handleLoadChatMessagesForSession(requestId?: string, payload?: any): ApiResponse<any> {
+
+    private handleUpdateSessionCommand(requestId?: string, payload?: { sessionId: string; updates: Partial<Session> }): ApiResponse<any> {
+        try {
+            if (!payload?.sessionId || !payload?.updates) {
+                return this.createErrorResponse(requestId, 'Session ID and updates are required');
+            }
+
+            const updatedSession = this.updateSessionInternal(payload.sessionId, payload.updates);
+            return this.createSuccessResponse(requestId, updatedSession);
+        } catch (error) {
+            return this.createErrorResponse(requestId, `Failed to update session: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+    }
+
+    private handleLoadChatMessagesForSessionCommand(requestId?: string, payload?: any): ApiResponse<any> {
         try {
             if (!payload?.sessionId) {
                 return this.createErrorResponse(requestId, 'Session ID is required');
             }
-            
-            const messages = this.readJsonFile<ChatMessage>(this.getDataFilePath('chatMessages'));
-            const sessionMessages = messages.filter(msg => msg.sessionId === payload.sessionId);
-            
-            return this.createSuccessResponse(requestId, sessionMessages);
+
+            const messages = this.loadChatMessagesForSessionInternal(payload.sessionId);
+
+            return this.createSuccessResponse(requestId, messages);
         } catch (error) {
             return this.createErrorResponse(requestId, `Failed to load chat messages: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
     }
-    
-    private handleSaveChatMessage(requestId?: string, message?: ChatMessage): ApiResponse<any> {
+
+    private handleSaveChatMessageCommand(requestId?: string, payload?: CreateChatMessageRequest): ApiResponse<any> {
         try {
-            if (!message) {
+            if (!payload) {
                 return this.createErrorResponse(requestId, 'Message data is required');
             }
-            
-            const savedMessage = this.upsertCollectionItem<ChatMessage>(this.getDataFilePath('chatMessages'), message);
+
+            const savedMessage = this.saveChatMessageInternal(payload);
             return this.createSuccessResponse(requestId, savedMessage);
         } catch (error) {
             return this.createErrorResponse(requestId, `Failed to save chat message: ${error instanceof Error ? error.message : 'Unknown error'}`);

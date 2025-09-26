@@ -20,10 +20,10 @@ export class GlobalDataStore {
             // Windows: %APPDATA%/samurai-agent/
             this.globalConfigDir = path.join(homeDir, 'AppData', 'Roaming', 'samurai-agent');
         } else {
-            // Linux/macOS: ~/.config/samurai-agent/
-            this.globalConfigDir = path.join(homeDir, '.config', 'samurai-agent');
+            const configHome = process.env.XDG_CONFIG_HOME || path.join(homeDir, '.config');
+            this.globalConfigDir = path.join(configHome, 'samurai-agent');
         }
-        
+
         this.globalSettingsFile = path.join(this.globalConfigDir, 'global_user_settings.json');
         this.ensureConfigDirectory();
     }

@@ -408,6 +408,163 @@ describe('DataStore', () => {
             }));
             expect(mockFs.writeFileSync).toHaveBeenCalled();
         });
+
+        it('should handle createSession command', () => {
+            const message = {
+                command: 'createSession',
+                requestId: 'test-session-create',
+                payload: {
+                    title: 'Test Session',
+                    projectId: 'project-1'
+                }
+            };
+
+            mockFs.readFileSync.mockImplementation((filePath: any) => {
+                if (typeof filePath === 'string' && filePath.includes('sessions.json')) {
+                    return '[]';
+                }
+                return '[]';
+            });
+
+            const response = dataStore.handleWebviewMessage(message);
+
+            expect(response.type).toBe('success');
+            expect(response.payload).toEqual(expect.objectContaining({
+                title: 'Test Session',
+                metadata: expect.objectContaining({ projectId: 'project-1' }),
+                messageCount: 0
+            }));
+            expect(mockFs.writeFileSync).toHaveBeenCalledWith(
+                expect.stringContaining('sessions.json'),
+                expect.stringContaining('Test Session')
+            );
+        });
+
+        it('should handle loadSession command', () => {
+            const sessionId = 'session-123';
+            mockFs.readFileSync.mockImplementation((filePath: any) => {
+                if (typeof filePath === 'string' && filePath.includes('sessions.json')) {
+                    return JSON.stringify([{
+                        id: sessionId,
+                        title: 'Existing Session',
+                        status: 'active',
+                        messageCount: 2,
+                        totalTokens: 0,
+                        totalCost: 0,
+                        lastMessageAt: new Date().toISOString(),
+                        tags: [],
+                        metadata: { projectId: 'project-1' },
+                        createdAt: new Date().toISOString(),
+                        updatedAt: new Date().toISOString()
+                    }]);
+                }
+                return '[]';
+            });
+
+            const response = dataStore.handleWebviewMessage({
+                command: 'loadSession',
+                requestId: 'test-session-load',
+                payload: { sessionId }
+            });
+
+            expect(response.type).toBe('success');
+            expect(response.payload).toEqual(expect.objectContaining({
+                id: sessionId,
+                title: 'Existing Session'
+            }));
+        });
+
+        it('should handle updateSession command', () => {
+            const sessionId = 'session-456';
+            const existingSession = {
+                id: sessionId,
+                title: 'Original Title',
+                status: 'active',
+                messageCount: 0,
+                totalTokens: 0,
+                totalCost: 0,
+                lastMessageAt: new Date().toISOString(),
+                tags: [],
+                metadata: { projectId: 'project-1' },
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+            };
+
+            mockFs.readFileSync.mockImplementation((filePath: any) => {
+                if (typeof filePath === 'string' && filePath.includes('sessions.json')) {
+                    return JSON.stringify([existingSession]);
+                }
+                return '[]';
+            });
+
+            const response = dataStore.handleWebviewMessage({
+                command: 'updateSession',
+                requestId: 'test-session-update',
+                payload: { sessionId, updates: { title: 'Updated Title', messageCount: 5 } }
+            });
+
+            expect(response.type).toBe('success');
+            expect(response.payload).toEqual(expect.objectContaining({
+                id: sessionId,
+                title: 'Updated Title',
+                messageCount: 5
+            }));
+            expect(mockFs.writeFileSync).toHaveBeenCalledWith(
+                expect.stringContaining('sessions.json'),
+                expect.stringContaining('Updated Title')
+            );
+        });
+
+        it('should handle saveChatMessage command and update session aggregates', () => {
+            const sessionId = 'session-789';
+            const existingSession = {
+                id: sessionId,
+                title: 'Chat Session',
+                status: 'active',
+                messageCount: 0,
+                totalTokens: 0,
+                totalCost: 0,
+                lastMessageAt: new Date().toISOString(),
+                tags: [],
+                metadata: { projectId: 'project-1' },
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+            };
+
+            mockFs.readFileSync.mockImplementation((filePath: any) => {
+                if (typeof filePath === 'string' && filePath.includes('sessions.json')) {
+                    return JSON.stringify([existingSession]);
+                }
+                if (typeof filePath === 'string' && filePath.includes('chatMessages.json')) {
+                    return '[]';
+                }
+                return '[]';
+            });
+
+            const response = dataStore.handleWebviewMessage({
+                command: 'saveChatMessage',
+                requestId: 'test-chat-save',
+                payload: {
+                    sessionId,
+                    projectId: 'project-1',
+                    type: 'user',
+                    content: 'Hello agent',
+                    role: 'user',
+                    metadata: { tokens: 10, cost: 0.02 }
+                }
+            });
+
+            expect(response.type).toBe('success');
+            expect(response.payload).toEqual(expect.objectContaining({
+                sessionId,
+                content: 'Hello agent',
+                role: 'user'
+            }));
+            expect(mockFs.writeFileSync).toHaveBeenCalledWith(
+                expect.stringContaining('chatMessages.json'),
+                expect.stringContaining('Hello agent')
+            );
+        });
     });
 
     describe('error handling', () => {

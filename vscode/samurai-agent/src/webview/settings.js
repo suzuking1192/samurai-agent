@@ -445,6 +445,17 @@ async function saveProviderSettings(providerKey) {
     await window.WebviewApi.persistence.saveGlobalSettings(settingsState.globalSettings);
     
     showSaveSuccess(`${providerKey} settings saved successfully!`);
+
+    try {
+        await window.WebviewApi.persistence.loadProjectSettings();
+    } catch (error) {
+        console.error('Error loading project settings after saving provider key:', error);
+    }
+    try {
+        await window.WebviewApi.persistence.loadGlobalSettings();
+    } catch (error) {
+        console.error('Error loading global settings after saving provider key:', error);
+    }
     console.log(`${providerKey} settings saved:`, {
         apiKey: settingsState.globalSettings[`${providerKey}ApiKey`]
     });

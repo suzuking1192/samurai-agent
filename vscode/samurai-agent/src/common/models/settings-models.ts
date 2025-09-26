@@ -57,6 +57,7 @@ export interface IProjectSettings extends BaseModel {
     autoSave: boolean;
     // Primary LLM model selection for this project
     primaryLLMModel: string | null;
+    currentSessionId?: string | null;
     metadata: Record<string, any>;
 }
 
