@@ -31,11 +31,17 @@ export enum ChatMode {
  * Project settings model
  * Specific to a project/workspace
  */
-export interface ProjectSettings extends BaseModel {
+export interface IProjectSettings extends BaseModel {
     projectId: string;
     projectName: string;
-    projectDetailText: string;
-    digestedMemory: string;
+    /** Raw, unprocessed project detail content authored by the user */
+    rawProjectDetailContent: string;
+    /** Digested/summarized project detail content produced by the agent */
+    digestedProjectDetailContent: string;
+    /** @deprecated Legacy field preserved for backward compatibility */
+    projectDetailText?: string;
+    /** @deprecated Legacy field preserved for backward compatibility */
+    digestedMemory?: string;
     defaultModel: string;
     defaultMode: ChatMode;
     customPrompts: Record<string, string>;
@@ -53,6 +59,9 @@ export interface ProjectSettings extends BaseModel {
     primaryLLMModel: string | null;
     metadata: Record<string, any>;
 }
+
+// Backwards compatibility alias while we migrate to the new interface name
+export type ProjectSettings = IProjectSettings;
 
 /**
  * Global settings model
@@ -114,8 +123,8 @@ export interface ProviderSettings {
 export interface UpdateProjectSettingsRequest {
     projectId: string;
     projectName?: string;
-    projectDetailText?: string;
-    digestedMemory?: string;
+    rawProjectDetailContent?: string;
+    digestedProjectDetailContent?: string;
     defaultModel?: string;
     defaultMode?: ChatMode;
     customPrompts?: Record<string, string>;

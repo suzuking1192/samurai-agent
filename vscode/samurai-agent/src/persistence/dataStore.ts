@@ -8,7 +8,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { Task } from '../common/models/task-models';
 import { Memory } from '../common/models/memory-models';
-import { ProjectSettings, GlobalSettings } from '../common/models/settings-models';
+import { ProjectSettings, GlobalSettings, IProjectSettings } from '../common/models/settings-models';
 import { ApiResponse, ResponseType } from '../common/models/response-models';
 
 // Temporary interfaces until they're moved to proper model files
@@ -305,16 +305,16 @@ export class DataStore {
     // ProjectSettings operations
     private handleLoadProjectSettings(requestId?: string): ApiResponse<any> {
         try {
-            const rawSettings = this.readSingleJsonFile<ProjectSettings>(this.getDataFilePath('projectSettings'));
+            const rawSettings = this.readSingleJsonFile<IProjectSettings>(this.getDataFilePath('projectSettings'));
             
             if (!rawSettings) {
                 // Return default project settings if file doesn't exist
-                const defaultSettings: ProjectSettings = {
+const defaultSettings: ProjectSettings = {
                     id: 'project-settings',
                     projectId: 'default-project',
                     projectName: 'Untitled Project',
-                    projectDetailText: '',
-                    digestedMemory: '',
+                    rawProjectDetailContent: '',
+                    digestedProjectDetailContent: '',
                     defaultModel: 'gpt-4o',
                     defaultMode: 'default' as any,
                     customPrompts: {},
@@ -340,6 +340,8 @@ export class DataStore {
                 theme: rawSettings.theme || 'auto',
                 autoSave: rawSettings.autoSave !== undefined ? rawSettings.autoSave : true,
                 primaryLLMModel: rawSettings.primaryLLMModel !== undefined ? rawSettings.primaryLLMModel : null,
+                rawProjectDetailContent: rawSettings.rawProjectDetailContent ?? rawSettings.projectDetailText ?? '',
+                digestedProjectDetailContent: rawSettings.digestedProjectDetailContent ?? rawSettings.digestedMemory ?? '',
                 createdAt: rawSettings.createdAt ? new Date(rawSettings.createdAt) : new Date(),
                 updatedAt: rawSettings.updatedAt ? new Date(rawSettings.updatedAt) : new Date()
             };
@@ -361,7 +363,9 @@ export class DataStore {
                 ...settings,
                 theme: settings.theme || 'auto',
                 autoSave: settings.autoSave !== undefined ? settings.autoSave : true,
-                primaryLLMModel: settings.primaryLLMModel !== undefined ? settings.primaryLLMModel : null
+                primaryLLMModel: settings.primaryLLMModel !== undefined ? settings.primaryLLMModel : null,
+                rawProjectDetailContent: settings.rawProjectDetailContent ?? settings.projectDetailText ?? '',
+                digestedProjectDetailContent: settings.digestedProjectDetailContent ?? settings.digestedMemory ?? ''
             };
 
             // Use writeSingleJsonFile since project settings is a single object, not a collection

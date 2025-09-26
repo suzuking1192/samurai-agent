@@ -303,11 +303,28 @@
     padding: 12px;
     background-color: var(--vscode-editor-background);
     color: var(--vscode-foreground);
-    min-height: 100px;
     font-family: var(--vscode-font-family);
     font-size: var(--vscode-font-size);
-    white-space: pre-wrap;
-    word-wrap: break-word;
+}
+
+#digested-memory-text {
+    width: 100%;
+    min-height: 120px;
+    padding: 8px 12px;
+    border: none;
+    border-radius: 4px;
+    background-color: var(--vscode-editor-background);
+    color: var(--vscode-foreground);
+    font-family: var(--vscode-font-family);
+    font-size: var(--vscode-font-size);
+    resize: vertical;
+    box-sizing: border-box;
+}
+
+#digested-memory-status {
+    margin-left: 12px;
+    color: var(--vscode-descriptionForeground);
+    font-size: 12px;
 }
 
 /* Responsive Design */

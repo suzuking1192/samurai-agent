@@ -3,8 +3,11 @@
  */
 
 import * as vscode from 'vscode';
-import { SamuraiAgentPanelWebviewViewProvider } from '../webview/SamuraiAgentPanelWebviewViewProvider';
-import { DataStore } from '../persistence/dataStore';
+import { SamuraiAgentPanelWebviewViewProvider } from '../src/webview/SamuraiAgentPanelWebviewViewProvider';
+import { DataStore } from '../src/persistence/dataStore';
+import { GlobalDataStore } from '../src/persistence/globalDataStore';
+import { LLMProviderService } from '../src/agent/llm/llmProviderService';
+import { ProjectDetailService } from '../src/memory/projectDetailService';
 
 describe('Persistence Integration Tests', () => {
     let mockExtensionUri: vscode.Uri;
@@ -12,6 +15,8 @@ describe('Persistence Integration Tests', () => {
     let mockWebview: vscode.Webview;
     let provider: SamuraiAgentPanelWebviewViewProvider;
     let dataStore: DataStore;
+    let llmProviderService: LLMProviderService;
+    let projectDetailService: ProjectDetailService;
 
     beforeEach(() => {
         // Mock VS Code objects
@@ -19,22 +24,38 @@ describe('Persistence Integration Tests', () => {
         mockWebview = {
             options: {} as vscode.WebviewOptions,
             html: '',
-            onDidReceiveMessage: jest.fn(),
-            postMessage: jest.fn()
+            onDidReceiveMessage: jest.fn((handler: (message: any) => void) => {
+                mockWebview._handler = handler;
+                return { dispose: jest.fn() };
+            }),
+            postMessage: jest.fn(),
+            _handler: undefined as undefined | ((message: any) => void)
         } as any;
         
         mockWebviewView = {
             webview: mockWebview
         } as any;
 
-        provider = new SamuraiAgentPanelWebviewViewProvider(mockExtensionUri);
+        const globalDataStore = new GlobalDataStore();
+        llmProviderService = new LLMProviderService(globalDataStore);
+        projectDetailService = new ProjectDetailService(llmProviderService, dataStore);
+        provider = new SamuraiAgentPanelWebviewViewProvider(mockExtensionUri, {
+            llmProviderService,
+            projectDetailService,
+            dataStore,
+            globalDataStore
+        });
         
         // Mock workspace
-        const mockWorkspaceFolders = [{
-            uri: vscode.Uri.file('/mock/workspace')
+        const mockWorkspaceFolders: vscode.WorkspaceFolder[] = [{
+            uri: vscode.Uri.file('/mock/workspace'),
+            name: 'mock-workspace',
+            index: 0
         }];
         
-        jest.spyOn(vscode.workspace, 'workspaceFolders', 'get').mockReturnValue(mockWorkspaceFolders);
+        Object.defineProperty(vscode.workspace, 'workspaceFolders', {
+            get: jest.fn(() => mockWorkspaceFolders)
+        });
     });
 
     afterEach(() => {
@@ -100,14 +121,14 @@ describe('Persistence Integration Tests', () => {
             };
 
             // Mock the message handler
-            const messageHandler = mockWebview.onDidReceiveMessage.mock.calls[0][0];
-            
+            const messageHandler = mockWebview._handler as (message: any) => void;
+
             // Mock file system operations
             const fs = require('fs');
-            jest.spyOn(fs, 'existsSync').mockReturnValue(false);
-            jest.spyOn(fs, 'mkdirSync').mockImplementation(() => '');
-            jest.spyOn(fs, 'readFileSync').mockReturnValue('[]');
-            jest.spyOn(fs, 'writeFileSync').mockImplementation(() => {});
+        jest.spyOn(fs, 'existsSync').mockReturnValue(false);
+        jest.spyOn(fs, 'mkdirSync').mockImplementation(() => undefined);
+        jest.spyOn(fs, 'readFileSync').mockReturnValue('[]');
+        jest.spyOn(fs, 'writeFileSync').mockImplementation(() => undefined);
 
             // Trigger the message handler
             messageHandler(taskMessage);
@@ -129,8 +150,8 @@ describe('Persistence Integration Tests', () => {
             };
 
             // Mock the message handler
-            const messageHandler = mockWebview.onDidReceiveMessage.mock.calls[0][0];
-            
+            const messageHandler = mockWebview._handler as (message: any) => void;
+
             // Mock file system operations
             const fs = require('fs');
             jest.spyOn(fs, 'existsSync').mockReturnValue(false);
@@ -157,8 +178,8 @@ describe('Persistence Integration Tests', () => {
             };
 
             // Mock the message handler
-            const messageHandler = mockWebview.onDidReceiveMessage.mock.calls[0][0];
-            
+            const messageHandler = mockWebview._handler as (message: any) => void;
+
             // Mock file system operations
             const fs = require('fs');
             jest.spyOn(fs, 'existsSync').mockReturnValue(false);
@@ -209,7 +230,7 @@ describe('Persistence Integration Tests', () => {
             };
 
             // Save task
-            const saveResponse = dataStore.handleWebviewMessage({
+        const saveResponse = dataStore.handleWebviewMessage({
                 command: 'saveTask',
                 requestId: 'save-1',
                 payload: task
@@ -222,7 +243,7 @@ describe('Persistence Integration Tests', () => {
             }));
 
             // Load tasks
-            const loadResponse = dataStore.handleWebviewMessage({
+        const loadResponse = dataStore.handleWebviewMessage({
                 command: 'loadTasks',
                 requestId: 'load-1',
                 payload: null

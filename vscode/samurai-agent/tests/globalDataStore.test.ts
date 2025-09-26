@@ -62,8 +62,8 @@ describe('GlobalDataStore', () => {
             assert.strictEqual(settings.id, 'global-settings');
             assert.strictEqual(settings.userId, 'default-user');
             assert.strictEqual(settings.openaiApiKey, '');
-            assert.strictEqual(settings.theme, undefined); // Should not have theme
-            assert.strictEqual(settings.autoSave, undefined); // Should not have autoSave
+            assert(!('theme' in settings));
+            assert(!('autoSave' in settings));
         });
 
         it('should load existing settings from file', async () => {
@@ -72,11 +72,8 @@ describe('GlobalDataStore', () => {
                 id: 'global-settings',
                 userId: 'test-user',
                 openaiApiKey: 'sk-test-key',
-                openaiModels: ['gpt-4'],
                 geminiApiKey: '',
-                geminiModels: ['gemini-pro'],
                 claudeApiKey: '',
-                claudeModels: ['claude-3-opus'],
                 defaultProvider: 'openai' as any,
                 defaultModel: 'gpt-4',
                 defaultMode: 'default' as any,
@@ -105,6 +102,8 @@ describe('GlobalDataStore', () => {
             assert.strictEqual(loadedSettings.fontSize, 16);
             assert.strictEqual(loadedSettings.maxHistoryItems, 200);
             assert.strictEqual(loadedSettings.metadata.test, 'value');
+            assert(!('theme' in loadedSettings));
+            assert(!('autoSave' in loadedSettings));
         });
 
         it('should ignore theme and autoSave fields from old format files', async () => {
@@ -113,13 +112,10 @@ describe('GlobalDataStore', () => {
                 id: 'global-settings',
                 userId: 'test-user',
                 openaiApiKey: 'sk-test-key',
-                openaiModels: ['gpt-4'],
                 geminiApiKey: '',
-                geminiModels: ['gemini-pro'],
                 claudeApiKey: '',
-                claudeModels: ['claude-3-opus'],
-                theme: 'dark', // Old field that should be ignored
-                autoSave: false, // Old field that should be ignored
+                theme: 'dark',
+                autoSave: false,
                 fontSize: 14,
                 showTokenCounts: true,
                 showCostEstimates: false,
@@ -142,8 +138,8 @@ describe('GlobalDataStore', () => {
             
             const loadedSettings = response.payload as GlobalSettings;
             // Verify old fields are not present
-            assert.strictEqual(loadedSettings.theme, undefined);
-            assert.strictEqual(loadedSettings.autoSave, undefined);
+            assert(!('theme' in loadedSettings));
+            assert(!('autoSave' in loadedSettings));
             // Verify other fields are preserved
             assert.strictEqual(loadedSettings.openaiApiKey, 'sk-test-key');
             assert.strictEqual(loadedSettings.fontSize, 14);
@@ -167,11 +163,8 @@ describe('GlobalDataStore', () => {
                 id: 'global-settings',
                 userId: 'test-user',
                 openaiApiKey: 'sk-test-save-key',
-                openaiModels: ['gpt-4', 'gpt-3.5-turbo'],
                 geminiApiKey: 'gemini-test-key',
-                geminiModels: ['gemini-pro'],
                 claudeApiKey: 'claude-test-key',
-                claudeModels: ['claude-3-opus'],
                 defaultProvider: 'anthropic' as any,
                 defaultModel: 'claude-3-opus',
                 defaultMode: 'developer' as any,
@@ -180,11 +173,11 @@ describe('GlobalDataStore', () => {
                 showCostEstimates: true,
                 autoSaveInterval: 45,
                 maxHistoryItems: 150,
-                enableNotifications: false,
-                customApiEndpoints: { custom: 'https://api.custom.com' },
-                metadata: { saveTest: 'value' },
-                createdAt: new Date('2024-01-01'),
-                updatedAt: new Date('2024-01-01')
+                enableNotifications: true,
+                customApiEndpoints: {},
+                metadata: { env: 'test' },
+                createdAt: new Date('2024-02-01'),
+                updatedAt: new Date('2024-02-01')
             };
 
             const response = globalDataStore.saveGlobalSettings(testSettings, 'test-request-5');
@@ -209,17 +202,14 @@ describe('GlobalDataStore', () => {
                 id: 'global-settings',
                 userId: 'test-user',
                 openaiApiKey: 'sk-test-timestamp',
-                openaiModels: ['gpt-4'],
                 geminiApiKey: '',
-                geminiModels: ['gemini-pro'],
                 claudeApiKey: '',
-                claudeModels: ['claude-3-opus'],
                 defaultProvider: 'openai' as any,
                 defaultModel: 'gpt-4',
                 defaultMode: 'default' as any,
                 fontSize: 14,
                 showTokenCounts: true,
-                showCostEstimates: true,
+                showCostEstimates: false,
                 autoSaveInterval: 30,
                 maxHistoryItems: 100,
                 enableNotifications: true,
@@ -260,11 +250,8 @@ describe('GlobalDataStore', () => {
                 id: 'global-settings',
                 userId: 'test-user',
                 openaiApiKey: 'sk-openai-test-key-12345',
-                openaiModels: ['gpt-4', 'gpt-3.5-turbo'],
                 geminiApiKey: 'gemini-test-key-67890',
-                geminiModels: ['gemini-pro'],
                 claudeApiKey: 'claude-test-key-abcdef',
-                claudeModels: ['claude-3-opus', 'claude-3-sonnet'],
                 defaultProvider: 'openai' as any,
                 defaultModel: 'gpt-4',
                 defaultMode: 'default' as any,
@@ -306,11 +293,8 @@ describe('GlobalDataStore', () => {
                 id: 'global-settings',
                 userId: 'test-user',
                 openaiApiKey: 'sk-initial-key',
-                openaiModels: ['gpt-4'],
                 geminiApiKey: '',
-                geminiModels: ['gemini-pro'],
                 claudeApiKey: '',
-                claudeModels: ['claude-3-opus'],
                 defaultProvider: 'openai' as any,
                 defaultModel: 'gpt-4',
                 defaultMode: 'default' as any,

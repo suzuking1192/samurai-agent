@@ -133,6 +133,20 @@ const persistenceApi = {
 };
 
 /**
+ * LLM operations exposed to the webview
+ */
+const llmApi = {
+    chat: (request) => postCommand('llm.chat', request)
+};
+
+/**
+ * Project detail memory operations
+ */
+const projectDetailApi = {
+    ingest: ({ projectId, rawText, mode, timeout = 1000 * 60 * 5 }) => postCommand('projectDetail.ingest', { projectId, rawText, mode }, timeout)
+};
+
+/**
  * UI feedback utilities
  */
 const uiFeedback = {
@@ -140,7 +154,7 @@ const uiFeedback = {
      * Shows a loading indicator for a specific element
      */
     showLoading: (element, text = 'Loading...') => {
-        if (!element) return;
+        if (!element) {return;}
         
         const originalContent = element.innerHTML;
         element.innerHTML = `<span class="loading-indicator">${text}</span>`;
@@ -156,7 +170,7 @@ const uiFeedback = {
      * Shows a temporary success message
      */
     showSuccess: (element, message = 'Success!', duration = 2000) => {
-        if (!element) return;
+        if (!element) {return;}
         
         const originalText = element.textContent;
         const originalBg = element.style.backgroundColor;
@@ -174,7 +188,7 @@ const uiFeedback = {
      * Shows a temporary error message
      */
     showError: (element, message = 'Error!', duration = 3000) => {
-        if (!element) return;
+        if (!element) {return;}
         
         const originalText = element.textContent;
         const originalBg = element.style.backgroundColor;
@@ -192,7 +206,7 @@ const uiFeedback = {
      * Creates a global loading overlay
      */
     showGlobalLoading: (container, message = 'Loading...') => {
-        if (!container) return;
+        if (!container) {return;}
         
         const overlay = document.createElement('div');
         overlay.className = 'global-loading-overlay';
@@ -229,6 +243,8 @@ const uiFeedback = {
     window.WebviewApi = {
         postCommand,
         persistence: persistenceApi,
+        llm: llmApi,
+        projectDetail: projectDetailApi,
         ui: uiFeedback
     };
 

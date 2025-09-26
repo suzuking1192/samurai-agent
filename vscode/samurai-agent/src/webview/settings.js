@@ -47,8 +47,8 @@ let settingsState = {
         claudeApiKey: ''
     },
     projectSettings: {
-        projectDetailText: '',
-        digestedMemory: '',
+        rawProjectDetailContent: '',
+        digestedProjectDetailContent: '',
         primaryLLMModel: null
     },
     isLoading: false
@@ -170,8 +170,8 @@ function renderLLMProviderSection(providerName, modelsArray, providerKey) {
 }
 
 function renderProjectDetailSection() {
-    const projectDetailValue = settingsState.projectSettings.projectDetailText || '';
-    const digestedMemoryValue = settingsState.projectSettings.digestedMemory || '';
+    const projectDetailValue = settingsState.projectSettings.rawProjectDetailContent || '';
+    const digestedMemoryValue = settingsState.projectSettings.digestedProjectDetailContent || '';
     
     return `
         <div class="project-detail-section">
@@ -190,7 +190,11 @@ function renderProjectDetailSection() {
             <div class="digested-memory-section">
                 <button id="show-digested-memory">See Digested Project Detail Memory</button>
                 <div id="digested-memory-display" class="digested-memory-display" style="display: none;">
-                    ${digestedMemoryValue}
+                    <textarea id="digested-memory-text" placeholder="No digested project detail available yet.">${digestedMemoryValue}</textarea>
+                    <div class="digested-memory-actions" style="margin-top: 8px;">
+                        <button id="save-digested-memory" class="settings-secondary-save-btn">Save Digested Project Detail</button>
+                        <span id="digested-memory-status" class="digested-memory-status"></span>
+                    </div>
                 </div>
             </div>
         </div>
@@ -215,8 +219,8 @@ function attachSettingsEventListeners() {
     // Project detail textarea - save on input with loading feedback
     const projectDetailTextarea = document.getElementById('project-detail-text');
     if (projectDetailTextarea) {
-        projectDetailTextarea.addEventListener('input', async function() {
-            await saveProjectSettingsWithFeedback();
+        projectDetailTextarea.addEventListener('input', function() {
+            settingsState.projectSettings.rawProjectDetailContent = this.value;
         });
     }
     
@@ -227,6 +231,54 @@ function attachSettingsEventListeners() {
             toggleDigestedMemory();
         });
     }
+
+    const digestedMemoryTextarea = document.getElementById('digested-memory-text');
+    if (digestedMemoryTextarea) {
+        digestedMemoryTextarea.addEventListener('input', function() {
+            settingsState.projectSettings.digestedProjectDetailContent = this.value;
+        });
+    }
+
+    const saveDigestedMemoryBtn = document.getElementById('save-digested-memory');
+    if (saveDigestedMemoryBtn) {
+        saveDigestedMemoryBtn.addEventListener('click', async function() {
+            const hideLoading = window.WebviewApi?.ui?.showLoading(this, 'Saving...');
+            const newDigestedValue = document.getElementById('digested-memory-text')?.value ?? '';
+            try {
+                const projectId = settingsState.projectSettings.projectId || 'default-project';
+        const updatedSettings = {
+            ...settingsState.projectSettings,
+            projectId,
+            digestedProjectDetailContent: newDigestedValue,
+            updatedAt: new Date()
+        };
+
+        settingsState.projectSettings = updatedSettings;
+        await window.WebviewApi.persistence.saveProjectSettings(updatedSettings);
+
+                const status = document.getElementById('digested-memory-status');
+                if (status) {
+                    status.textContent = 'Saved!';
+                    setTimeout(() => {
+                        status.textContent = '';
+                    }, 2000);
+                }
+                showSaveSuccess('Digested project detail saved successfully!');
+            } catch (error) {
+                console.error('Error saving digested memory:', error);
+                const status = document.getElementById('digested-memory-status');
+                if (status) {
+                    status.textContent = 'Save failed';
+                    setTimeout(() => {
+                        status.textContent = '';
+                    }, 4000);
+                }
+                showSaveError(`Failed to save digested project detail: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            } finally {
+                if (hideLoading) hideLoading();
+            }
+        });
+    }
     
     // Save All Settings button
     const saveAllBtn = document.getElementById('save-all-settings');
@@ -235,10 +287,14 @@ function attachSettingsEventListeners() {
             const hideLoading = window.WebviewApi?.ui?.showLoading(this, 'Saving all settings...');
             try {
                 await saveGlobalSettingsWithFeedback();
-                await saveProjectSettingsWithFeedback();
+                if (settingsState.projectSettings.rawProjectDetailContent?.trim()) {
+                    await ingestAndPersistProjectDetail();
+                } else {
+                    await saveProjectSettingsWithFeedback();
+                }
                 showSaveSuccess('All settings saved successfully!');
             } catch (error) {
-                showSaveError(`Save failed: ${error.message}`);
+                showSaveError(`Save failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
             } finally {
                 if (hideLoading) hideLoading();
             }
@@ -251,29 +307,51 @@ function attachSettingsEventListeners() {
     
     saveButtons.forEach(button => {
         button.addEventListener('click', async function() {
-            console.log('Settings: Save button clicked');
             const provider = this.getAttribute('data-provider');
             const section = this.getAttribute('data-section');
-            
-            console.log('Settings: Button attributes:', { provider, section });
-            
-            const hideLoading = window.WebviewApi?.ui?.showLoading(this, 'Saving...');
+
+            const hideLoading = window.WebviewApi?.ui?.showLoading(this, provider ? 'Saving...' : 'Processing...');
             try {
                 if (provider) {
-                    console.log('Settings: Calling saveProviderSettings for:', provider);
                     await saveProviderSettings(provider);
                 } else if (section === 'project') {
-                    console.log('Settings: Calling saveProjectSettingsWithFeedback');
-                    await saveProjectSettingsWithFeedback();
+                    await ingestAndPersistProjectDetail();
                 }
             } catch (error) {
-                console.error('Settings: Save error:', error);
-                showSaveError(`Save failed: ${error.message}`);
+                showSaveError(`Save failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
             } finally {
                 if (hideLoading) hideLoading();
             }
         });
     });
+}
+
+async function ingestAndPersistProjectDetail() {
+    const rawText = (settingsState.projectSettings.rawProjectDetailContent || '').trim();
+    if (!rawText) {
+        showSaveError('Project detail text is empty. Please provide content before saving.');
+        return;
+    }
+
+    const projectId = settingsState.projectSettings.projectId || 'default-project';
+    const mode = settingsState.projectSettings.digestedProjectDetailContent ? 'merge' : 'synthesis';
+
+    try {
+        const result = await window.WebviewApi.projectDetail.ingest({ projectId, rawText, mode });
+        const finalText = result?.finalText || result || '';
+
+        settingsState.projectSettings.digestedProjectDetailContent = finalText;
+        await window.WebviewApi.persistence.saveProjectSettings(settingsState.projectSettings);
+
+        showSaveSuccess('Project details processed successfully!');
+        const display = document.getElementById('digested-memory-display');
+    if (display) {
+        display.textContent = finalText || 'No digested project detail available yet.';
+        display.style.display = 'block';
+    }
+    } catch (error) {
+        showSaveError(`Failed to process project detail: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
 }
 
 // New persistence-based save functions
@@ -343,7 +421,7 @@ function updateGlobalSettingsFromUI() {
 
 function updateProjectSettingsFromUI() {
     // Update project detail text
-    settingsState.projectSettings.projectDetailText = document.getElementById('project-detail-text')?.value || '';
+    settingsState.projectSettings.rawProjectDetailContent = document.getElementById('project-detail-text')?.value || '';
 }
 
 async function saveProviderSettings(providerKey) {
@@ -424,10 +502,7 @@ function toggleDigestedMemory() {
     
     if (display && button) {
         if (display.style.display === 'none') {
-            // Generate digested memory (placeholder implementation)
-            generateDigestedMemory();
-            display.style.display = 'block';
-            button.textContent = 'Hide Digested Project Detail Memory';
+            showExistingDigestedMemory();
         } else {
             display.style.display = 'none';
             button.textContent = 'See Digested Project Detail Memory';
@@ -435,35 +510,69 @@ function toggleDigestedMemory() {
     }
 }
 
-function generateDigestedMemory() {
-    const projectDetailText = settingsState.projectSettings.projectDetailText;
+function showExistingDigestedMemory() {
     const display = document.getElementById('digested-memory-display');
-    
-    if (!projectDetailText.trim()) {
-        display.textContent = 'No project detail text available. Please enter project details above.';
+    const button = document.getElementById('show-digested-memory');
+
+    if (!display || !button) {
         return;
     }
-    
-    // Placeholder implementation - in a real app, this would call an AI service
-    const digestedMemory = `Digested Memory for Project:
-    
-Key Points:
-- Project involves: ${projectDetailText.substring(0, 100)}...
-- Main objectives identified
-- Technical requirements noted
-- Timeline considerations included
 
-Summary: This project appears to be focused on ${projectDetailText.split(' ').slice(0, 10).join(' ')}...
+    const textarea = document.getElementById('digested-memory-text');
+    const digestedContent = settingsState.projectSettings.digestedProjectDetailContent || '';
 
-Last updated: ${new Date().toLocaleString()}`;
+    if (textarea) {
+        textarea.value = digestedContent;
+        textarea.removeAttribute('readonly');
+        textarea.disabled = false;
+    }
+
+    const status = document.getElementById('digested-memory-status');
+    if (status) {
+        status.textContent = '';
+    }
+
+    display.style.display = 'block';
+    button.textContent = 'Hide Digested Project Detail Memory';
+}
+
+async function generateDigestedMemory() {
+    const display = document.getElementById('digested-memory-display');
+    const button = document.getElementById('show-digested-memory');
     
-    display.textContent = digestedMemory;
-    settingsState.projectSettings.digestedMemory = digestedMemory;
-    
-    // Save the digested memory using the persistence API
-    saveProjectSettingsWithFeedback().catch(error => {
-        console.error('Error saving digested memory:', error);
-    });
+    if (!display || !button) {
+        return;
+    }
+
+    const rawText = (settingsState.projectSettings.rawProjectDetailContent || '').trim();
+    if (!rawText) {
+        display.textContent = 'No project detail text available. Please enter project details above.';
+        display.style.display = 'block';
+        button.textContent = 'Hide Digested Project Detail Memory';
+        return;
+    }
+
+    const hideLoading = window.WebviewApi?.ui?.showLoading(button, 'Processing...');
+    try {
+        const mode = settingsState.projectSettings.digestedProjectDetailContent ? 'merge' : 'synthesis';
+        const projectId = settingsState.projectSettings.projectId || 'default-project';
+        const result = await window.WebviewApi.projectDetail.ingest({ projectId, rawText, mode });
+        const finalText = result?.finalText || result || '';
+
+        settingsState.projectSettings.digestedProjectDetailContent = finalText;
+        display.textContent = finalText || 'No digested project detail available yet.';
+        display.style.display = 'block';
+        button.textContent = 'Hide Digested Project Detail Memory';
+
+        await window.WebviewApi.persistence.saveProjectSettings(settingsState.projectSettings);
+    } catch (error) {
+        console.error('Error generating digested project detail:', error);
+        display.textContent = `Failed to generate digested project detail: ${error instanceof Error ? error.message : 'Unknown error'}`;
+        display.style.display = 'block';
+        button.textContent = 'Hide Digested Project Detail Memory';
+    } finally {
+        if (hideLoading) hideLoading();
+    }
 }
 
     // Export functions for potential external use

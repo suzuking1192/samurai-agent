@@ -88,32 +88,12 @@ export interface ChatMessage extends BaseModel {
  * Project settings data model
  * Represents project-specific configuration
  */
-export interface ProjectSettings extends BaseModel {
-    projectName: string;
-    projectPath: string;
-    projectDetailText: string;
-    digestedMemory: string;
-    llmProvider: 'openai' | 'gemini' | 'claude';
-    defaultModel: string;
-    defaultMode: string;
-    // UI preferences - moved from GlobalSettings
-    theme: string;
-    autoSave: boolean;
-    metadata: Record<string, any>;
-}
-
-/**
- * Global settings data model
- * Represents extension-wide configuration
- */
+// Deprecated interfaces preserved for backward compatibility only. Prefer the
+// definitions in `settings-models.ts` and favor removing these legacy types
+// once all usage has migrated.
+// eslint-disable-next-line @typescript-eslint/no-empty-interface
+export interface ProjectSettings extends BaseModel {}
 export interface GlobalSettings extends BaseModel {
-    openaiApiKey: string;
-    openaiModels: string[];
-    geminiApiKey: string;
-    geminiModels: string[];
-    claudeApiKey: string;
-    claudeModels: string[];
-    // UI preferences removed (theme and autoSave moved to ProjectSettings)
     metadata: Record<string, any>;
 }
 

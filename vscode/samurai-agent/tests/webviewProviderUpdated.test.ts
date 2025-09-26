@@ -9,6 +9,10 @@ import * as os from 'os';
 import * as path from 'path';
 import { SamuraiAgentPanelWebviewViewProvider } from '../src/webview/SamuraiAgentPanelWebviewViewProvider';
 import { LLM_MODELS } from '../src/common/constants/llm-models';
+import { GlobalDataStore } from '../src/persistence/globalDataStore';
+import { DataStore } from '../src/persistence/dataStore';
+import { LLMProviderService } from '../src/agent/llm/llmProviderService';
+import { ProjectDetailService } from '../src/memory/projectDetailService';
 
 // Use real fs and path modules for these tests
 jest.unmock('fs');
@@ -30,37 +34,52 @@ const mockExtensionUri = {
     fsPath: '/test/extension'
 };
 
-describe('Updated Webview Provider', () => {
-    let provider: SamuraiAgentPanelWebviewViewProvider;
-    let testWorkspaceRoot: string;
-    let testConfigDir: string;
-    let originalConfigDir: string;
+let provider: SamuraiAgentPanelWebviewViewProvider;
+let testWorkspaceRoot: string;
+let testConfigDir: string;
+let originalConfigDir: string;
 
-    beforeEach(() => {
-        // Create temporary test directories
-        testWorkspaceRoot = path.join(os.tmpdir(), 'samurai-agent-test-workspace-webview', Date.now().toString());
-        testConfigDir = path.join(os.tmpdir(), 'samurai-agent-test-global-webview', Date.now().toString());
-        
-        fs.mkdirSync(testWorkspaceRoot, { recursive: true });
-        fs.mkdirSync(testConfigDir, { recursive: true });
-        
-        // Mock environment
-        originalConfigDir = process.env.HOME || os.homedir();
-        process.env.HOME = testConfigDir;
-        
-        // Mock workspace folders
-        (require('vscode').workspace as any).workspaceFolders = [{
-            uri: { fsPath: testWorkspaceRoot }
-        }];
-        
-        provider = new SamuraiAgentPanelWebviewViewProvider(mockExtensionUri as any);
-        
-        // Clear mocks
-        jest.clearAllMocks();
-        
-        // Initialize the provider's data stores by calling resolveWebviewView
-        provider.resolveWebviewView(mockWebviewView as any, {} as any, {} as any);
+function createProvider(workspaceRoot: string) {
+    const globalDataStore = new GlobalDataStore();
+    const dataStore = new DataStore(workspaceRoot);
+    const llmProviderService = new LLMProviderService(globalDataStore);
+    const projectDetailService = new ProjectDetailService(llmProviderService, dataStore);
+
+    return new SamuraiAgentPanelWebviewViewProvider(mockExtensionUri as any, {
+        llmProviderService,
+        projectDetailService,
+        dataStore,
+        globalDataStore
     });
+}
+
+beforeEach(() => {
+    // Create temporary test directories
+    testWorkspaceRoot = path.join(os.tmpdir(), 'samurai-agent-test-workspace-webview', Date.now().toString());
+    testConfigDir = path.join(os.tmpdir(), 'samurai-agent-test-global-webview', Date.now().toString());
+
+    fs.mkdirSync(testWorkspaceRoot, { recursive: true });
+    fs.mkdirSync(testConfigDir, { recursive: true });
+
+    // Mock environment
+    originalConfigDir = process.env.HOME || os.homedir();
+    process.env.HOME = testConfigDir;
+
+    const mockWorkspaceFolder = {
+        uri: { fsPath: testWorkspaceRoot },
+        name: 'test-workspace',
+        index: 0
+    };
+    (require('vscode').workspace as any).workspaceFolders = [mockWorkspaceFolder];
+
+    provider = createProvider(testWorkspaceRoot);
+
+    // Clear mocks
+    jest.clearAllMocks();
+
+    // Initialize the provider's data stores by calling resolveWebviewView
+    provider.resolveWebviewView(mockWebviewView as any, {} as any, {} as any);
+});
 
     afterEach(() => {
         // Clean up test directories

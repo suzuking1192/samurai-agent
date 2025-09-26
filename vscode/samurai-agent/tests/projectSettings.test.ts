@@ -52,8 +52,8 @@ describe('DataStore - ProjectSettings', () => {
                 id: 'project-settings',
                 projectName: 'Test Project',
                 projectPath: testWorkspaceRoot,
-                projectDetailText: 'This is a test project',
-                digestedMemory: 'Test memory content',
+                rawProjectDetailContent: 'This is a test project',
+                digestedProjectDetailContent: 'Test memory content',
                 llmProvider: 'claude',
                 defaultModel: 'claude-3-opus',
                 defaultMode: 'developer',
@@ -78,7 +78,7 @@ describe('DataStore - ProjectSettings', () => {
             
             const loadedSettings = response.payload;
             assert.strictEqual(loadedSettings.projectName, 'Test Project');
-            assert.strictEqual(loadedSettings.projectDetailText, 'This is a test project');
+            assert.strictEqual(loadedSettings.rawProjectDetailContent, 'This is a test project');
             assert.strictEqual(loadedSettings.theme, 'dark');
             assert.strictEqual(loadedSettings.autoSave, false);
             assert.strictEqual(loadedSettings.llmProvider, 'claude');
@@ -90,8 +90,8 @@ describe('DataStore - ProjectSettings', () => {
                 id: 'project-settings',
                 projectName: 'Test Project',
                 projectPath: testWorkspaceRoot,
-                projectDetailText: 'This is a test project',
-                digestedMemory: 'Test memory content',
+                rawProjectDetailContent: 'This is a test project',
+                digestedProjectDetailContent: 'Test memory content',
                 llmProvider: 'openai',
                 defaultModel: 'gpt-4',
                 defaultMode: 'default',
@@ -140,8 +140,8 @@ describe('DataStore - ProjectSettings', () => {
                 id: 'project-settings',
                 projectName: 'Save Test Project',
                 projectPath: testWorkspaceRoot,
-                projectDetailText: 'This is a save test project',
-                digestedMemory: 'Save test memory content',
+                rawProjectDetailContent: 'This is a save test project',
+                digestedProjectDetailContent: 'Save test memory content',
                 llmProvider: 'gemini',
                 defaultModel: 'gemini-pro',
                 defaultMode: 'creative',
@@ -167,7 +167,7 @@ describe('DataStore - ProjectSettings', () => {
             assert(fs.existsSync(settingsFile), 'Project settings file should exist');
             
             const savedData = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
-            assert.strictEqual(savedData.projectName, 'Save Test Project');
+            assert.strictEqual(savedData.rawProjectDetailContent, 'This is a save test project');
             assert.strictEqual(savedData.theme, 'light');
             assert.strictEqual(savedData.autoSave, true);
             assert.strictEqual(savedData.llmProvider, 'gemini');
@@ -179,8 +179,8 @@ describe('DataStore - ProjectSettings', () => {
                 id: 'project-settings',
                 projectName: 'Default Test Project',
                 projectPath: testWorkspaceRoot,
-                projectDetailText: 'This project has no theme/autoSave',
-                digestedMemory: 'Default test memory',
+                rawProjectDetailContent: 'This project has no theme/autoSave',
+                digestedProjectDetailContent: 'Default test memory',
                 llmProvider: 'openai',
                 defaultModel: 'gpt-4',
                 defaultMode: 'default',
@@ -215,8 +215,8 @@ describe('DataStore - ProjectSettings', () => {
                 id: 'project-settings',
                 projectName: 'Timestamp Test Project',
                 projectPath: testWorkspaceRoot,
-                projectDetailText: 'Testing timestamps',
-                digestedMemory: 'Timestamp test memory',
+                rawProjectDetailContent: 'Testing timestamps',
+                digestedProjectDetailContent: 'Timestamp test memory',
                 llmProvider: 'openai',
                 defaultModel: 'gpt-4',
                 defaultMode: 'default',
@@ -266,8 +266,8 @@ describe('DataStore - ProjectSettings', () => {
                 id: 'project-settings',
                 projectName: 'E2E Test Project',
                 projectPath: testWorkspaceRoot,
-                projectDetailText: 'This is an end-to-end test project',
-                digestedMemory: 'E2E test memory content',
+                rawProjectDetailContent: 'This is an end-to-end test project',
+                digestedProjectDetailContent: 'E2E test memory content',
                 llmProvider: 'claude',
                 defaultModel: 'claude-3-sonnet',
                 defaultMode: 'analytical',
@@ -295,7 +295,7 @@ describe('DataStore - ProjectSettings', () => {
 
             const loadedSettings = loadResponse.payload;
             assert.strictEqual(loadedSettings.projectName, 'E2E Test Project');
-            assert.strictEqual(loadedSettings.projectDetailText, 'This is an end-to-end test project');
+            assert.strictEqual(loadedSettings.rawProjectDetailContent, 'This is an end-to-end test project');
             assert.strictEqual(loadedSettings.theme, 'dark');
             assert.strictEqual(loadedSettings.autoSave, false);
             assert.strictEqual(loadedSettings.llmProvider, 'claude');
@@ -313,8 +313,8 @@ describe('DataStore - ProjectSettings', () => {
                 id: 'project-settings',
                 projectName: 'Theme Test Project',
                 projectPath: testWorkspaceRoot,
-                projectDetailText: 'Testing theme persistence',
-                digestedMemory: 'Theme test memory',
+                rawProjectDetailContent: 'Testing theme persistence',
+                digestedProjectDetailContent: 'Theme test memory',
                 llmProvider: 'openai',
                 defaultModel: 'gpt-4',
                 defaultMode: 'default',
@@ -363,6 +363,7 @@ describe('DataStore - ProjectSettings', () => {
             assert.strictEqual(finalSettings.theme, 'dark');
             assert.strictEqual(finalSettings.autoSave, false);
             assert.strictEqual(finalSettings.projectName, 'Theme Test Project');
+            assert.strictEqual(finalSettings.rawProjectDetailContent, 'Testing theme persistence');
         });
     });
 });

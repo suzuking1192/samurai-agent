@@ -1,4 +1,17 @@
 "use strict";
+/**
+ * Main Backend Entry Point for Samurai Agent VS Code Extension
+ *
+ * This file serves as the primary backend handler for the extension, managing:
+ * - VS Code command registrations and handlers
+ * - Webview provider registrations for UI communication
+ * - Extension lifecycle management (activate/deactivate)
+ * - Future backend endpoint registrations for AI agent functionality
+ *
+ * The extension acts as a bridge between VS Code's API and the AI agent core logic,
+ * providing the necessary infrastructure for command handling, webview communication,
+ * and integration with the broader agent ecosystem.
+ */
 var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
     if (k2 === undefined) k2 = k;
     var desc = Object.getOwnPropertyDescriptor(m, k);
@@ -37,20 +50,44 @@ exports.activate = activate;
 exports.deactivate = deactivate;
 const vscode = __importStar(require("vscode"));
 const SamuraiAgentPanelWebviewViewProvider_1 = require("./webview/SamuraiAgentPanelWebviewViewProvider");
+const globalDataStore_1 = require("./persistence/globalDataStore");
+const dataStore_1 = require("./persistence/dataStore");
+const llmProviderService_1 = require("./agent/llm/llmProviderService");
+const openaiChatClient_1 = require("./agent/llm/openaiChatClient");
+const geminiChatClient_1 = require("./agent/llm/geminiChatClient");
+const anthropicChatClient_1 = require("./agent/llm/anthropicChatClient");
+const projectDetailService_1 = require("./memory/projectDetailService");
+/**
+ * Extension activation function - main backend entry point
+ * Registers all commands, webview providers, and initializes the agent system
+ */
 function activate(context) {
-    console.log('TEST: Extension activating...');
-    vscode.window.showInformationMessage('TEST: Extension is active!');
-    // Register the Hello World command
-    const disposable = vscode.commands.registerCommand('samurai-agent.helloWorld', () => {
-        vscode.window.showInformationMessage('TEST: Hello World!');
+    const globalDataStore = new globalDataStore_1.GlobalDataStore();
+    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    const dataStore = workspaceRoot ? new dataStore_1.DataStore(workspaceRoot) : undefined;
+    const llmProviderService = new llmProviderService_1.LLMProviderService(globalDataStore, dataStore);
+    llmProviderService.registerClient("openai", new openaiChatClient_1.OpenAIChatClient());
+    llmProviderService.registerClient("google", new geminiChatClient_1.GeminiChatClient());
+    llmProviderService.registerClient("anthropic", new anthropicChatClient_1.AnthropicChatClient());
+    const projectDetailService = dataStore
+        ? new projectDetailService_1.ProjectDetailService(llmProviderService, dataStore, context.extensionUri.fsPath)
+        : undefined;
+    const agentPanelProvider = new SamuraiAgentPanelWebviewViewProvider_1.SamuraiAgentPanelWebviewViewProvider(context.extensionUri, {
+        llmProviderService,
+        projectDetailService,
+        dataStore,
+        globalDataStore,
     });
-    // Register the agent panel webview provider
-    const agentPanelProvider = new SamuraiAgentPanelWebviewViewProvider_1.SamuraiAgentPanelWebviewViewProvider(context.extensionUri);
-    const agentPanelWebviewDisposable = vscode.window.registerWebviewViewProvider(SamuraiAgentPanelWebviewViewProvider_1.SamuraiAgentPanelWebviewViewProvider.viewType, agentPanelProvider);
-    context.subscriptions.push(disposable, agentPanelWebviewDisposable);
-    console.log('TEST: Command and webview provider registered');
+    context.subscriptions.push(vscode.window.registerWebviewViewProvider(SamuraiAgentPanelWebviewViewProvider_1.SamuraiAgentPanelWebviewViewProvider.viewType, agentPanelProvider));
+    context.subscriptions.push(vscode.commands.registerCommand("samurai-agent.llm.chat", async (request) => {
+        return llmProviderService.chat(request);
+    }));
+    if (projectDetailService) {
+        context.subscriptions.push(vscode.commands.registerCommand("samurai-agent.projectDetail.ingest", async (args) => {
+            const { projectId, rawText, mode } = args;
+            return projectDetailService.ingestProjectDetail(projectId, rawText, mode);
+        }));
+    }
 }
-function deactivate() {
-    console.log('TEST: Extension deactivating...');
-}
+function deactivate() { }
 //# sourceMappingURL=extension.js.map

@@ -4,7 +4,7 @@
 
 import * as path from 'path';
 import * as fs from 'fs';
-import { DataStore } from '../dataStore';
+import { DataStore } from '../src/persistence/dataStore';
 
 // Mock fs module
 jest.mock('fs');
@@ -15,20 +15,12 @@ describe('DataStore', () => {
     const mockWorkspaceRoot = '/mock/workspace';
 
     beforeEach(() => {
-        // Reset all mocks
         jest.clearAllMocks();
-        
-        // Mock fs.existsSync to return false initially
+
         mockFs.existsSync.mockReturnValue(false);
-        
-        // Mock fs.mkdirSync
-        mockFs.mkdirSync.mockImplementation(() => '');
-        
-        // Mock fs.readFileSync
+        mockFs.mkdirSync.mockImplementation(() => undefined);
         mockFs.readFileSync.mockReturnValue('[]');
-        
-        // Mock fs.writeFileSync
-        mockFs.writeFileSync.mockImplementation(() => {});
+        mockFs.writeFileSync.mockImplementation(() => undefined);
         
         dataStore = new DataStore(mockWorkspaceRoot);
     });
@@ -361,7 +353,7 @@ describe('DataStore', () => {
             };
 
             // Mock readFileSync to return single object (not array)
-            mockFs.readFileSync.mockReturnValue(JSON.stringify(globalSettings));
+            jest.spyOn(fs, 'readFileSync').mockReturnValue(JSON.stringify(globalSettings));
 
             const message = {
                 command: 'loadGlobalSettings',
@@ -378,6 +370,43 @@ describe('DataStore', () => {
             expect(mockFs.readFileSync).toHaveBeenCalledWith(
                 expect.stringContaining('globalSettings.json')
             );
+        });
+
+        it('should handle saveProjectSettings command', () => {
+            const projectSettings = {
+                id: 'project-settings',
+                projectId: 'project-123',
+                projectName: 'Sample Project',
+                rawProjectDetailContent: 'Initial detail',
+                digestedProjectDetailContent: 'Initial digested detail',
+                defaultModel: 'gpt-4',
+                defaultMode: 'default',
+                customPrompts: {},
+                projectSpecificConfig: {},
+                theme: 'auto',
+                autoSave: true,
+                primaryLLMModel: null,
+                metadata: {},
+                createdAt: new Date(),
+                updatedAt: new Date()
+            };
+
+            const response = dataStore.handleWebviewMessage({
+                command: 'saveProjectSettings',
+                requestId: 'save-project-settings',
+                payload: projectSettings
+            });
+
+            expect(response.type).toBe('success');
+            expect(response.requestId).toBe('save-project-settings');
+            expect(response.payload).toEqual(expect.objectContaining({
+                id: 'project-settings',
+                projectId: 'project-123',
+                projectName: 'Sample Project',
+                rawProjectDetailContent: 'Initial detail',
+                digestedProjectDetailContent: 'Initial digested detail'
+            }));
+            expect(mockFs.writeFileSync).toHaveBeenCalled();
         });
     });
 

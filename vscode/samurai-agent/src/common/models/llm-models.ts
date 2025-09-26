@@ -20,7 +20,15 @@ export interface LLMRequest extends BaseModel {
     frequencyPenalty?: number;
     presencePenalty?: number;
     stream?: boolean;
-    metadata: Record<string, any>;
+    metadata: LLMRequestMetadata;
+}
+
+export interface LLMRequestMetadata {
+    apiKey?: string;
+    provider?: string;
+    customApiEndpoints?: Record<string, string>;
+    llmModels?: Record<string, Array<{ id: string; maxTokens?: number }>>;
+    [key: string]: any;
 }
 
 /**

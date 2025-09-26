@@ -4,6 +4,8 @@ import * as fs from 'fs';
 import { DataStore } from '../persistence/dataStore';
 import { GlobalDataStore } from '../persistence/globalDataStore';
 import { LLM_MODELS } from '../common/constants/llm-models';
+import { LLMProviderService } from '../agent/llm/llmProviderService';
+import { ProjectDetailService } from '../memory/projectDetailService';
 
 // Resolve each asset to whichever folder actually has that file
 const assetUri = (
@@ -18,12 +20,29 @@ const assetUri = (
         : webview.asWebviewUri(src);
 };
 
+export interface SamuraiAgentPanelDependencies {
+    llmProviderService: LLMProviderService;
+    projectDetailService?: ProjectDetailService;
+    dataStore?: DataStore;
+    globalDataStore: GlobalDataStore;
+}
+
 export class SamuraiAgentPanelWebviewViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'samurai-agent.agentPanel';
     private dataStore: DataStore | undefined;
-    private globalDataStore: GlobalDataStore | undefined;
+    private globalDataStore: GlobalDataStore;
+    private llmProviderService: LLMProviderService;
+    private projectDetailService: ProjectDetailService | undefined;
 
-    constructor(private readonly _extensionUri: vscode.Uri) {}
+    constructor(
+        private readonly _extensionUri: vscode.Uri,
+        dependencies: SamuraiAgentPanelDependencies
+    ) {
+        this.llmProviderService = dependencies.llmProviderService;
+        this.projectDetailService = dependencies.projectDetailService;
+        this.dataStore = dependencies.dataStore;
+        this.globalDataStore = dependencies.globalDataStore;
+    }
 
     public resolveWebviewView(
         webviewView: vscode.WebviewView,
@@ -51,15 +70,6 @@ export class SamuraiAgentPanelWebviewViewProvider implements vscode.WebviewViewP
         webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
         console.log('Webview Provider: HTML set for webview');
         
-        // Initialize data stores
-        const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-        if (workspaceRoot && !this.dataStore) {
-            this.dataStore = new DataStore(workspaceRoot);
-        }
-        if (!this.globalDataStore) {
-            this.globalDataStore = new GlobalDataStore();
-        }
-        
         // Send initial settings to webview after a short delay to ensure it's loaded
         setTimeout(() => {
             this.sendInitialSettingsToWebview(webviewView.webview);
@@ -75,8 +85,8 @@ export class SamuraiAgentPanelWebviewViewProvider implements vscode.WebviewViewP
         }, 200);
         
         // Set up message listener
-        webviewView.webview.onDidReceiveMessage(
-            message => this.handleWebviewMessage(webviewView.webview, message)
+        webviewView.webview.onDidReceiveMessage(message =>
+            this.handleWebviewMessage(webviewView.webview, message)
         );
         
         // Add debugging for script loading
@@ -94,6 +104,57 @@ export class SamuraiAgentPanelWebviewViewProvider implements vscode.WebviewViewP
         const { command } = message;
         
         try {
+            // LLM chat handling
+            if (command === 'llm.chat') {
+                const command = vscode.commands.executeCommand('samurai-agent.llm.chat', message.payload);
+                if (command && typeof command.then === 'function') {
+                    command.then(
+                        (result: unknown) => {
+                            webview.postMessage({
+                                type: 'success',
+                                requestId: message.requestId,
+                                payload: result,
+                                timestamp: new Date()
+                            });
+                        },
+                        (error: unknown) => {
+                            webview.postMessage({
+                                type: 'error',
+                                requestId: message.requestId,
+                                error: error instanceof Error ? error.message : 'LLM chat failed',
+                                timestamp: new Date()
+                            });
+                        }
+                    );
+                }
+                return;
+            }
+
+            if (command === 'projectDetail.ingest') {
+                const commandPromise = vscode.commands.executeCommand('samurai-agent.projectDetail.ingest', message.payload);
+                if (commandPromise && typeof commandPromise.then === 'function') {
+                    commandPromise.then(
+                        (result: unknown) => {
+                            webview.postMessage({
+                                type: 'success',
+                                requestId: message.requestId,
+                                payload: { finalText: result },
+                                timestamp: new Date()
+                            });
+                        },
+                        (error: unknown) => {
+                            webview.postMessage({
+                                type: 'error',
+                                requestId: message.requestId,
+                                error: error instanceof Error ? error.message : 'Project detail ingestion failed',
+                                timestamp: new Date()
+                            });
+                        }
+                    );
+                }
+                return;
+            }
+
             // Route global settings commands to GlobalDataStore
             if (command === 'loadGlobalSettings' || command === 'saveGlobalSettings') {
                 if (!this.globalDataStore) {
@@ -148,6 +209,51 @@ export class SamuraiAgentPanelWebviewViewProvider implements vscode.WebviewViewP
             webview.postMessage({
                 type: 'error',
                 requestId: message.requestId,
+                error: error instanceof Error ? error.message : 'Unknown error occurred',
+                timestamp: new Date()
+            });
+        }
+    }
+
+    private async handleLLMChat(webview: vscode.Webview, message: any) {
+        const { requestId, payload } = message;
+        try {
+            const response = await this.llmProviderService.chat(payload);
+            webview.postMessage({
+                type: 'success',
+                requestId,
+                payload: response,
+                timestamp: new Date()
+            });
+        } catch (error) {
+            webview.postMessage({
+                type: 'error',
+                requestId,
+                error: error instanceof Error ? error.message : 'LLM chat failed',
+                timestamp: new Date()
+            });
+        }
+    }
+
+    private async handleProjectDetailIngest(webview: vscode.Webview, message: any) {
+        const { requestId, payload } = message;
+        try {
+            const finalText = await this.projectDetailService?.ingestProjectDetail(
+                payload.projectId,
+                payload.rawText,
+                payload.mode
+            );
+
+            webview.postMessage({
+                type: 'success',
+                requestId,
+                payload: { finalText },
+                timestamp: new Date()
+            });
+        } catch (error) {
+            webview.postMessage({
+                type: 'error',
+                requestId,
                 error: error instanceof Error ? error.message : 'Unknown error occurred',
                 timestamp: new Date()
             });

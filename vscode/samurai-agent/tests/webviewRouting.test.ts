@@ -3,12 +3,15 @@
  * Validates that commands are correctly routed to GlobalDataStore vs DataStore
  */
 
-import * as assert from 'assert';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { SamuraiAgentPanelWebviewViewProvider } from '../src/webview/SamuraiAgentPanelWebviewViewProvider';
+import { GlobalDataStore } from '../src/persistence/globalDataStore';
+import { DataStore } from '../src/persistence/dataStore';
+import { LLMProviderService } from '../src/agent/llm/llmProviderService';
+import { ProjectDetailService } from '../src/memory/projectDetailService';
 
 describe('Webview Routing Integration', () => {
     let provider: SamuraiAgentPanelWebviewViewProvider;
@@ -22,7 +25,9 @@ describe('Webview Routing Integration', () => {
         
         // Mock VS Code workspace
         const mockWorkspaceFolder = {
-            uri: { fsPath: testWorkspaceRoot }
+            uri: { fsPath: testWorkspaceRoot },
+            name: 'test-workspace',
+            index: 0
         };
         
         // Mock VS Code API
@@ -40,7 +45,16 @@ describe('Webview Routing Integration', () => {
         
         // Create provider with mock extension URI
         const mockExtensionUri = { fsPath: '/mock/extension/path' };
-        provider = new SamuraiAgentPanelWebviewViewProvider(mockExtensionUri as any);
+        const globalDataStore = new GlobalDataStore();
+        const dataStore = new DataStore(testWorkspaceRoot);
+        const llmProviderService = new LLMProviderService(globalDataStore);
+        const projectDetailService = new ProjectDetailService(llmProviderService, dataStore);
+        provider = new SamuraiAgentPanelWebviewViewProvider(mockExtensionUri as any, {
+            llmProviderService,
+            projectDetailService,
+            dataStore,
+            globalDataStore
+        });
         
         // Mock webview
         mockWebview = {
@@ -80,24 +94,21 @@ describe('Webview Routing Integration', () => {
             (provider as any).handleWebviewMessage(mockWebview, message);
             
             // Verify message was sent back
-            assert.strictEqual(mockWebview.messages.length, 1);
+            expect(mockWebview.messages).toHaveLength(1);
             const response = mockWebview.messages[0];
             
-            // Should be a successful response from GlobalDataStore
-            assert.strictEqual(response.type, 'success');
-            assert.strictEqual(response.requestId, 'test-global-load');
-            assert(response.payload);
+            expect(response.type).toBe('success');
+            expect(response.requestId).toBe('test-global-load');
+            expect(response.payload).toBeDefined();
             
-            // Verify it contains global settings structure
             const settings = response.payload;
-            assert.strictEqual(settings.id, 'global-settings');
-            assert.strictEqual(settings.userId, 'default-user');
-            assert(settings.hasOwnProperty('openaiApiKey'));
-            assert(settings.hasOwnProperty('geminiApiKey'));
-            assert(settings.hasOwnProperty('claudeApiKey'));
-            // Should NOT have theme or autoSave (moved to project settings)
-            assert(!settings.hasOwnProperty('theme'));
-            assert(!settings.hasOwnProperty('autoSave'));
+            expect(settings.id).toBe('global-settings');
+            expect(settings.userId).toBe('default-user');
+            expect(settings).toHaveProperty('openaiApiKey');
+            expect(settings).toHaveProperty('geminiApiKey');
+            expect(settings).toHaveProperty('claudeApiKey');
+            expect(settings).not.toHaveProperty('theme');
+            expect(settings).not.toHaveProperty('autoSave');
         });
 
         it('should route saveGlobalSettings to GlobalDataStore', () => {
