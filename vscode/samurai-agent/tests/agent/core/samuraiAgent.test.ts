@@ -3,6 +3,7 @@ import { LLMProviderService } from '../../../src/agent/llm/llmProviderService';
 import { ProjectDetailService } from '../../../src/agent/memory/projectDetailService';
 import { DataStore } from '../../../src/persistence/dataStore';
 import { ExtractCodeTool } from '../../../src/agent/tools/extractCodeTool';
+import { CreateSpecTool } from '../../../src/agent/tools/createSpecTool';
 import { ChatMessage, Session, UserIntentEnum } from '../../../src/common/models/chat-models';
 import { ExtractCodeToolResultPayload } from '../../../src/common/models/tool-models';
 import { LLMMessage } from '../../../src/common/models/llm-models';
@@ -19,6 +20,7 @@ describe('SamuraiAgent', () => {
   let mockDataStore: jest.Mocked<DataStore>;
   let mockProjectDetailService: jest.Mocked<ProjectDetailService>;
   let mockExtractCodeTool: jest.Mocked<ExtractCodeTool>;
+  let mockCreateSpecTool: jest.Mocked<CreateSpecTool>;
 
   beforeEach(() => {
     // Create mocks
@@ -41,12 +43,17 @@ describe('SamuraiAgent', () => {
       execute: jest.fn(),
     } as any;
 
+    mockCreateSpecTool = {
+      execute: jest.fn(),
+    } as any;
+
     // Create SamuraiAgent instance
     samuraiAgent = new SamuraiAgent(
       mockLLMProviderService,
       mockDataStore,
       mockProjectDetailService,
-      mockExtractCodeTool
+      mockExtractCodeTool,
+      mockCreateSpecTool
     );
 
     // Mock fs.readFileSync for prompt loading
@@ -257,6 +264,84 @@ describe('SamuraiAgent', () => {
     });
   });
 
+  describe('handleSpecClarification', () => {
+    it('should handle spec clarification successfully', async () => {
+      const userMessage: ChatMessage = {
+        id: 'msg1',
+        sessionId: 'session1',
+        projectId: 'project1',
+        type: 'user' as any,
+        content: 'I want to clarify the authentication requirements',
+        role: 'user',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        metadata: {},
+        isEdited: false
+      };
+
+      const chatHistory: LLMMessage[] = [];
+      const projectDetails = 'Test project details';
+      const codeContexts: ExtractCodeToolResultPayload[] = [];
+
+      // Mock LLM response
+      mockLLMProviderService.chat.mockResolvedValue({
+        type: 'success',
+        payload: {
+          content: 'I understand you want to clarify authentication requirements. Let me ask some specific questions to help you define this clearly.',
+          role: 'assistant'
+        }
+      } as any);
+
+      const result = await samuraiAgent.handleSpecClarification(
+        userMessage,
+        chatHistory,
+        projectDetails,
+        codeContexts
+      );
+
+      expect(result).toBe('I understand you want to clarify authentication requirements. Let me ask some specific questions to help you define this clearly.');
+      expect(mockLLMProviderService.chat).toHaveBeenCalledWith(
+        expect.objectContaining({
+          metadata: expect.objectContaining({ type: 'spec_clarification' })
+        })
+      );
+    });
+
+    it('should handle LLM errors gracefully', async () => {
+      const userMessage: ChatMessage = {
+        id: 'msg1',
+        sessionId: 'session1',
+        projectId: 'project1',
+        type: 'user' as any,
+        content: 'I want to clarify the authentication requirements',
+        role: 'user',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        metadata: {},
+        isEdited: false
+      };
+
+      const chatHistory: LLMMessage[] = [];
+      const projectDetails = 'Test project details';
+      const codeContexts: ExtractCodeToolResultPayload[] = [];
+
+      // Mock LLM error
+      mockLLMProviderService.chat.mockResolvedValue({
+        type: 'error',
+        error: 'LLM service unavailable'
+      } as any);
+
+      const result = await samuraiAgent.handleSpecClarification(
+        userMessage,
+        chatHistory,
+        projectDetails,
+        codeContexts
+      );
+
+      expect(result).toBe("I'm here to help clarify your specifications! What would you like to specify?");
+    });
+  });
+
   describe('execute', () => {
     it('should dispatch to handlePureDiscussion for PURE_DISCUSSION intent', async () => {
       const userMessage: ChatMessage = {
@@ -293,6 +378,12 @@ describe('SamuraiAgent', () => {
       mockProjectDetailService.getProjectDetails.mockResolvedValue('Project details');
       mockDataStore.loadAllCodeContextForSession.mockResolvedValue([]);
       mockDataStore.updateSession.mockResolvedValue(undefined);
+
+      // Mock LLM response for intent analysis
+      mockLLMProviderService.chat.mockResolvedValueOnce({
+        type: 'success',
+        payload: { content: 'pure_discussion' }
+      } as any);
 
       // Mock LLM response for code extraction analysis
       mockLLMProviderService.chat.mockResolvedValueOnce({
@@ -352,6 +443,12 @@ describe('SamuraiAgent', () => {
       mockDataStore.loadAllCodeContextForSession.mockResolvedValue([]);
       mockDataStore.updateSession.mockResolvedValue(undefined);
 
+      // Mock LLM response for intent analysis
+      mockLLMProviderService.chat.mockResolvedValueOnce({
+        type: 'success',
+        payload: { content: 'feature_exploration' }
+      } as any);
+
       // Mock LLM response for code extraction analysis
       mockLLMProviderService.chat.mockResolvedValueOnce({
         type: 'success',
@@ -371,6 +468,70 @@ describe('SamuraiAgent', () => {
       expect(mockDataStore.updateSession).toHaveBeenCalledWith('session1', {
         messageCount: 2,
         previous_session_intent: UserIntentEnum.FEATURE_EXPLORATION
+      });
+    });
+
+    it('should dispatch to handleSpecClarification for SPEC_CLARIFICATION intent', async () => {
+      const userMessage: ChatMessage = {
+        id: 'msg1',
+        sessionId: 'session1',
+        projectId: 'project1',
+        type: 'user' as any,
+        content: 'I want to clarify the authentication requirements',
+        role: 'user',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        metadata: {},
+        isEdited: false
+      };
+
+      const session: Session = {
+        id: 'session1',
+        title: 'Test Session',
+        status: 'active' as any,
+        messageCount: 0,
+        totalTokens: 0,
+        totalCost: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        metadata: {
+          projectId: 'project1',
+          connectedCodebasePath: '/test/path'
+        },
+        codeContextIds: []
+      };
+
+      // Mock dependencies
+      mockDataStore.loadChatMessagesForSession.mockReturnValue([]);
+      mockProjectDetailService.getProjectDetails.mockResolvedValue('Project details');
+      mockDataStore.loadAllCodeContextForSession.mockResolvedValue([]);
+      mockDataStore.updateSession.mockResolvedValue(undefined);
+
+      // Mock LLM response for intent analysis
+      mockLLMProviderService.chat.mockResolvedValueOnce({
+        type: 'success',
+        payload: { content: 'spec_clarification' }
+      } as any);
+
+      // Mock LLM response for code extraction analysis
+      mockLLMProviderService.chat.mockResolvedValueOnce({
+        type: 'success',
+        payload: { content: JSON.stringify({ new_code_context_necessary: false, extraction_query: null, reasoning: 'No extraction needed' }) }
+      } as any);
+
+      // Mock LLM response for spec clarification
+      mockLLMProviderService.chat.mockResolvedValueOnce({
+        type: 'success',
+        payload: { content: 'I understand you want to clarify authentication requirements. Let me ask some specific questions to help you define this clearly.' }
+      } as any);
+
+      const result = await samuraiAgent.execute(userMessage, session);
+
+      expect(result.success).toBe(true);
+      expect(result.message).toBe('I understand you want to clarify authentication requirements. Let me ask some specific questions to help you define this clearly.');
+      expect(mockDataStore.updateSession).toHaveBeenCalledWith('session1', {
+        messageCount: 2,
+        previous_session_intent: UserIntentEnum.SPEC_CLARIFICATION
       });
     });
 
@@ -416,10 +577,220 @@ describe('SamuraiAgent', () => {
         payload: { content: JSON.stringify({ new_code_context_necessary: false, extraction_query: null, reasoning: 'No extraction needed' }) }
       } as any);
 
+      // Mock LLM response for spec generation
+      mockLLMProviderService.chat.mockResolvedValueOnce({
+        type: 'success',
+        payload: { content: JSON.stringify([{ title: 'Test Spec', description: 'Test description', parent_spec_id: null }]) }
+      } as any);
+
+      // Mock CreateSpecTool response
+      mockCreateSpecTool.execute.mockResolvedValue({
+        success: true,
+        result: { id: 'spec-1', title: 'Test Spec', spec: 'Test description' },
+        executionTime: 100,
+        metadata: { specId: 'spec-1' }
+      });
+
       const result = await samuraiAgent.execute(userMessage, session);
 
       expect(result.success).toBe(true);
-      expect(result.message).toBe('Spec generation is not yet implemented. Please use pure discussion or feature exploration for now.');
+      expect(result.message).toContain('Perfect! I\'ve generated and created 1 specs');
+      expect(mockCreateSpecTool.execute).toHaveBeenCalledWith({
+        title: 'Test Spec',
+        description: 'Test description',
+        parentSpecId: undefined,
+        depth: 1
+      });
+    });
+  });
+
+  describe('handleGeneratingSpecs', () => {
+    const userMessage: ChatMessage = {
+      id: 'msg-1',
+      content: 'Create a spec for user authentication',
+      role: 'user',
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+
+    const chatHistory: LLMMessage[] = [
+      { role: 'user', content: 'I need help with authentication' },
+      { role: 'assistant', content: 'I can help you with that' }
+    ];
+
+    const projectDetails = 'Test project with authentication needs';
+    const codeContexts: ExtractCodeToolResultPayload[] = [];
+
+    beforeEach(() => {
+      // Mock fs.readFileSync for spec generation prompt
+      mockedFs.readFileSync.mockReturnValue('Mock spec generation prompt with {currentUserMessage} and {activeTaskId}');
+    });
+
+    it('should successfully generate and create specs', async () => {
+      const mockSpecs = [
+        { title: 'Implement Login Form', description: 'Create login form component', parent_spec_id: null },
+        { title: 'Add Authentication API', description: 'Create authentication endpoints', parent_spec_id: null }
+      ];
+
+      // Mock LLM response
+      mockLLMProviderService.chat.mockResolvedValue({
+        type: 'success',
+        payload: { content: JSON.stringify(mockSpecs) }
+      } as any);
+
+      // Mock CreateSpecTool responses
+      mockCreateSpecTool.execute
+        .mockResolvedValueOnce({
+          success: true,
+          result: { id: 'spec-1', title: 'Implement Login Form', spec: 'Create login form component' },
+          executionTime: 100,
+          metadata: { specId: 'spec-1' }
+        })
+        .mockResolvedValueOnce({
+          success: true,
+          result: { id: 'spec-2', title: 'Add Authentication API', spec: 'Create authentication endpoints' },
+          executionTime: 100,
+          metadata: { specId: 'spec-2' }
+        });
+
+      const result = await samuraiAgent.handleGeneratingSpecs(userMessage, codeContexts, chatHistory, projectDetails);
+
+      expect(result.success).toBe(true);
+      expect(result.message).toContain('Perfect! I\'ve generated and created 2 specs');
+      expect(result.message).toContain('1. Implement Login Form');
+      expect(result.message).toContain('2. Add Authentication API');
+      expect(mockCreateSpecTool.execute).toHaveBeenCalledTimes(2);
+      expect(result.metadata.createdSpecsCount).toBe(2);
+    });
+
+    it('should handle parent-child spec relationships', async () => {
+      const mockSpecs = [
+        { title: 'User Authentication System', description: 'Main authentication system', parent_spec_id: null },
+        { title: 'Login Component', description: 'Login form component', parent_spec_id: 'spec-1' },
+        { title: 'Register Component', description: 'Registration form component', parent_spec_id: 'spec-1' }
+      ];
+
+      // Mock LLM response
+      mockLLMProviderService.chat.mockResolvedValue({
+        type: 'success',
+        payload: { content: JSON.stringify(mockSpecs) }
+      } as any);
+
+      // Mock CreateSpecTool responses
+      mockCreateSpecTool.execute
+        .mockResolvedValueOnce({
+          success: true,
+          result: { id: 'spec-1', title: 'User Authentication System', spec: 'Main authentication system' },
+          executionTime: 100,
+          metadata: { specId: 'spec-1' }
+        })
+        .mockResolvedValueOnce({
+          success: true,
+          result: { id: 'spec-2', title: 'Login Component', spec: 'Login form component' },
+          executionTime: 100,
+          metadata: { specId: 'spec-2' }
+        })
+        .mockResolvedValueOnce({
+          success: true,
+          result: { id: 'spec-3', title: 'Register Component', spec: 'Registration form component' },
+          executionTime: 100,
+          metadata: { specId: 'spec-3' }
+        });
+
+      const result = await samuraiAgent.handleGeneratingSpecs(userMessage, codeContexts, chatHistory, projectDetails);
+
+      expect(result.success).toBe(true);
+      expect(mockCreateSpecTool.execute).toHaveBeenCalledTimes(3);
+      
+      // Check that child specs are created with correct parent IDs
+      expect(mockCreateSpecTool.execute).toHaveBeenNthCalledWith(1, {
+        title: 'User Authentication System',
+        description: 'Main authentication system',
+        parentSpecId: undefined,
+        depth: 1
+      });
+      expect(mockCreateSpecTool.execute).toHaveBeenNthCalledWith(2, {
+        title: 'Login Component',
+        description: 'Login form component',
+        parentSpecId: 'spec-1',
+        depth: 2
+      });
+      expect(mockCreateSpecTool.execute).toHaveBeenNthCalledWith(3, {
+        title: 'Register Component',
+        description: 'Registration form component',
+        parentSpecId: 'spec-1',
+        depth: 2
+      });
+    });
+
+    it('should handle LLM response errors', async () => {
+      // Mock LLM error response
+      mockLLMProviderService.chat.mockResolvedValue({
+        type: 'error',
+        error: 'LLM request failed'
+      } as any);
+
+      const result = await samuraiAgent.handleGeneratingSpecs(userMessage, codeContexts, chatHistory, projectDetails);
+
+      expect(result.success).toBe(false);
+      expect(result.message).toContain('Error generating specs');
+      expect(result.message).toContain('LLM request failed');
+      expect(mockCreateSpecTool.execute).not.toHaveBeenCalled();
+    });
+
+    it('should handle CreateSpecTool errors gracefully', async () => {
+      const mockSpecs = [
+        { title: 'Test Spec', description: 'Test description', parent_spec_id: null }
+      ];
+
+      // Mock LLM response
+      mockLLMProviderService.chat.mockResolvedValue({
+        type: 'success',
+        payload: { content: JSON.stringify(mockSpecs) }
+      } as any);
+
+      // Mock CreateSpecTool error
+      mockCreateSpecTool.execute.mockResolvedValue({
+        success: false,
+        error: 'Failed to save spec',
+        executionTime: 100,
+        metadata: {}
+      });
+
+      const result = await samuraiAgent.handleGeneratingSpecs(userMessage, codeContexts, chatHistory, projectDetails);
+
+      expect(result.success).toBe(false);
+      expect(result.message).toContain('I encountered issues creating the specs');
+      expect(result.message).toContain('Failed to save spec');
+      expect(result.metadata.errorsCount).toBe(1);
+    });
+
+    it('should handle invalid JSON response from LLM', async () => {
+      // Mock LLM response with invalid JSON
+      mockLLMProviderService.chat.mockResolvedValue({
+        type: 'success',
+        payload: { content: 'Invalid JSON response' }
+      } as any);
+
+      const result = await samuraiAgent.handleGeneratingSpecs(userMessage, codeContexts, chatHistory, projectDetails);
+
+      expect(result.success).toBe(false);
+      expect(result.message).toContain('Error generating specs');
+      expect(mockCreateSpecTool.execute).not.toHaveBeenCalled();
+    });
+
+    it('should handle empty specs array from LLM', async () => {
+      // Mock LLM response with empty array
+      mockLLMProviderService.chat.mockResolvedValue({
+        type: 'success',
+        payload: { content: JSON.stringify([]) }
+      } as any);
+
+      const result = await samuraiAgent.handleGeneratingSpecs(userMessage, codeContexts, chatHistory, projectDetails);
+
+      expect(result.success).toBe(false);
+      expect(result.message).toContain('I encountered issues creating the specs');
+      expect(mockCreateSpecTool.execute).not.toHaveBeenCalled();
     });
   });
 });

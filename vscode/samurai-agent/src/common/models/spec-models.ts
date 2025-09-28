@@ -1,16 +1,16 @@
 /**
- * Task-related data models
+ * Spec-related data models
  * 
- * Defines the structure for tasks, subtasks, and task-related operations
+ * Defines the structure for specs, subspecs, and spec-related operations
  * in the Samurai Agent extension.
  */
 
 import { BaseModel } from './index';
 
 /**
- * Task status enumeration
+ * Spec status enumeration
  */
-export enum TaskStatus {
+export enum SpecStatus {
     PENDING = 'pending',
     IN_PROGRESS = 'in_progress',
     COMPLETED = 'completed',
@@ -18,9 +18,9 @@ export enum TaskStatus {
 }
 
 /**
- * Task priority levels
+ * Spec priority levels
  */
-export enum TaskPriority {
+export enum SpecPriority {
     LOW = 'low',
     MEDIUM = 'medium',
     HIGH = 'high',
@@ -28,35 +28,35 @@ export enum TaskPriority {
 }
 
 /**
- * Main Task model
- * Represents a task with all its properties and relationships
+ * Main Spec model
+ * Represents a spec with all its properties and relationships
  */
-export interface Task extends BaseModel {
+export interface Spec extends BaseModel {
     title: string;
     spec: string; // Corresponds to backend 'description'
-    status: TaskStatus;
-    priority: TaskPriority;
+    status: SpecStatus;
+    priority: SpecPriority;
     isCompleted: boolean;
     depth: number;
-    parentTaskId: string | null;
-    hasSubtasks: boolean;
+    parentSpecId: string | null;
+    hasSubspecs: boolean;
     tags: string[];
     estimatedHours?: number;
     actualHours?: number;
     dueDate?: Date;
     assignedTo?: string;
-    dependencies: string[]; // Array of task IDs this task depends on
+    dependencies: string[]; // Array of spec IDs this spec depends on
     metadata: Record<string, any>;
 }
 
 /**
- * Task creation request model
+ * Spec creation request model
  */
-export interface CreateTaskRequest {
+export interface CreateSpecRequest {
     title: string;
     spec: string;
-    parentTaskId?: string | null;
-    priority?: TaskPriority;
+    parentSpecId?: string | null;
+    priority?: SpecPriority;
     tags?: string[];
     estimatedHours?: number;
     dueDate?: Date;
@@ -66,14 +66,14 @@ export interface CreateTaskRequest {
 }
 
 /**
- * Task update request model
+ * Spec update request model
  */
-export interface UpdateTaskRequest {
+export interface UpdateSpecRequest {
     id: string;
     title?: string;
     spec?: string;
-    status?: TaskStatus;
-    priority?: TaskPriority;
+    status?: SpecStatus;
+    priority?: SpecPriority;
     isCompleted?: boolean;
     tags?: string[];
     estimatedHours?: number;
@@ -85,12 +85,12 @@ export interface UpdateTaskRequest {
 }
 
 /**
- * Task filter options for queries
+ * Spec filter options for queries
  */
-export interface TaskFilter {
-    status?: TaskStatus[];
-    priority?: TaskPriority[];
-    parentTaskId?: string | null;
+export interface SpecFilter {
+    status?: SpecStatus[];
+    priority?: SpecPriority[];
+    parentSpecId?: string | null;
     isCompleted?: boolean;
     tags?: string[];
     assignedTo?: string;
@@ -102,12 +102,21 @@ export interface TaskFilter {
 }
 
 /**
- * Task query result with pagination
+ * Spec query result with pagination
  */
-export interface TaskQueryResult {
-    tasks: Task[];
+export interface SpecQueryResult {
+    specs: Spec[];
     total: number;
     page: number;
     pageSize: number;
     hasMore: boolean;
 }
+
+// Legacy aliases for backward compatibility during transition
+export type Task = Spec;
+export type TaskStatus = SpecStatus;
+export type TaskPriority = SpecPriority;
+export type CreateTaskRequest = CreateSpecRequest;
+export type UpdateTaskRequest = UpdateSpecRequest;
+export type TaskFilter = SpecFilter;
+export type TaskQueryResult = SpecQueryResult;

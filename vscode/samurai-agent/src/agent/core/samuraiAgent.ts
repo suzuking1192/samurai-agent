@@ -10,16 +10,13 @@ import { LLMMessage } from "../../common/models/llm-models";
 import { ExtractCodeToolResultPayload } from "../../common/models/tool-models";
 import { parseAndValidateLlmJson } from "../../common/utils/llmResponseParser";
 import { ExtractCodeTool } from "../tools/extractCodeTool";
+import { CreateSpecTool } from "../tools/createSpecTool";
 
 export interface FeatureExplorationResult {
   ideas: string[];
   metadata: Record<string, unknown>;
 }
 
-export interface SpecClarificationResult {
-  clarifications: string[];
-  metadata: Record<string, unknown>;
-}
 
 export interface SpecGenerationResult {
   specId: string;
@@ -32,7 +29,8 @@ export class SamuraiAgent {
     private readonly llmProviderService: LLMProviderService,
     private readonly dataStore: DataStore,
     private readonly projectDetailService: ProjectDetailService,
-    private readonly extractCodeTool: ExtractCodeTool
+    private readonly extractCodeTool: ExtractCodeTool,
+    private readonly createSpecTool: CreateSpecTool
   ) {}
 
   /**
@@ -131,13 +129,12 @@ export class SamuraiAgent {
           break;
           
         case UserIntentEnum.SPEC_CLARIFICATION:
-          // TODO: Implement handleSpecClarification
-          agentResponse = "Spec clarification is not yet implemented. Please use pure discussion or feature exploration for now.";
+          agentResponse = await this.handleSpecClarification(userMessage, chatHistory, projectDetails, codeContexts);
           break;
           
         case UserIntentEnum.SPEC_GENERATION:
-          // TODO: Implement handleGeneratingSpecs
-          agentResponse = "Spec generation is not yet implemented. Please use pure discussion or feature exploration for now.";
+          const specGenerationResult = await this.handleGeneratingSpecs(userMessage, codeContexts, chatHistory, projectDetails);
+          agentResponse = specGenerationResult.message;
           break;
           
         default:
@@ -419,21 +416,231 @@ export class SamuraiAgent {
     }
   }
 
-  public async handleSpecClarification(message: string): Promise<SpecClarificationResult> {
-    this.logInvocation("handleSpecClarification", message);
-    return {
-      clarifications: ["Spec clarification is not implemented yet."],
-      metadata: {},
-    };
+  public async handleSpecClarification(
+    userMessage: ChatMessage, 
+    chatHistory: LLMMessage[], 
+    projectDetails: string, 
+    codeContexts: ExtractCodeToolResultPayload[]
+  ): Promise<string> {
+    this.logInvocation("handleSpecClarification", userMessage.content);
+    
+    try {
+      // Format code contexts for prompt injection
+      const formattedCodeContexts = this._formatCodeContextsForPrompt(codeContexts);
+      
+      // Build conversation summary
+      const conversationSummary = this._buildConversationSummary(chatHistory);
+      
+      // Load and format the system prompt
+      const systemPrompt = await this._loadAndFormatSystemPrompt(
+        'specClarification/system_prompt.md',
+        {
+          projectDetails,
+          codeContexts: formattedCodeContexts,
+          conversationSummary,
+          activeTaskHeader: '', // No active task for now
+          noActiveTaskInference: '' // No active task inference for now
+        }
+      );
+      
+      // Construct messages array for LLM request
+      const messages: LLMMessage[] = [
+        { role: "system", content: systemPrompt },
+        ...chatHistory, // Include chat history for context
+        { role: "user", content: userMessage.content }
+      ];
+      
+      // Call LLM service
+      const response = await this.llmProviderService.chat({
+        id: `spec-clarification-${Date.now()}`,
+        provider: "auto",
+        model: "",
+        messages,
+        metadata: {
+          type: "spec_clarification"
+        },
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+      
+      if (response.type === "error" || !response.payload) {
+        throw new Error(response.error || "LLM request failed");
+      }
+      
+      // Extract and return the content
+      const llmResponse = response.payload;
+      if (!llmResponse || 'error' in llmResponse) {
+        throw new Error('error' in llmResponse ? llmResponse.error : "LLM request failed");
+      }
+      
+      return llmResponse.content?.trim() || "I'm here to help clarify your specifications! What would you like to specify?";
+      
+    } catch (error) {
+      console.error('Error in handleSpecClarification:', error);
+      return "I'm here to help clarify your specifications! What would you like to specify?";
+    }
   }
 
-  public async handleGeneratingSpecs(message: string): Promise<SpecGenerationResult> {
-    this.logInvocation("handleGeneratingSpecs", message);
-    return {
-      specId: randomUUID(),
-      content: "Spec generation is not implemented yet.",
-      metadata: {},
-    };
+  public async handleGeneratingSpecs(
+    userMessage: ChatMessage, 
+    codeContexts: ExtractCodeToolResultPayload[], 
+    chatHistory: LLMMessage[], 
+    projectDetails: string
+  ): Promise<AgentExecutionResult> {
+    this.logInvocation("handleGeneratingSpecs", userMessage.content);
+    
+    try {
+      // Format code contexts for prompt injection
+      const formattedCodeContexts = this._formatCodeContextsForPrompt(codeContexts);
+      
+      // Build conversation summary
+      const conversationSummary = this._buildConversationSummary(chatHistory);
+      
+      // Load and format the system prompt
+      const systemPrompt = await this._loadAndFormatSystemPrompt(
+        'specGeneration/generate_spec_system_prompt.md',
+        {
+          projectDetails,
+          codeContexts: formattedCodeContexts,
+          conversationSummary,
+          activeTaskHeader: '', // No active task for now
+          noActiveTaskInference: '', // No active task inference for now
+          currentUserMessage: userMessage.content,
+          activeTaskId: '' // No active task ID for now
+        }
+      );
+      
+      // Construct messages array for LLM request
+      const messages: LLMMessage[] = [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userMessage.content }
+      ];
+      
+      // Call LLM service
+      const response = await this.llmProviderService.chat({
+        id: `spec-generation-${Date.now()}`,
+        provider: "auto",
+        model: "",
+        messages,
+        metadata: {
+          type: "spec_generation"
+        },
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+      
+      if (response.type === "error" || !response.payload) {
+        throw new Error(response.error || "LLM request failed");
+      }
+      
+      // Extract and parse the LLM response
+      const llmResponse = response.payload;
+      if (!llmResponse || 'error' in llmResponse) {
+        throw new Error('error' in llmResponse ? llmResponse.error : "LLM request failed");
+      }
+      
+      const responseContent = llmResponse.content?.trim() || "";
+      
+      // Parse the JSON response containing specs
+      let parsedSpecs: Array<{
+        title: string;
+        description: string;
+        parent_spec_id?: string | null;
+      }>;
+      
+      try {
+        parsedSpecs = JSON.parse(responseContent);
+      } catch (error) {
+        throw new Error(`Failed to parse JSON response: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+      
+      if (!Array.isArray(parsedSpecs)) {
+        throw new Error("LLM response is not an array of specs");
+      }
+      
+      // Validate that each spec has required fields
+      for (const spec of parsedSpecs) {
+        if (!spec.title || !spec.description) {
+          throw new Error(`Invalid spec structure: missing title or description. Spec: ${JSON.stringify(spec)}`);
+        }
+      }
+      
+      // Create specs using CreateSpecTool
+      const createdSpecs = [];
+      const errors = [];
+      let rootSpecId: string | null = null;
+      
+      for (const specData of parsedSpecs) {
+        try {
+          // Determine parent spec ID
+          let parentSpecId: string | undefined = undefined;
+          if (specData.parent_spec_id) {
+            parentSpecId = specData.parent_spec_id;
+          } else if (rootSpecId && specData !== parsedSpecs[0]) {
+            // If this is not the first spec and we have a root, make it a child of root
+            parentSpecId = rootSpecId;
+          }
+          
+          const createSpecResult = await this.createSpecTool.execute({
+            title: specData.title,
+            description: specData.description,
+            parentSpecId,
+            depth: parentSpecId ? 2 : 1
+          });
+          
+          if (createSpecResult.success && createSpecResult.result) {
+            const createdSpec = createSpecResult.result as any;
+            createdSpecs.push(createdSpec);
+            
+            // Store the first spec's ID as root for subsequent specs
+            if (!rootSpecId && !parentSpecId) {
+              rootSpecId = createdSpec.id;
+            }
+          } else {
+            errors.push(`Failed to create spec "${specData.title}": ${createSpecResult.error}`);
+          }
+        } catch (error) {
+          errors.push(`Error creating spec "${specData.title}": ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+      }
+      
+      // Generate response message
+      let responseMessage: string;
+      if (createdSpecs.length > 0) {
+        responseMessage = `Perfect! I've generated and created ${createdSpecs.length} specs based on your request:\n\n`;
+        createdSpecs.forEach((spec, index) => {
+          responseMessage += `${index + 1}. ${spec.title}\n`;
+        });
+        
+        if (errors.length > 0) {
+          responseMessage += `\nNote: ${errors.length} spec(s) could not be created due to errors.`;
+        }
+      } else {
+        responseMessage = "I encountered issues creating the specs. Please try again or rephrase your request.";
+        if (errors.length > 0) {
+          responseMessage += `\nErrors: ${errors.join(', ')}`;
+        }
+      }
+      
+      return {
+        success: createdSpecs.length > 0,
+        message: responseMessage,
+        metadata: {
+          createdSpecsCount: createdSpecs.length,
+          errorsCount: errors.length,
+          errors: errors,
+          specs: createdSpecs
+        }
+      };
+      
+    } catch (error) {
+      console.error('Error in handleGeneratingSpecs:', error);
+      return {
+        success: false,
+        message: `Error generating specs: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        metadata: { error: error instanceof Error ? error.message : 'Unknown error' }
+      };
+    }
   }
 
   private async performLLMIntentAnalysis(
@@ -634,7 +841,9 @@ export class SamuraiAgent {
       codeContexts: string,
       conversationSummary: string,
       activeTaskHeader?: string,
-      noActiveTaskInference?: string
+      noActiveTaskInference?: string,
+      currentUserMessage?: string,
+      activeTaskId?: string
     }
   ): Promise<string> {
     try {
@@ -647,7 +856,9 @@ export class SamuraiAgent {
         .replace('{codeContexts}', variables.codeContexts || 'No code context available')
         .replace('{conversationSummary}', variables.conversationSummary || 'No conversation history available')
         .replace('{activeTaskHeader}', variables.activeTaskHeader || '')
-        .replace('{noActiveTaskInference}', variables.noActiveTaskInference || '');
+        .replace('{noActiveTaskInference}', variables.noActiveTaskInference || '')
+        .replace('{currentUserMessage}', variables.currentUserMessage || '')
+        .replace('{activeTaskId}', variables.activeTaskId || '');
     } catch (error) {
       throw new Error(`Failed to load prompt file ${promptFilePath}: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }

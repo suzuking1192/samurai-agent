@@ -277,8 +277,8 @@ class SamuraiAgentPanelWebviewViewProvider {
         const agentPanelJsPath = assetUri(webview, this._extensionUri, "agentPanel.js");
         const chatCssPath = assetUri(webview, this._extensionUri, "chat.css");
         const chatJsPath = assetUri(webview, this._extensionUri, "chat.js");
-        const taskCssPath = assetUri(webview, this._extensionUri, "task.css");
-        const taskJsPath = assetUri(webview, this._extensionUri, "task.js");
+        const specCssPath = assetUri(webview, this._extensionUri, "spec.css");
+        const specJsPath = assetUri(webview, this._extensionUri, "spec.js");
         const settingsCssPath = assetUri(webview, this._extensionUri, "settings.css");
         const settingsJsPath = assetUri(webview, this._extensionUri, "settings.js");
         const webviewApiJsPath = assetUri(webview, this._extensionUri, "webviewApi.js");
@@ -287,13 +287,13 @@ class SamuraiAgentPanelWebviewViewProvider {
             // CSS paths
             agentPanelCssPath: agentPanelCssPath.toString(),
             chatCssPath: chatCssPath.toString(),
-            taskCssPath: taskCssPath.toString(),
+            specCssPath: specCssPath.toString(),
             settingsCssPath: settingsCssPath.toString(),
             // JS paths
             webviewApiJsPath: webviewApiJsPath.toString(),
             agentPanelJsPath: agentPanelJsPath.toString(),
             chatJsPath: chatJsPath.toString(),
-            taskJsPath: taskJsPath.toString(),
+            specJsPath: specJsPath.toString(),
             settingsJsPath: settingsJsPath.toString(),
             testJsPath: testJsPath.toString(),
         });
@@ -313,7 +313,7 @@ class SamuraiAgentPanelWebviewViewProvider {
             <title>Samurai Agent Panel</title>
             <link href="${agentPanelCssPath}" rel="stylesheet">
             <link href="${chatCssPath}" rel="stylesheet">
-            <link href="${taskCssPath}" rel="stylesheet">
+            <link href="${specCssPath}" rel="stylesheet">
             <link href="${settingsCssPath}" rel="stylesheet">
         </head>
         <body>
@@ -323,8 +323,8 @@ class SamuraiAgentPanelWebviewViewProvider {
                     <div class="tab" id="chat-tab" data-tab="chat">
                         <span>Chat</span>
                     </div>
-                    <div class="tab" id="task-tab" data-tab="task">
-                        <span>Task</span>
+                    <div class="tab" id="spec-tab" data-tab="spec">
+                        <span>Spec</span>
                     </div>
                     <div class="tab" id="setting-tab" data-tab="setting">
                         <span>Setting</span>
@@ -374,9 +374,9 @@ class SamuraiAgentPanelWebviewViewProvider {
                         </div>
                     </div>
                     
-                    <!-- Task Content -->
-                    <div class="tab-content" id="task-content" style="display: none;">
-                        <!-- Task content will be dynamically rendered by task.js -->
+                    <!-- Spec Content -->
+                    <div class="tab-content" id="spec-content" style="display: none;">
+                        <!-- Spec content will be dynamically rendered by spec.js -->
                     </div>
                     
                     <!-- Setting Content -->
@@ -421,7 +421,7 @@ class SamuraiAgentPanelWebviewViewProvider {
             <script nonce="${nonce}" src="${webviewApiJsPath}"></script>
             <script nonce="${nonce}" src="${agentPanelJsPath}"></script>
             <script nonce="${nonce}" src="${chatJsPath}"></script>
-            <script nonce="${nonce}" src="${taskJsPath}"></script>
+            <script nonce="${nonce}" src="${specJsPath}"></script>
             <script nonce="${nonce}" src="${settingsJsPath}"></script>
             
             <!-- Script loading debugging - runs after external scripts are parsed -->

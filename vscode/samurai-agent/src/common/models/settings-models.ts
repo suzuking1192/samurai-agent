@@ -47,7 +47,7 @@ export interface IProjectSettings extends BaseModel {
     customPrompts: Record<string, string>;
     projectSpecificConfig: {
         codeAnalysisEnabled: boolean;
-        autoTaskGeneration: boolean;
+        autoSpecGeneration: boolean;
         memoryRetentionDays: number;
         maxTokensPerRequest: number;
         [key: string]: any;

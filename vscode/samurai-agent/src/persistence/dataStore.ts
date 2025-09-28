@@ -6,7 +6,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import { Task } from '../common/models/task-models';
+import { Spec } from '../common/models/spec-models';
 import { Memory } from '../common/models/memory-models';
 import { ProjectSettings, GlobalSettings, IProjectSettings } from '../common/models/settings-models';
 import { ApiResponse, ResponseType } from '../common/models/response-models';
@@ -416,13 +416,13 @@ export class DataStore {
         
         try {
             switch (command) {
-                // Task operations
-                case 'loadTasks':
-                    return this.handleLoadTasks(requestId);
-                case 'saveTask':
-                    return this.handleSaveTask(requestId, payload);
-                case 'deleteTask':
-                    return this.handleDeleteTask(requestId, payload);
+                // Spec operations
+                case 'loadSpecs':
+                    return this.handleLoadSpecs(requestId);
+                case 'saveSpec':
+                    return this.handleSaveSpec(requestId, payload);
+                case 'deleteSpec':
+                    return this.handleDeleteSpec(requestId, payload);
                 
                 // Memory operations
                 case 'loadMemories':
@@ -532,7 +532,7 @@ export class DataStore {
                     customPrompts: {},
                     projectSpecificConfig: {
                         codeAnalysisEnabled: true,
-                        autoTaskGeneration: true,
+                        autoSpecGeneration: true,
                         memoryRetentionDays: 30,
                         maxTokensPerRequest: 4000
                     },
@@ -598,39 +598,39 @@ export class DataStore {
         }
     }
     
-    // Task operation handlers
-    private handleLoadTasks(requestId?: string): ApiResponse<any> {
+    // Spec operation handlers
+    private handleLoadSpecs(requestId?: string): ApiResponse<any> {
         try {
-            const tasks = this.readJsonFile<Task>(this.getDataFilePath('tasks'));
-            return this.createSuccessResponse(requestId, tasks);
+            const specs = this.readJsonFile<Spec>(this.getDataFilePath('specs'));
+            return this.createSuccessResponse(requestId, specs);
         } catch (error) {
-            return this.createErrorResponse(requestId, `Failed to load tasks: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            return this.createErrorResponse(requestId, `Failed to load specs: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
     }
 
-    private handleSaveTask(requestId?: string, task?: Task): ApiResponse<any> {
+    private handleSaveSpec(requestId?: string, spec?: Spec): ApiResponse<any> {
         try {
-            if (!task) {
-                return this.createErrorResponse(requestId, 'Task data is required');
+            if (!spec) {
+                return this.createErrorResponse(requestId, 'Spec data is required');
             }
             
-            const savedTask = this.upsertCollectionItem<Task>(this.getDataFilePath('tasks'), task);
-            return this.createSuccessResponse(requestId, savedTask);
+            const savedSpec = this.upsertCollectionItem<Spec>(this.getDataFilePath('specs'), spec);
+            return this.createSuccessResponse(requestId, savedSpec);
         } catch (error) {
-            return this.createErrorResponse(requestId, `Failed to save task: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            return this.createErrorResponse(requestId, `Failed to save spec: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
     }
     
-    private handleDeleteTask(requestId?: string, payload?: any): ApiResponse<any> {
+    private handleDeleteSpec(requestId?: string, payload?: any): ApiResponse<any> {
         try {
-            if (!payload?.taskId) {
-                return this.createErrorResponse(requestId, 'Task ID is required');
+            if (!payload?.specId) {
+                return this.createErrorResponse(requestId, 'Spec ID is required');
             }
             
-            const deleted = this.deleteCollectionItem<Task>(this.getDataFilePath('tasks'), payload.taskId);
+            const deleted = this.deleteCollectionItem<Spec>(this.getDataFilePath('specs'), payload.specId);
             return this.createSuccessResponse(requestId, deleted);
         } catch (error) {
-            return this.createErrorResponse(requestId, `Failed to delete task: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            return this.createErrorResponse(requestId, `Failed to delete spec: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
     }
 

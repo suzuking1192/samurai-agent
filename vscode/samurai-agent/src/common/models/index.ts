@@ -14,7 +14,7 @@
  * 
  * Future model categories:
  * - Agent configuration and settings
- * - Task and workflow definitions
+ * - Spec and workflow definitions
  * - Memory and context structures
  * - LLM request/response formats
  * - Tool call specifications
@@ -99,7 +99,7 @@ export interface GlobalSettings extends BaseModel {
 
 // Export all models from this central location
 export * from './agent-config';
-export * from './task-models';
+export * from './spec-models';
 export * from './memory-models';
 export * from './llm-models';
 export * from './tool-models';

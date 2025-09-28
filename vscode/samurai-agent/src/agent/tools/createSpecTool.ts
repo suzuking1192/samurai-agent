@@ -10,19 +10,19 @@ import {
   ToolExecutionResult,
 } from "../../common/models/tool-models";
 
-export interface CreateTaskParameters {
+export interface CreateSpecParameters {
   title: string;
   description?: string;
   parentSpecId?: string;
   depth?: number;
 }
 
-export class CreateTaskTool {
+export class CreateSpecTool {
   public readonly definition: ToolDefinition = {
     id: randomUUID(),
     createdAt: new Date(),
     updatedAt: new Date(),
-    name: "create_task",
+    name: "create_spec",
     description: "Create a new spec in the Samurai Agent spec list.",
     parameters: {
       type: "object",
@@ -55,11 +55,11 @@ export class CreateTaskTool {
 
   constructor(private readonly dataStore: DataStore) {}
 
-  public async execute(params: CreateTaskParameters): Promise<ToolExecutionResult> {
+  public async execute(params: CreateSpecParameters): Promise<ToolExecutionResult> {
     const startTime = Date.now();
 
     try {
-      const spec = this.buildTask(params);
+      const spec = this.buildSpec(params);
       const response = this.dataStore.handleWebviewMessage({
         command: "saveSpec",
         payload: spec,
@@ -89,7 +89,7 @@ export class CreateTaskTool {
     }
   }
 
-  private buildTask(params: CreateTaskParameters): Spec {
+  private buildSpec(params: CreateSpecParameters): Spec {
     const now = new Date();
     const depth = this.resolveDepth(params);
 
@@ -107,11 +107,11 @@ export class CreateTaskTool {
       dependencies: [],
       metadata: {},
       createdAt: now,
-      updatedAt: now,
+      updatedAt: new Date(),
     };
   }
 
-  private resolveDepth(params: CreateTaskParameters): number {
+  private resolveDepth(params: CreateSpecParameters): number {
     if (typeof params.depth === "number" && params.depth > 0) {
       return params.depth;
     }
@@ -119,4 +119,3 @@ export class CreateTaskTool {
     return params.parentSpecId ? 2 : 1;
   }
 }
-

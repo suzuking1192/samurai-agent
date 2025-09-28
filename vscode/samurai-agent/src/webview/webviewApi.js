@@ -106,10 +106,10 @@ function handleMessage(message) {
  * Convenience methods for common persistence operations
  */
 const persistenceApi = {
-    // Task operations
-    loadTasks: () => postCommand('loadTasks'),
-    saveTask: (task) => postCommand('saveTask', task),
-    deleteTask: (taskId) => postCommand('deleteTask', { taskId }),
+    // Spec operations
+    loadSpecs: () => postCommand('loadSpecs'),
+    saveSpec: (spec) => postCommand('saveSpec', spec),
+    deleteSpec: (specId) => postCommand('deleteSpec', { specId }),
     
     // Memory operations
     loadMemories: () => postCommand('loadMemories'),

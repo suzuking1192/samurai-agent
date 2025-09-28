@@ -109,17 +109,17 @@ describe('WebviewApi', () => {
         it('should provide persistence API methods', () => {
             expect(window.WebviewApi).toBeDefined();
             expect(window.WebviewApi.persistence).toBeDefined();
-            expect(typeof window.WebviewApi.persistence.loadTasks).toBe('function');
-            expect(typeof window.WebviewApi.persistence.saveTask).toBe('function');
+            expect(typeof window.WebviewApi.persistence.loadSpecs).toBe('function');
+            expect(typeof window.WebviewApi.persistence.saveSpec).toBe('function');
             expect(typeof window.WebviewApi.persistence.loadGlobalSettings).toBe('function');
             expect(typeof window.WebviewApi.persistence.saveGlobalSettings).toBe('function');
         });
 
-        it('should call postCommand with correct parameters for loadTasks', async () => {
+        it('should call postCommand with correct parameters for loadSpecs', async () => {
             const mockResponse = {
                 type: 'success',
-                requestId: 'req_load_tasks',
-                payload: [{ id: 'task1', title: 'Test Task' }]
+                requestId: 'req_load_specs',
+                payload: [{ id: 'spec1', title: 'Test Spec' }]
             };
 
             setTimeout(() => {
@@ -128,23 +128,23 @@ describe('WebviewApi', () => {
                 }));
             }, 10);
 
-            const result = await window.WebviewApi.persistence.loadTasks();
+            const result = await window.WebviewApi.persistence.loadSpecs();
 
             expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({
-                command: 'loadTasks',
+                command: 'loadSpecs',
                 requestId: expect.any(String),
                 payload: null
             });
 
-            expect(result).toEqual([{ id: 'task1', title: 'Test Task' }]);
+            expect(result).toEqual([{ id: 'spec1', title: 'Test Spec' }]);
         });
 
-        it('should call postCommand with correct parameters for saveTask', async () => {
-            const task = { id: 'task1', title: 'Test Task', spec: 'Test spec' };
+        it('should call postCommand with correct parameters for saveSpec', async () => {
+            const spec = { id: 'spec1', title: 'Test Spec', spec: 'Test spec' };
             const mockResponse = {
                 type: 'success',
-                requestId: 'req_save_task',
-                payload: task
+                requestId: 'req_save_spec',
+                payload: spec
             };
 
             setTimeout(() => {
@@ -153,15 +153,15 @@ describe('WebviewApi', () => {
                 }));
             }, 10);
 
-            const result = await window.WebviewApi.persistence.saveTask(task);
+            const result = await window.WebviewApi.persistence.saveSpec(spec);
 
             expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({
-                command: 'saveTask',
+                command: 'saveSpec',
                 requestId: expect.any(String),
-                payload: task
+                payload: spec
             });
 
-            expect(result).toEqual(task);
+            expect(result).toEqual(spec);
         });
     });
 
