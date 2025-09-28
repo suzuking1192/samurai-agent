@@ -83,6 +83,41 @@ export interface CodeClass {
     documentation?: string;
 }
 
+export type CodeElementType =
+    | 'function'
+    | 'class'
+    | 'method'
+    | 'variable'
+    | 'arrow_function'
+    | 'interface'
+    | 'struct'
+    | 'impl'
+    | 'trait'
+    | 'module'
+    | 'enum'
+    | 'import'
+    | 'export';
+
+export interface CodeElement {
+    name: string;
+    type: CodeElementType;
+    lineStart: number;
+    lineEnd: number;
+    filePath: string;
+    signature?: string;
+    codeSnippet?: string;
+}
+
+export interface FileInfo {
+    path: string;
+    name: string;
+    extension: string;
+    language: string;
+    size: number;
+    elements: CodeElement[];
+    lastModified: Date;
+}
+
 /**
  * Code issue model
  */

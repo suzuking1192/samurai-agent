@@ -57,6 +57,9 @@ const openaiChatClient_1 = require("./agent/llm/openaiChatClient");
 const geminiChatClient_1 = require("./agent/llm/geminiChatClient");
 const anthropicChatClient_1 = require("./agent/llm/anthropicChatClient");
 const projectDetailService_1 = require("./agent/memory/projectDetailService");
+const TreeSitterLoaderService_1 = require("./agent/code_parser/TreeSitterLoaderService");
+const extractCodeTool_1 = require("./agent/tools/extractCodeTool");
+const CodeParserService_1 = require("./agent/code_parser/CodeParserService");
 /**
  * Extension activation function - main backend entry point
  * Registers all commands, webview providers, and initializes the agent system
@@ -69,6 +72,11 @@ function activate(context) {
     llmProviderService.registerClient("openai", new openaiChatClient_1.OpenAIChatClient());
     llmProviderService.registerClient("google", new geminiChatClient_1.GeminiChatClient());
     llmProviderService.registerClient("anthropic", new anthropicChatClient_1.AnthropicChatClient());
+    // Initialize TreeSitterLoaderService
+    const treeSitterLoaderService = new TreeSitterLoaderService_1.TreeSitterLoaderService(context.globalStorageUri);
+    // Initialize CodeParserService and ExtractCodeTool
+    const codeParserService = new CodeParserService_1.CodeParserService();
+    const extractCodeTool = new extractCodeTool_1.ExtractCodeTool(llmProviderService, codeParserService);
     const projectDetailService = dataStore
         ? new projectDetailService_1.ProjectDetailService(llmProviderService, dataStore, context.extensionUri.fsPath)
         : undefined;
@@ -77,6 +85,8 @@ function activate(context) {
         projectDetailService,
         dataStore,
         globalDataStore,
+        treeSitterLoaderService,
+        extractCodeTool,
     });
     context.subscriptions.push(vscode.window.registerWebviewViewProvider(SamuraiAgentPanelWebviewViewProvider_1.SamuraiAgentPanelWebviewViewProvider.viewType, agentPanelProvider));
     context.subscriptions.push(vscode.commands.registerCommand("samurai-agent.llm.chat", async (request) => {

@@ -5,6 +5,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import { DataStore } from '../src/persistence/dataStore';
+import { ExtractCodeToolResultPayload } from '../src/common/models/tool-models';
 
 // Mock fs module
 jest.mock('fs');
@@ -617,6 +618,149 @@ describe('DataStore', () => {
 
             expect(response.type).toBe('error');
             expect(response.error).toContain('File write error');
+        });
+    });
+
+    describe('code context persistence', () => {
+        const mockSessionId = 'test-session-id';
+        const mockCodeContextId = 'test-code-context-id';
+        const mockPayload: ExtractCodeToolResultPayload = {
+            relevance_score: 8.5,
+            context: 'Test code context analysis',
+            file_path: '/test/file.ts',
+            relevantCodeElements: [
+                {
+                    path: '/test/file.ts',
+                    elements: [
+                        {
+                            name: 'testFunction',
+                            type: 'function',
+                            lineStart: 10,
+                            lineEnd: 20,
+                            filePath: '/test/file.ts',
+                            signature: 'function testFunction(): void'
+                        }
+                    ],
+                    snippet: 'function testFunction(): void {\n  // test implementation\n}'
+                }
+            ]
+        };
+
+        describe('saveCodeContext', () => {
+            it('should save code context payload to file', async () => {
+                const expectedDir = path.join(mockWorkspaceRoot, '.vscode', 'samurai-agent', 'sessions', mockSessionId, 'code_contexts');
+                const expectedFilePath = path.join(expectedDir, `${mockCodeContextId}.json`);
+
+                await dataStore.saveCodeContext(mockSessionId, mockCodeContextId, mockPayload);
+
+                expect(mockFs.existsSync).toHaveBeenCalledWith(expectedDir);
+                expect(mockFs.mkdirSync).toHaveBeenCalledWith(expectedDir, { recursive: true });
+                expect(mockFs.writeFileSync).toHaveBeenCalledWith(
+                    expectedFilePath,
+                    JSON.stringify(mockPayload, null, 2)
+                );
+            });
+
+            it('should handle directory creation errors', async () => {
+                mockFs.mkdirSync.mockImplementation(() => {
+                    throw new Error('Directory creation failed');
+                });
+
+                await expect(
+                    dataStore.saveCodeContext(mockSessionId, mockCodeContextId, mockPayload)
+                ).rejects.toThrow('Directory creation failed');
+            });
+        });
+
+        describe('loadCodeContext', () => {
+            it('should load code context payload from file', async () => {
+                const expectedFilePath = path.join(
+                    mockWorkspaceRoot, 
+                    '.vscode', 
+                    'samurai-agent', 
+                    'sessions', 
+                    mockSessionId, 
+                    'code_contexts', 
+                    `${mockCodeContextId}.json`
+                );
+
+                mockFs.existsSync.mockReturnValue(true);
+                mockFs.readFileSync.mockReturnValue(JSON.stringify(mockPayload));
+
+                const result = await dataStore.loadCodeContext(mockSessionId, mockCodeContextId);
+
+                expect(mockFs.existsSync).toHaveBeenCalledWith(expectedFilePath);
+                expect(mockFs.readFileSync).toHaveBeenCalledWith(expectedFilePath, 'utf8');
+                expect(result).toEqual(mockPayload);
+            });
+
+            it('should return undefined for non-existent file', async () => {
+                mockFs.existsSync.mockReturnValue(false);
+
+                const result = await dataStore.loadCodeContext(mockSessionId, mockCodeContextId);
+
+                expect(result).toBeUndefined();
+            });
+
+            it('should return undefined for invalid JSON', async () => {
+                mockFs.existsSync.mockReturnValue(true);
+                mockFs.readFileSync.mockReturnValue('invalid json');
+
+                const result = await dataStore.loadCodeContext(mockSessionId, mockCodeContextId);
+
+                expect(result).toBeUndefined();
+            });
+        });
+
+        describe('loadAllCodeContextForSession', () => {
+            it('should load all code contexts for a session', async () => {
+                const codeContextIds = ['context-1', 'context-2', 'context-3'];
+                const payload1 = { ...mockPayload, context: 'Context 1' };
+                const payload2 = { ...mockPayload, context: 'Context 2' };
+                const payload3 = { ...mockPayload, context: 'Context 3' };
+
+                // Mock successful loads for all contexts
+                mockFs.existsSync.mockReturnValue(true);
+                mockFs.readFileSync
+                    .mockReturnValueOnce(JSON.stringify(payload1))
+                    .mockReturnValueOnce(JSON.stringify(payload2))
+                    .mockReturnValueOnce(JSON.stringify(payload3));
+
+                const results = await dataStore.loadAllCodeContextForSession(mockSessionId, codeContextIds);
+
+                expect(results).toHaveLength(3);
+                expect(results).toContainEqual(payload1);
+                expect(results).toContainEqual(payload2);
+                expect(results).toContainEqual(payload3);
+            });
+
+            it('should handle partial failures gracefully', async () => {
+                const codeContextIds = ['context-1', 'context-2', 'context-3'];
+                const payload1 = { ...mockPayload, context: 'Context 1' };
+                const payload3 = { ...mockPayload, context: 'Context 3' };
+
+                // Mock successful load for context-1, failure for context-2, success for context-3
+                mockFs.existsSync
+                    .mockReturnValueOnce(true)  // context-1 exists
+                    .mockReturnValueOnce(false) // context-2 doesn't exist
+                    .mockReturnValueOnce(true); // context-3 exists
+
+                mockFs.readFileSync
+                    .mockReturnValueOnce(JSON.stringify(payload1))
+                    .mockReturnValueOnce(JSON.stringify(payload3));
+
+                const results = await dataStore.loadAllCodeContextForSession(mockSessionId, codeContextIds);
+
+                expect(results).toHaveLength(2);
+                expect(results).toContainEqual(payload1);
+                expect(results).toContainEqual(payload3);
+            });
+
+            it('should return empty array for empty codeContextIds', async () => {
+                const results = await dataStore.loadAllCodeContextForSession(mockSessionId, []);
+
+                expect(results).toEqual([]);
+            });
         });
     });
 });

@@ -6,6 +6,8 @@ import { GlobalDataStore } from "../persistence/globalDataStore";
 import { LLM_MODELS } from "../common/constants/llm-models";
 import { LLMProviderService } from "../agent/llm/llmProviderService";
 import { ProjectDetailService } from "../agent/memory/projectDetailService";
+import { TreeSitterLoaderService } from "../agent/code_parser/TreeSitterLoaderService";
+import { ExtractCodeTool } from "../agent/tools/extractCodeTool";
 
 // Resolve each asset to whichever folder actually has that file
 const assetUri = (
@@ -25,6 +27,8 @@ export interface SamuraiAgentPanelDependencies {
   projectDetailService?: ProjectDetailService;
   dataStore?: DataStore;
   globalDataStore: GlobalDataStore;
+  treeSitterLoaderService?: TreeSitterLoaderService;
+  extractCodeTool?: ExtractCodeTool;
 }
 
 export class SamuraiAgentPanelWebviewViewProvider
@@ -35,6 +39,8 @@ export class SamuraiAgentPanelWebviewViewProvider
   private globalDataStore: GlobalDataStore;
   private llmProviderService: LLMProviderService;
   private projectDetailService: ProjectDetailService | undefined;
+  private treeSitterLoaderService: TreeSitterLoaderService | undefined;
+  private extractCodeTool: ExtractCodeTool | undefined;
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
@@ -44,6 +50,8 @@ export class SamuraiAgentPanelWebviewViewProvider
     this.projectDetailService = dependencies.projectDetailService;
     this.dataStore = dependencies.dataStore;
     this.globalDataStore = dependencies.globalDataStore;
+    this.treeSitterLoaderService = dependencies.treeSitterLoaderService;
+    this.extractCodeTool = dependencies.extractCodeTool;
   }
 
   public resolveWebviewView(

@@ -29,6 +29,16 @@ export enum SessionStatus {
 }
 
 /**
+ * User intent types for conversation analysis
+ */
+export enum UserIntentEnum {
+    PURE_DISCUSSION = 'pure_discussion',
+    FEATURE_EXPLORATION = 'feature_exploration',
+    SPEC_CLARIFICATION = 'spec_clarification',
+    SPEC_GENERATION = 'spec_generation'
+}
+
+/**
  * Main ChatMessage model
  * Represents a single message in a chat conversation
  */
@@ -69,6 +79,8 @@ export interface Session extends BaseModel {
         projectId: string; // Associated project
         [key: string]: any;
     };
+    codeContextIds: string[]; // References to associated code context payloads
+    previous_session_intent: UserIntentEnum; // Intent from the previous session
 }
 
 /**

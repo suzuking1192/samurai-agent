@@ -52,12 +52,16 @@ class SamuraiAgentPanelWebviewViewProvider {
     globalDataStore;
     llmProviderService;
     projectDetailService;
+    treeSitterLoaderService;
+    extractCodeTool;
     constructor(_extensionUri, dependencies) {
         this._extensionUri = _extensionUri;
         this.llmProviderService = dependencies.llmProviderService;
         this.projectDetailService = dependencies.projectDetailService;
         this.dataStore = dependencies.dataStore;
         this.globalDataStore = dependencies.globalDataStore;
+        this.treeSitterLoaderService = dependencies.treeSitterLoaderService;
+        this.extractCodeTool = dependencies.extractCodeTool;
     }
     resolveWebviewView(webviewView, context, _token) {
         console.log("Webview Provider: resolveWebviewView called");
@@ -104,10 +108,10 @@ class SamuraiAgentPanelWebviewViewProvider {
         const { command } = message;
         try {
             // LLM chat handling
-            if (command === "llm.chat") {
-                const command = vscode.commands.executeCommand("samurai-agent.llm.chat", message.payload);
-                if (command && typeof command.then === "function") {
-                    command.then((result) => {
+            if (command === "samurai-agent.llm.chat") {
+                const commandPromise = vscode.commands.executeCommand("samurai-agent.llm.chat", message.payload);
+                if (commandPromise && typeof commandPromise.then === "function") {
+                    commandPromise.then((result) => {
                         webview.postMessage({
                             type: "success",
                             requestId: message.requestId,
@@ -178,6 +182,26 @@ class SamuraiAgentPanelWebviewViewProvider {
                         });
                     }
                 }
+                webview.postMessage(response);
+                return;
+            }
+            // Route namespaced persistence commands to DataStore
+            if (command?.startsWith("samurai-agent.persistence.")) {
+                if (!this.dataStore) {
+                    console.error("DataStore not initialized");
+                    webview.postMessage({
+                        type: "error",
+                        requestId: message.requestId,
+                        error: "DataStore not initialized",
+                        timestamp: new Date(),
+                    });
+                    return;
+                }
+                const mappedMessage = {
+                    ...message,
+                    command: command.replace("samurai-agent.persistence.", ""),
+                };
+                const response = this.dataStore.handleWebviewMessage(mappedMessage);
                 webview.postMessage(response);
                 return;
             }

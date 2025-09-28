@@ -161,4 +161,19 @@ export class ProjectDetailService {
       `Prompt file not found for ${fileName}. Checked paths: ${candidates.join(", ")}`,
     );
   }
+
+  /**
+   * Get project details for a given project ID
+   * @param projectId The project ID to get details for
+   * @returns The digested project detail content or undefined if not found
+   */
+  public async getProjectDetails(projectId: string): Promise<string | undefined> {
+    try {
+      const settings = this.loadProjectSettings();
+      return settings?.digestedProjectDetailContent || undefined;
+    } catch (error) {
+      console.error(`Error getting project details for project ${projectId}:`, error);
+      return undefined;
+    }
+  }
 }

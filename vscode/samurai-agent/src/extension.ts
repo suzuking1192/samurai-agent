@@ -21,6 +21,9 @@ import { OpenAIChatClient } from "./agent/llm/openaiChatClient";
 import { GeminiChatClient } from "./agent/llm/geminiChatClient";
 import { AnthropicChatClient } from "./agent/llm/anthropicChatClient";
 import { ProjectDetailService } from "./agent/memory/projectDetailService";
+import { TreeSitterLoaderService } from "./agent/code_parser/TreeSitterLoaderService";
+import { ExtractCodeTool } from "./agent/tools/extractCodeTool";
+import { CodeParserService } from "./agent/code_parser/CodeParserService";
 
 /**
  * Extension activation function - main backend entry point
@@ -36,6 +39,14 @@ export function activate(context: vscode.ExtensionContext) {
   llmProviderService.registerClient("openai", new OpenAIChatClient());
   llmProviderService.registerClient("google", new GeminiChatClient());
   llmProviderService.registerClient("anthropic", new AnthropicChatClient());
+  
+  // Initialize TreeSitterLoaderService
+  const treeSitterLoaderService = new TreeSitterLoaderService(context.globalStorageUri);
+  
+  // Initialize CodeParserService and ExtractCodeTool
+  const codeParserService = new CodeParserService();
+  const extractCodeTool = new ExtractCodeTool(llmProviderService, codeParserService);
+  
   const projectDetailService = dataStore
     ? new ProjectDetailService(
         llmProviderService,
@@ -51,6 +62,8 @@ export function activate(context: vscode.ExtensionContext) {
       projectDetailService,
       dataStore,
       globalDataStore,
+      treeSitterLoaderService,
+      extractCodeTool,
     },
   );
 

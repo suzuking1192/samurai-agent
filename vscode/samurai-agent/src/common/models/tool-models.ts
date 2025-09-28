@@ -6,6 +6,7 @@
  */
 
 import { BaseModel } from './index';
+import { CodeElement } from './context-models';
 
 /**
  * Tool call status
@@ -53,4 +54,28 @@ export interface ToolExecutionResult {
     error?: string;
     executionTime: number;
     metadata: Record<string, any>;
+    relevance_score?: number;
+    context?: string;
+    file_path?: string;
+    elements?: Array<{
+        name: string;
+        type: string;
+        lineStart: number;
+        filePath: string;
+        signature?: string;
+    }>;
+}
+
+/**
+ * Specific payload interface for code extraction tool results
+ */
+export interface ExtractCodeToolResultPayload {
+    relevance_score: number;
+    context: string;
+    file_path: string;
+    relevantCodeElements: Array<{
+        path: string;
+        elements: CodeElement[];
+        snippet: string;
+    }>;
 }

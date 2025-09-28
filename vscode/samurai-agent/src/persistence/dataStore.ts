@@ -16,8 +16,10 @@ import {
     CreateSessionRequest,
     MessageType,
     Session,
-    SessionStatus
+    SessionStatus,
+    UserIntentEnum
 } from '../common/models/chat-models';
+import { ExtractCodeToolResultPayload } from '../common/models/tool-models';
 import { randomUUID } from 'crypto';
 
 type StoredSession = Omit<Session, 'createdAt' | 'updatedAt' | 'lastMessageAt'> & {
@@ -210,6 +212,8 @@ export class DataStore {
                 ...(request.mode ? { mode: request.mode } : {}),
                 ...(request.metadata ?? {})
             },
+            codeContextIds: [],
+            previous_session_intent: UserIntentEnum.PURE_DISCUSSION,
             createdAt: now,
             updatedAt: now
         };
@@ -312,6 +316,20 @@ export class DataStore {
             .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
 
         return messages;
+    }
+
+    /**
+     * Public method to load chat messages for a session
+     */
+    public loadChatMessagesForSession(sessionId: string): ChatMessage[] {
+        return this.loadChatMessagesForSessionInternal(sessionId);
+    }
+
+    /**
+     * Public method to update a session
+     */
+    public updateSession(sessionId: string, updates: Partial<Session>): Session {
+        return this.updateSessionInternal(sessionId, updates);
     }
     
     /**
@@ -716,6 +734,93 @@ export class DataStore {
             return this.createSuccessResponse(requestId, savedMessage);
         } catch (error) {
             return this.createErrorResponse(requestId, `Failed to save chat message: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+    }
+
+    /**
+     * Gets the file path for a specific code context JSON file
+     */
+    private getCodeContextFilePath(projectId: string, codeContextId: string): string {
+        const codeContextDir = path.join(this.dataDir, 'code_contexts');
+        return path.join(codeContextDir, `${codeContextId}.json`);
+    }
+
+    /**
+     * Saves a code context payload to a unique JSON file
+     * @param payload The code context payload to save
+     * @param projectId The project ID
+     * @param sessionId The session ID
+     * @returns The unique ID of the saved context
+     */
+    public async saveCodeContext(payload: ExtractCodeToolResultPayload, projectId: string, sessionId: string): Promise<string> {
+        try {
+            const uniqueId = randomUUID();
+            const filePath = this.getCodeContextFilePath(projectId, uniqueId);
+            const codeContextDir = path.dirname(filePath);
+            
+            // Ensure the directory structure exists
+            if (!fs.existsSync(codeContextDir)) {
+                fs.mkdirSync(codeContextDir, { recursive: true });
+            }
+            
+            // Write the payload to the file
+            this.writeSingleJsonFile(filePath, payload);
+            return uniqueId;
+        } catch (error) {
+            console.error(`Error saving code context for project ${projectId}, session ${sessionId}:`, error);
+            throw error;
+        }
+    }
+
+    /**
+     * Loads a specific code context payload from a JSON file
+     * @param id The code context ID
+     * @param projectId The project ID
+     * @returns The code context payload or undefined if not found
+     */
+    public async loadCodeContext(id: string, projectId: string): Promise<ExtractCodeToolResultPayload | undefined> {
+        try {
+            const filePath = this.getCodeContextFilePath(projectId, id);
+            return this.readSingleJsonFile<ExtractCodeToolResultPayload>(filePath) || undefined;
+        } catch (error) {
+            console.error(`Error loading code context ${id} for project ${projectId}:`, error);
+            return undefined;
+        }
+    }
+
+    /**
+     * Loads all code context payloads for a session
+     * @param sessionId The session ID
+     * @param projectId The project ID
+     * @returns Array of code context payloads
+     */
+    public async loadAllCodeContextForSession(sessionId: string, projectId: string): Promise<ExtractCodeToolResultPayload[]> {
+        try {
+            // First, get the session to access codeContextIds
+            const session = this.loadSessionInternal(sessionId);
+            if (!session) {
+                console.warn(`Session ${sessionId} not found`);
+                return [];
+            }
+
+            const results: ExtractCodeToolResultPayload[] = [];
+            
+            for (const codeContextId of session.codeContextIds || []) {
+                try {
+                    const payload = await this.loadCodeContext(codeContextId, projectId);
+                    if (payload) {
+                        results.push(payload);
+                    }
+                } catch (error) {
+                    console.error(`Error loading code context ${codeContextId} for session ${sessionId}:`, error);
+                    // Continue loading other contexts even if one fails
+                }
+            }
+            
+            return results;
+        } catch (error) {
+            console.error(`Error loading code contexts for session ${sessionId}:`, error);
+            return [];
         }
     }
     
