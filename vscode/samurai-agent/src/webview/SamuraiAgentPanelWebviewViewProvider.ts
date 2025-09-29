@@ -8,6 +8,8 @@ import { LLMProviderService } from "../agent/llm/llmProviderService";
 import { ProjectDetailService } from "../agent/memory/projectDetailService";
 import { TreeSitterLoaderService } from "../agent/code_parser/TreeSitterLoaderService";
 import { ExtractCodeTool } from "../agent/tools/extractCodeTool";
+import { SamuraiAgent } from "../agent/core/samuraiAgent";
+import { ChatMessage, MessageType } from "../common/models/chat-models";
 
 // Resolve each asset to whichever folder actually has that file
 const assetUri = (
@@ -29,6 +31,7 @@ export interface SamuraiAgentPanelDependencies {
   globalDataStore: GlobalDataStore;
   treeSitterLoaderService?: TreeSitterLoaderService;
   extractCodeTool?: ExtractCodeTool;
+  samuraiAgent?: SamuraiAgent;
 }
 
 export class SamuraiAgentPanelWebviewViewProvider
@@ -41,6 +44,7 @@ export class SamuraiAgentPanelWebviewViewProvider
   private projectDetailService: ProjectDetailService | undefined;
   private treeSitterLoaderService: TreeSitterLoaderService | undefined;
   private extractCodeTool: ExtractCodeTool | undefined;
+  private samuraiAgent: SamuraiAgent | undefined;
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
@@ -52,6 +56,7 @@ export class SamuraiAgentPanelWebviewViewProvider
     this.globalDataStore = dependencies.globalDataStore;
     this.treeSitterLoaderService = dependencies.treeSitterLoaderService;
     this.extractCodeTool = dependencies.extractCodeTool;
+    this.samuraiAgent = dependencies.samuraiAgent;
   }
 
   public resolveWebviewView(
@@ -114,8 +119,95 @@ export class SamuraiAgentPanelWebviewViewProvider
     const { command } = message;
 
     try {
-      // LLM chat handling
+      // LLM chat handling - route through SamuraiAgent if available
       if (command === "samurai-agent.llm.chat") {
+        if (this.samuraiAgent && message.payload) {
+          // Extract user message from the LLM request
+          const llmRequest = message.payload;
+          const userMessage = llmRequest.messages?.find((msg: any) => msg.role === 'user');
+          
+          if (userMessage && this.dataStore) {
+            // Get current session
+            const projectSettings = this.dataStore.readProjectSettings();
+            const currentSessionId = projectSettings?.payload?.currentSessionId;
+            
+            if (currentSessionId) {
+              // Load session
+              const sessionResponse = this.dataStore.handleWebviewMessage({
+                command: 'loadSession',
+                payload: { sessionId: currentSessionId }
+              });
+              
+              if (sessionResponse.type === 'success' && sessionResponse.payload) {
+                // Create ChatMessage object
+                const chatMessage: ChatMessage = {
+                  id: `msg-${Date.now()}`,
+                  sessionId: currentSessionId,
+                  projectId: sessionResponse.payload.metadata?.projectId || 'default',
+                  type: MessageType.USER,
+                  content: userMessage.content,
+                  role: 'user',
+                  metadata: {},
+                  isEdited: false,
+                  createdAt: new Date(),
+                  updatedAt: new Date()
+                };
+                
+                // Execute through SamuraiAgent
+                this.samuraiAgent.execute(chatMessage, sessionResponse.payload)
+                  .then((result: any) => {
+                    // Create assistant message from result
+                    const assistantMessage: ChatMessage = {
+                      id: `assistant-${Date.now()}`,
+                      sessionId: currentSessionId,
+                      projectId: sessionResponse.payload.metadata?.projectId || 'default',
+                      type: MessageType.ASSISTANT,
+                      content: result.message || 'No response',
+                      role: 'assistant',
+                      metadata: result.metadata || {},
+                      isEdited: false,
+                      createdAt: new Date(),
+                      updatedAt: new Date()
+                    };
+                    
+                    // Save assistant message
+                    if (this.dataStore) {
+                      this.dataStore.handleWebviewMessage({
+                        command: 'saveChatMessage',
+                        payload: assistantMessage
+                      });
+                    }
+                    
+                    // Return response in LLM format for compatibility
+                    console.log('Sending response to webview:', {
+                      requestId: message.requestId,
+                      content: result.message || 'No response'
+                    });
+                    webview.postMessage({
+                      type: "success",
+                      requestId: message.requestId,
+                      payload: {
+                        content: result.message || 'No response',
+                        metadata: result.metadata || {}
+                      },
+                      timestamp: new Date(),
+                    });
+                  })
+                  .catch((error: any) => {
+                    webview.postMessage({
+                      type: "error",
+                      requestId: message.requestId,
+                      error: error instanceof Error ? error.message : "SamuraiAgent execution failed",
+                      timestamp: new Date(),
+                    });
+                  });
+                return;
+              }
+            }
+          }
+        }
+        
+        // Fallback to direct LLM chat if SamuraiAgent is not available
         const commandPromise = vscode.commands.executeCommand(
           "samurai-agent.llm.chat",
           message.payload,
@@ -145,6 +237,11 @@ export class SamuraiAgentPanelWebviewViewProvider
       }
 
       if (command === "projectDetail.ingest") {
+        console.log("Webview Provider: Received projectDetail.ingest command", {
+          hasSamuraiAgent: !!this.samuraiAgent,
+          payload: message.payload,
+          requestId: message.requestId,
+        });
         const commandPromise = vscode.commands.executeCommand(
           "samurai-agent.projectDetail.ingest",
           message.payload,
@@ -152,6 +249,10 @@ export class SamuraiAgentPanelWebviewViewProvider
         if (commandPromise && typeof commandPromise.then === "function") {
           commandPromise.then(
             (result: unknown) => {
+              console.log(
+                "Webview Provider: projectDetail.ingest success",
+                message.requestId,
+              );
               webview.postMessage({
                 type: "success",
                 requestId: message.requestId,
@@ -160,6 +261,10 @@ export class SamuraiAgentPanelWebviewViewProvider
               });
             },
             (error: unknown) => {
+              console.error(
+                "Webview Provider: projectDetail.ingest error",
+                error,
+              );
               webview.postMessage({
                 type: "error",
                 requestId: message.requestId,

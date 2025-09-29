@@ -451,14 +451,15 @@ export class CodeParserService {
         "case",
     ]);
 
-    constructor(workspaceRoot?: string, llmProvider?: LLMProviderService, treeSitterLoader?: TreeSitterLoaderService) {
+    private readonly extensionRoot?: string;
+
+    constructor(extensionRoot?: string) {
+        this.extensionRoot = extensionRoot;
         this.workspaceRoot =
-            workspaceRoot ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? null;
+            extensionRoot ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? null;
         this.ignorePatterns = this.ignorePatternSources.map(
             (pattern) => new RegExp(pattern, "i")
         );
-        this.llmProvider = llmProvider;
-        this.treeSitterLoader = treeSitterLoader;
     }
 
     public detectLanguage(filePath: string): string | null {
@@ -720,6 +721,13 @@ export class CodeParserService {
             const basePath = workspaceRootFolder.fsPath;
             candidates.push(path.join(basePath, "dist", "prompts", relativePath));
             candidates.push(path.join(basePath, "src", "agent", "prompts", relativePath));
+        }
+
+        if (this.extensionRoot) {
+            candidates.push(path.join(this.extensionRoot, "dist", "prompts", relativePath));
+            candidates.push(path.join(this.extensionRoot, "out", "prompts", relativePath));
+            candidates.push(path.join(this.extensionRoot, "prompts", relativePath));
+            candidates.push(path.join(this.extensionRoot, "src", "agent", "prompts", relativePath));
         }
 
         candidates.push(path.join(__dirname, "..", "prompts", relativePath));

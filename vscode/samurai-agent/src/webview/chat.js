@@ -24,10 +24,19 @@
     }
 
     function displayMessage(message) {
+        console.log('Chat: displayMessage called with:', message);
+        
         const chatMessages = safeGetDocumentElement('chatMessages');
-        if (!chatMessages || !message) {
+        if (!chatMessages) {
+            console.error('Chat: chatMessages element not found');
             return;
         }
+        if (!message) {
+            console.error('Chat: message is null or undefined');
+            return;
+        }
+
+        console.log('Chat: Creating message element for:', message.content);
 
         const messageElement = document.createElement('div');
         messageElement.className = 'chat-message';
@@ -43,6 +52,7 @@
         messageElement.textContent = message.content;
         chatMessages.appendChild(messageElement);
 
+        console.log('Chat: Message element appended to chatMessages');
         chatMessages.scrollTop = chatMessages.scrollHeight;
     }
 
@@ -172,20 +182,31 @@
                 chatMessagesElement.removeChild(pendingIndicator);
             }
 
+            console.log('Chat: Received LLM response:', llmResponse);
+            
+            const normalizedResponse = llmResponse?.payload ? llmResponse.payload : llmResponse;
+
             let assistantContent = '';
             let assistantMetadata = {};
-            if (llmResponse?.payload) {
-                const payload = llmResponse.payload;
-                assistantContent = payload.content || '';
+            if (normalizedResponse) {
+                assistantContent = normalizedResponse.content || '';
+                const { metadata, model, usage, cost } = normalizedResponse;
                 assistantMetadata = {
-                    model: payload.model,
-                    tokens: payload.usage?.totalTokens,
-                    cost: payload.cost
+                    ...(metadata && typeof metadata === 'object' ? metadata : {}),
+                    ...(model ? { model } : {}),
+                    ...(usage && usage.totalTokens ? { tokens: usage.totalTokens } : {}),
+                    ...(typeof cost !== 'undefined' ? { cost } : {}),
                 };
             } else if (llmResponse?.error) {
                 assistantContent = `Error: ${llmResponse.error}`;
                 assistantMetadata = { error: llmResponse.error };
             }
+
+            if (!assistantContent) {
+                assistantContent = 'No response generated.';
+            }
+
+            console.log('Chat: Assistant content:', assistantContent);
 
             const assistantMessage = {
                 id: `assistant-${Date.now()}`,
@@ -197,6 +218,7 @@
                 metadata: assistantMetadata
             };
 
+            console.log('Chat: Displaying assistant message:', assistantMessage);
             displayMessage(assistantMessage);
 
             await globalScope.WebviewApi.persistence.saveChatMessage({
@@ -251,40 +273,95 @@
             }
 
             if (startNewConversationBtn) {
-                startNewConversationBtn.addEventListener('click', async () => {
+                 startNewConversationBtn.addEventListener('click', async () => {
+                    console.log('Chat: Start New Conversation button clicked');
                     if (!globalScope?.WebviewApi || !chatState.projectSettings) {
+                        console.warn('Chat: Missing WebviewApi or projectSettings - cannot start new conversation');
                         return;
                     }
 
                     if (chatMessages) {
+                        console.log('Chat: Clearing chat messages for new conversation');
                         chatMessages.innerHTML = '';
                     }
                     if (chatInput) {
                         chatInput.value = '';
+                        console.log('Chat: Chat input cleared and focus requested');
                         chatInput.focus();
                     }
 
                     try {
+                        console.log('Chat: Loading previous messages for context build', {
+                            currentSessionId: chatState.currentSessionId,
+                        });
+                        // Load current chat messages before creating new session
+                        let previousMessages = [];
+                        if (chatState.currentSessionId) {
+                            try {
+                                previousMessages = await globalScope.WebviewApi.persistence.loadChatMessagesForSession(chatState.currentSessionId);
+                                console.log('Chat: Loaded previous messages', {
+                                    count: Array.isArray(previousMessages) ? previousMessages.length : 0,
+                                });
+                            } catch (error) {
+                                console.warn('Chat: Could not load previous session messages', error);
+                            }
+                        }
+
+                        // Create new session
+                        console.log('Chat: Creating new session for conversation');
                         const newSessionId = await createAndPersistSession('New Conversation');
+                        console.log('Chat: New session created', { newSessionId });
                         if (newSessionId) {
                             const messages = await globalScope.WebviewApi.persistence.loadChatMessagesForSession(newSessionId);
                             if (Array.isArray(messages)) {
+                                console.log('Chat: Rendering messages from new session', {
+                                    count: messages.length,
+                                });
                                 messages.forEach(displayMessage);
                             }
                         }
 
-                        const settingsState = globalScope?.SettingsManager?.getSettings?.();
-                        const rawProjectDetailContent = settingsState?.projectSettings?.rawProjectDetailContent || chatState.projectSettings.rawProjectDetailContent || '';
-
-                        if (rawProjectDetailContent.trim()) {
-                            globalScope.WebviewApi.projectDetail.ingest({
-                                projectId: chatState.projectSettings.projectId,
-                                rawText: rawProjectDetailContent,
-                                mode: 'merge'
-                            }).catch(error => {
-                                console.error('Chat: Failed to merge project detail memory', error);
-                            });
+                        // Build conversation context from previous messages
+                        let conversationContext = '';
+                        if (Array.isArray(previousMessages) && previousMessages.length > 0) {
+                            console.log('Chat: Building conversation context from previous messages');
+                            conversationContext = previousMessages
+                                .map(msg => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
+                                .join('\n\n');
                         }
+
+                        // Get project details
+                        const settingsState = globalScope?.SettingsManager?.getSettings?.();
+                        let rawProjectDetailContent = settingsState?.projectSettings?.rawProjectDetailContent || chatState.projectSettings?.rawProjectDetailContent || '';
+                        console.log('Chat: Retrieved project detail content', {
+                            hasSettingsState: !!settingsState,
+                            rawProjectDetailLength: rawProjectDetailContent?.length || 0,
+                        });
+                        
+                        // If no explicit project detail, use a default description
+                        if (!rawProjectDetailContent.trim()) {
+                            console.log('Chat: No explicit project detail found. Using default context.');
+                            rawProjectDetailContent = 'A software development project with an AI coding assistant.';
+                        }
+
+                        // Combine project details with conversation context
+                        let ingestContent = rawProjectDetailContent;
+                        if (conversationContext) {
+                            console.log('Chat: Appending conversation context to project detail');
+                            ingestContent = `${rawProjectDetailContent}\n\n## Previous Conversation Context:\n${conversationContext}`;
+                        }
+
+                        // Always ingest - either project details, conversation history, or both
+                        console.log('Chat: Ingesting project context and conversation history');
+                        globalScope.WebviewApi.projectDetail.ingest({
+                            projectId: chatState.projectSettings.projectId,
+                            rawText: ingestContent,
+                            mode: 'merge'
+                        }).then(() => {
+                            console.log('Chat: Successfully ingested project context');
+                        }).catch(error => {
+                            console.error('Chat: Failed to merge project detail memory', error);
+                        });
                     } catch (error) {
                         console.error('Chat: Failed to start new conversation', error);
                     }

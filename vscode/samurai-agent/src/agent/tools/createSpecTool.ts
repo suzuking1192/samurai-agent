@@ -107,7 +107,7 @@ export class CreateSpecTool {
       dependencies: [],
       metadata: {},
       createdAt: now,
-      updatedAt: new Date(),
+      updatedAt: now,
     };
   }
 
@@ -119,3 +119,4 @@ export class CreateSpecTool {
     return params.parentSpecId ? 2 : 1;
   }
 }
+

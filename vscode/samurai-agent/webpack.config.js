@@ -52,9 +52,19 @@ const extensionConfig = {
     new CopyWebpackPlugin({
       patterns: [
         {
-          from: path.resolve(__dirname, 'src', 'prompts', '**', '*.md'),
+          from: path.resolve(__dirname, 'src', 'agent', 'prompts', '**', '*.md'),
           to: path.resolve(__dirname, 'dist', 'prompts', '[path][name][ext]'),
-          context: path.resolve(__dirname, 'src', 'prompts'),
+          context: path.resolve(__dirname, 'src', 'agent', 'prompts'),
+          noErrorOnMissing: true
+        },
+        {
+          from: path.resolve(__dirname, 'src', 'webview', '*.{js,css,html}'),
+          to: path.resolve(__dirname, 'dist', 'webview', '[name][ext]'),
+          noErrorOnMissing: true
+        },
+        {
+          from: path.resolve(__dirname, 'src', 'webview', '*.{js,css,html}'),
+          to: path.resolve(__dirname, 'out', 'webview', '[name][ext]'),
           noErrorOnMissing: true
         }
       ]

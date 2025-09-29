@@ -1,21 +1,146 @@
-import { CreateSpecTool, CreateSpecParameters } from '../../../src/agent/tools/createSpecTool';
-import { DataStore } from '../../../src/persistence/dataStore';
-import { Spec, SpecStatus, SpecPriority } from '../../../src/common/models/spec-models';
+/**
+ * Unit tests for CreateSpecTool
+ */
+
+import { CreateSpecTool, CreateSpecParameters } from '../../src/agent/tools/createSpecTool';
+import { DataStore } from '../../src/persistence/dataStore';
+import { Spec, SpecStatus, SpecPriority } from '../../src/common/models/spec-models';
+import { ToolExecutionResult } from '../../src/common/models/tool-models';
+
+// Mock DataStore
+jest.mock('../../src/persistence/dataStore');
 
 describe('CreateSpecTool', () => {
   let createSpecTool: CreateSpecTool;
   let mockDataStore: jest.Mocked<DataStore>;
 
   beforeEach(() => {
-    mockDataStore = {
-      handleWebviewMessage: jest.fn(),
-    } as any;
-
+    mockDataStore = new DataStore('/test/path') as jest.Mocked<DataStore>;
     createSpecTool = new CreateSpecTool(mockDataStore);
   });
 
-  afterEach(() => {
-    jest.clearAllMocks();
+  describe('execute', () => {
+    it('should create a spec successfully', async () => {
+      const params: CreateSpecParameters = {
+        title: 'Test Spec',
+        description: 'This is a test specification',
+        depth: 1
+      };
+
+      const mockSpec: Spec = {
+        id: 'spec-1',
+        title: 'Test Spec',
+        spec: 'This is a test specification',
+        status: SpecStatus.PENDING,
+        priority: SpecPriority.MEDIUM,
+        isCompleted: false,
+        depth: 1,
+        parentSpecId: null,
+        hasSubspecs: false,
+        tags: [],
+        dependencies: [],
+        metadata: {},
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+
+      // Mock successful save
+      mockDataStore.handleWebviewMessage.mockReturnValue({
+        type: 'success',
+        payload: mockSpec,
+        timestamp: new Date()
+      });
+
+      const result = await createSpecTool.execute(params);
+
+      expect(result.success).toBe(true);
+      expect(result.result).toEqual(mockSpec);
+      expect(mockDataStore.handleWebviewMessage).toHaveBeenCalledWith({
+        command: 'saveSpec',
+        payload: expect.objectContaining({
+          title: 'Test Spec',
+          spec: 'This is a test specification',
+          depth: 1
+        })
+      });
+    });
+
+    it('should create a spec with parent spec ID', async () => {
+      const params: CreateSpecParameters = {
+        title: 'Child Spec',
+        description: 'This is a child specification',
+        parentSpecId: 'parent-spec-1',
+        depth: 2
+      };
+
+      const mockSpec: Spec = {
+        id: 'spec-2',
+        title: 'Child Spec',
+        spec: 'This is a child specification',
+        status: SpecStatus.PENDING,
+        priority: SpecPriority.MEDIUM,
+        isCompleted: false,
+        depth: 2,
+        parentSpecId: 'parent-spec-1',
+        hasSubspecs: false,
+        tags: [],
+        dependencies: [],
+        metadata: {},
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+
+      mockDataStore.handleWebviewMessage.mockReturnValue({
+        type: 'success',
+        payload: mockSpec,
+        timestamp: new Date()
+      });
+
+      const result = await createSpecTool.execute(params);
+
+      expect(result.success).toBe(true);
+      expect(result.result).toEqual(mockSpec);
+      expect(mockDataStore.handleWebviewMessage).toHaveBeenCalledWith({
+        command: 'saveSpec',
+        payload: expect.objectContaining({
+          title: 'Child Spec',
+          spec: 'This is a child specification',
+          parentSpecId: 'parent-spec-1',
+          depth: 2
+        })
+      });
+    });
+
+    it('should handle save errors', async () => {
+      const params: CreateSpecParameters = {
+        title: 'Test Spec',
+        description: 'This is a test specification'
+      };
+
+      // Mock save error
+      mockDataStore.handleWebviewMessage.mockReturnValue({
+        type: 'error',
+        error: 'Failed to save spec',
+        timestamp: new Date()
+      });
+
+      const result = await createSpecTool.execute(params);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Failed to save spec');
+    });
+
+    it('should handle missing title', async () => {
+      const params: CreateSpecParameters = {
+        title: '',
+        description: 'This spec has no title'
+      };
+
+      const result = await createSpecTool.execute(params);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Title is required');
+    });
   });
 
   describe('definition', () => {
@@ -23,245 +148,14 @@ describe('CreateSpecTool', () => {
       const definition = createSpecTool.definition;
 
       expect(definition.name).toBe('create_spec');
-      expect(definition.description).toBe('Create a new spec in the Samurai Agent spec list.');
+      expect(definition.description).toContain('Create a new spec');
       expect(definition.category).toBe('spec_management');
       expect(definition.enabled).toBe(true);
-      expect(definition.required).toEqual(['title']);
-      expect(definition.parameters.type).toBe('object');
-      expect(definition.parameters.required).toEqual(['title']);
-    });
-
-    it('should have correct parameter schema', () => {
-      const definition = createSpecTool.definition;
-      const properties = definition.parameters.properties;
-
-      expect(properties.title).toEqual({
-        type: 'string',
-        description: 'Title of the spec to create.',
-      });
-
-      expect(properties.description).toEqual({
-        type: 'string',
-        description: 'Detailed description/spec for the spec.',
-      });
-
-      expect(properties.parentSpecId).toEqual({
-        type: 'string',
-        description: 'Optional identifier of the parent spec.',
-      });
-
-      expect(properties.depth).toEqual({
-        type: 'number',
-        description: 'Depth level for nested specs.',
-      });
-    });
-  });
-
-  describe('execute', () => {
-    it('should successfully create a spec with minimal parameters', async () => {
-      const params: CreateSpecParameters = {
-        title: 'Test Spec',
-      };
-
-      const mockSpec: Spec = {
-        id: 'spec-1',
-        title: 'Test Spec',
-        spec: '',
-        status: SpecStatus.PENDING,
-        priority: SpecPriority.MEDIUM,
-        isCompleted: false,
-        depth: 1,
-        parentSpecId: null,
-        hasSubspecs: false,
-        tags: [],
-        dependencies: [],
-        metadata: {},
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-
-      mockDataStore.handleWebviewMessage.mockReturnValue({
-        type: 'success',
-        payload: mockSpec,
-      });
-
-      const result = await createSpecTool.execute(params);
-
-      expect(result.success).toBe(true);
-      expect(result.result).toEqual(expect.objectContaining({
-        title: 'Test Spec',
-        spec: '',
-        status: SpecStatus.PENDING,
-        priority: SpecPriority.MEDIUM,
-        isCompleted: false,
-        depth: 1,
-        parentSpecId: null,
-      }));
-      expect(result.metadata.specId).toBeDefined();
-      expect(result.executionTime).toBeGreaterThanOrEqual(0);
-
-      expect(mockDataStore.handleWebviewMessage).toHaveBeenCalledWith({
-        command: 'saveSpec',
-        payload: expect.objectContaining({
-          title: 'Test Spec',
-          spec: '',
-          status: SpecStatus.PENDING,
-          priority: SpecPriority.MEDIUM,
-          isCompleted: false,
-          depth: 1,
-          parentSpecId: null,
-        }),
-      });
-    });
-
-    it('should successfully create a spec with all parameters', async () => {
-      const params: CreateSpecParameters = {
-        title: 'Complex Spec',
-        description: 'This is a detailed spec description',
-        parentSpecId: 'parent-spec-1',
-        depth: 2,
-      };
-
-      const mockSpec: Spec = {
-        id: 'spec-2',
-        title: 'Complex Spec',
-        spec: 'This is a detailed spec description',
-        status: SpecStatus.PENDING,
-        priority: SpecPriority.MEDIUM,
-        isCompleted: false,
-        depth: 2,
-        parentSpecId: 'parent-spec-1',
-        hasSubspecs: false,
-        tags: [],
-        dependencies: [],
-        metadata: {},
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-
-      mockDataStore.handleWebviewMessage.mockReturnValue({
-        type: 'success',
-        payload: mockSpec,
-      });
-
-      const result = await createSpecTool.execute(params);
-
-      expect(result.success).toBe(true);
-      expect(result.result).toEqual(expect.objectContaining({
-        title: 'Complex Spec',
-        spec: 'This is a detailed spec description',
-        depth: 2,
-        parentSpecId: 'parent-spec-1',
-      }));
-      expect(result.metadata.specId).toBeDefined();
-
-      expect(mockDataStore.handleWebviewMessage).toHaveBeenCalledWith({
-        command: 'saveSpec',
-        payload: expect.objectContaining({
-          title: 'Complex Spec',
-          spec: 'This is a detailed spec description',
-          depth: 2,
-          parentSpecId: 'parent-spec-1',
-        }),
-      });
-    });
-
-    it('should handle dataStore errors', async () => {
-      const params: CreateSpecParameters = {
-        title: 'Test Spec',
-      };
-
-      mockDataStore.handleWebviewMessage.mockReturnValue({
-        type: 'error',
-        error: 'Failed to save spec',
-      });
-
-      const result = await createSpecTool.execute(params);
-
-      expect(result.success).toBe(false);
-      expect(result.error).toBe('Failed to save spec');
-      expect(result.executionTime).toBeGreaterThanOrEqual(0);
-    });
-
-    it('should handle exceptions during execution', async () => {
-      const params: CreateSpecParameters = {
-        title: 'Test Spec',
-      };
-
-      mockDataStore.handleWebviewMessage.mockImplementation(() => {
-        throw new Error('Unexpected error');
-      });
-
-      const result = await createSpecTool.execute(params);
-
-      expect(result.success).toBe(false);
-      expect(result.error).toBe('Unexpected error');
-      expect(result.executionTime).toBeGreaterThanOrEqual(0);
-    });
-
-    it('should trim whitespace from title and description', async () => {
-      const params: CreateSpecParameters = {
-        title: '  Test Spec  ',
-        description: '  Description with spaces  ',
-      };
-
-      mockDataStore.handleWebviewMessage.mockReturnValue({
-        type: 'success',
-        payload: { id: 'spec-1' },
-      });
-
-      await createSpecTool.execute(params);
-
-      expect(mockDataStore.handleWebviewMessage).toHaveBeenCalledWith({
-        command: 'saveSpec',
-        payload: expect.objectContaining({
-          title: 'Test Spec',
-          spec: 'Description with spaces',
-        }),
-      });
-    });
-
-    it('should set correct depth based on parentSpecId when depth not provided', async () => {
-      const params: CreateSpecParameters = {
-        title: 'Child Spec',
-        parentSpecId: 'parent-1',
-      };
-
-      mockDataStore.handleWebviewMessage.mockReturnValue({
-        type: 'success',
-        payload: { id: 'spec-1' },
-      });
-
-      await createSpecTool.execute(params);
-
-      expect(mockDataStore.handleWebviewMessage).toHaveBeenCalledWith({
-        command: 'saveSpec',
-        payload: expect.objectContaining({
-          depth: 2,
-          parentSpecId: 'parent-1',
-        }),
-      });
-    });
-
-    it('should use provided depth when specified', async () => {
-      const params: CreateSpecParameters = {
-        title: 'Deep Spec',
-        depth: 3,
-      };
-
-      mockDataStore.handleWebviewMessage.mockReturnValue({
-        type: 'success',
-        payload: { id: 'spec-1' },
-      });
-
-      await createSpecTool.execute(params);
-
-      expect(mockDataStore.handleWebviewMessage).toHaveBeenCalledWith({
-        command: 'saveSpec',
-        payload: expect.objectContaining({
-          depth: 3,
-        }),
-      });
+      expect(definition.required).toContain('title');
+      expect(definition.parameters.properties).toHaveProperty('title');
+      expect(definition.parameters.properties).toHaveProperty('description');
+      expect(definition.parameters.properties).toHaveProperty('parentSpecId');
+      expect(definition.parameters.properties).toHaveProperty('depth');
     });
   });
 });

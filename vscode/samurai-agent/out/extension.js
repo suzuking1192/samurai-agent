@@ -59,7 +59,9 @@ const anthropicChatClient_1 = require("./agent/llm/anthropicChatClient");
 const projectDetailService_1 = require("./agent/memory/projectDetailService");
 const TreeSitterLoaderService_1 = require("./agent/code_parser/TreeSitterLoaderService");
 const extractCodeTool_1 = require("./agent/tools/extractCodeTool");
+const createSpecTool_1 = require("./agent/tools/createSpecTool");
 const CodeParserService_1 = require("./agent/code_parser/CodeParserService");
+const samuraiAgent_1 = require("./agent/core/samuraiAgent");
 /**
  * Extension activation function - main backend entry point
  * Registers all commands, webview providers, and initializes the agent system
@@ -77,8 +79,14 @@ function activate(context) {
     // Initialize CodeParserService and ExtractCodeTool
     const codeParserService = new CodeParserService_1.CodeParserService();
     const extractCodeTool = new extractCodeTool_1.ExtractCodeTool(llmProviderService, codeParserService);
+    // Initialize CreateSpecTool
+    const createSpecTool = dataStore ? new createSpecTool_1.CreateSpecTool(dataStore) : undefined;
     const projectDetailService = dataStore
         ? new projectDetailService_1.ProjectDetailService(llmProviderService, dataStore, context.extensionUri.fsPath)
+        : undefined;
+    // Initialize SamuraiAgent
+    const samuraiAgent = dataStore && projectDetailService && createSpecTool
+        ? new samuraiAgent_1.SamuraiAgent(llmProviderService, dataStore, projectDetailService, extractCodeTool, createSpecTool)
         : undefined;
     const agentPanelProvider = new SamuraiAgentPanelWebviewViewProvider_1.SamuraiAgentPanelWebviewViewProvider(context.extensionUri, {
         llmProviderService,
@@ -96,6 +104,12 @@ function activate(context) {
         context.subscriptions.push(vscode.commands.registerCommand("samurai-agent.projectDetail.ingest", async (args) => {
             const { projectId, rawText, mode } = args;
             return projectDetailService.ingestProjectDetail(projectId, rawText, mode);
+        }));
+    }
+    if (samuraiAgent) {
+        context.subscriptions.push(vscode.commands.registerCommand("samurai-agent.execute", async (args) => {
+            const { userMessage, session } = args;
+            return samuraiAgent.execute(userMessage, session);
         }));
     }
 }

@@ -266,14 +266,14 @@ export class SamuraiAgent {
       const parsedResult = parseAndValidateLlmJson<{
         new_code_context_necessary: boolean;
         extraction_query: string | null;
-        reasoning: string;
-      }>(responseContent, ['new_code_context_necessary', 'extraction_query', 'reasoning']);
+        reasoning?: string;
+      }>(responseContent, ['new_code_context_necessary', 'extraction_query']);
       
       // Step 8: Return the parsed result
       return {
         new_code_context_necessary: parsedResult.new_code_context_necessary,
         extraction_query: parsedResult.extraction_query,
-        reasoning: parsedResult.reasoning
+        reasoning: parsedResult.reasoning || 'No reasoning provided'
       };
       
     } catch (error) {
@@ -707,19 +707,35 @@ export class SamuraiAgent {
   }
 
   private getPromptPath(fileName: string): string {
-    const extensionRoot = path.resolve(__dirname, '..', '..');
+    // When running in VS Code extension, __dirname will be the dist folder
+    // e.g., /Users/.../vscode/samurai-agent/dist
+    
+    // Try multiple possible locations for prompt files
     const candidates = [
-      path.join(extensionRoot, 'dist', 'prompts', fileName),
-      path.join(extensionRoot, 'prompts', fileName),
-      path.join(extensionRoot, 'src', 'agent', 'prompts', fileName),
+      // When compiled: __dirname is dist/, prompts are in dist/prompts/
+      path.join(__dirname, 'prompts', fileName),
+      // When in source: __dirname is dist/agent/core or src/agent/core
+      path.join(__dirname, '..', '..', 'prompts', fileName),
+      // From dist root
+      path.join(__dirname, '..', 'prompts', fileName),
+      // Absolute path with proper extension context
+      path.join(__dirname, '..', '..', '..', 'src', 'agent', 'prompts', fileName),
+      // Direct path from process.cwd
+      path.join(process.cwd(), 'dist', 'prompts', fileName),
+      path.join(process.cwd(), 'src', 'agent', 'prompts', fileName),
     ];
 
     for (const candidate of candidates) {
       if (fs.existsSync(candidate)) {
+        console.log(`Found prompt file at: ${candidate}`);
         return candidate;
       }
     }
 
+    console.error(`Prompt file not found for ${fileName}`);
+    console.error(`__dirname: ${__dirname}`);
+    console.error(`process.cwd(): ${process.cwd()}`);
+    console.error(`Checked paths:`, candidates);
     throw new Error(
       `Prompt file not found for ${fileName}. Checked paths: ${candidates.join(', ')}`
     );

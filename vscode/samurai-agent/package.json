@@ -77,7 +77,9 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.63.1",
     "@google/generative-ai": "^0.24.1",
+    "dotenv": "^17.2.2",
     "openai": "^5.23.0",
-    "web-tree-sitter": "^0.20.8"
+    "web-tree-sitter": "^0.20.8",
+    "zod": "^3.22.4"
   }
 }

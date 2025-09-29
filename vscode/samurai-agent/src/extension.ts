@@ -23,7 +23,9 @@ import { AnthropicChatClient } from "./agent/llm/anthropicChatClient";
 import { ProjectDetailService } from "./agent/memory/projectDetailService";
 import { TreeSitterLoaderService } from "./agent/code_parser/TreeSitterLoaderService";
 import { ExtractCodeTool } from "./agent/tools/extractCodeTool";
+import { CreateSpecTool } from "./agent/tools/createSpecTool";
 import { CodeParserService } from "./agent/code_parser/CodeParserService";
+import { SamuraiAgent } from "./agent/core/samuraiAgent";
 
 /**
  * Extension activation function - main backend entry point
@@ -44,14 +46,28 @@ export function activate(context: vscode.ExtensionContext) {
   const treeSitterLoaderService = new TreeSitterLoaderService(context.globalStorageUri);
   
   // Initialize CodeParserService and ExtractCodeTool
-  const codeParserService = new CodeParserService();
+  const codeParserService = new CodeParserService(context.extensionUri.fsPath);
   const extractCodeTool = new ExtractCodeTool(llmProviderService, codeParserService);
+  
+  // Initialize CreateSpecTool
+  const createSpecTool = dataStore ? new CreateSpecTool(dataStore) : undefined;
   
   const projectDetailService = dataStore
     ? new ProjectDetailService(
         llmProviderService,
         dataStore,
         context.extensionUri.fsPath,
+      )
+    : undefined;
+
+  // Initialize SamuraiAgent
+  const samuraiAgent = dataStore && projectDetailService && createSpecTool
+    ? new SamuraiAgent(
+        llmProviderService,
+        dataStore,
+        projectDetailService,
+        extractCodeTool,
+        createSpecTool
       )
     : undefined;
 
@@ -64,6 +80,7 @@ export function activate(context: vscode.ExtensionContext) {
       globalDataStore,
       treeSitterLoaderService,
       extractCodeTool,
+      samuraiAgent,
     },
   );
 
@@ -94,6 +111,18 @@ export function activate(context: vscode.ExtensionContext) {
             rawText,
             mode,
           );
+        },
+      ),
+    );
+  }
+
+  if (samuraiAgent) {
+    context.subscriptions.push(
+      vscode.commands.registerCommand(
+        "samurai-agent.execute",
+        async (args) => {
+          const { userMessage, session } = args;
+          return samuraiAgent.execute(userMessage, session);
         },
       ),
     );
