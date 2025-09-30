@@ -460,50 +460,23 @@
             
             const normalizedResponse = llmResponse?.payload ? llmResponse.payload : llmResponse;
 
-            let assistantContent = '';
-            let assistantMetadata = {};
-            if (normalizedResponse) {
-                assistantContent = normalizedResponse.content || '';
-                const { metadata, model, usage, cost } = normalizedResponse;
-                assistantMetadata = {
-                    ...(metadata && typeof metadata === 'object' ? metadata : {}),
-                    ...(model ? { model } : {}),
-                    ...(usage && usage.totalTokens ? { tokens: usage.totalTokens } : {}),
-                    ...(typeof cost !== 'undefined' ? { cost } : {}),
-                };
-            } else if (llmResponse?.error) {
-                assistantContent = `Error: ${llmResponse.error}`;
-                assistantMetadata = { error: llmResponse.error };
+            if (!normalizedResponse) {
+                const errorContent = llmResponse?.error ? `Error: ${llmResponse.error}` : 'No response generated.';
+                const fallbackMessage = buildAssistantMessageFromAgentResponse({ message: errorContent, metadata: { error: llmResponse?.error } });
+                if (fallbackMessage) {
+                    await persistAssistantMessage(fallbackMessage);
+                    const fallbackElement = displayMessage(fallbackMessage);
+                    renderAssistantResponse(fallbackElement, fallbackMessage);
+                }
+                return;
             }
 
-            if (!assistantContent) {
-                assistantContent = 'No response generated.';
+            const assistantMessage = buildAssistantMessageFromAgentResponse(normalizedResponse);
+            if (assistantMessage) {
+                await persistAssistantMessage(assistantMessage);
+                const messageElement = displayMessage(assistantMessage);
+                renderAssistantResponse(messageElement, assistantMessage);
             }
-
-            console.log('Chat: Assistant content:', assistantContent);
-
-            const assistantMessage = {
-                id: `assistant-${Date.now()}`,
-                sessionId,
-                projectId: chatState.projectSettings.projectId,
-                type: globalScope?.MessageType?.ASSISTANT || 'assistant',
-                role: 'assistant',
-                content: assistantContent,
-                metadata: assistantMetadata
-            };
-
-            showProgressIndicator({ stage: 'rendering-response' });
-            await globalScope.WebviewApi.persistence.saveChatMessage({
-                sessionId,
-                projectId: chatState.projectSettings.projectId,
-                type: assistantMessage.type,
-                content: assistantMessage.content,
-                role: assistantMessage.role,
-                metadata: assistantMessage.metadata
-            });
-
-            const messageElement = displayMessage(assistantMessage);
-            renderAssistantResponse(messageElement, assistantMessage);
         } catch (error) {
             console.error('Chat: Failed to send message', error);
             displayMessage({
@@ -529,9 +502,29 @@
         return assistantMessage;
     }
 
-    function buildAssistantMessageFromAgentResponse(content, metadata) {
+    function buildAssistantMessageFromAgentResponse(rawResponse) {
+        if (!rawResponse || typeof rawResponse !== 'object') {
+            return null;
+        }
+
+        const content = rawResponse.message ?? rawResponse.content ?? '';
+        const metadata = rawResponse.metadata ?? {};
+        const specClarificationData = rawResponse.specClarificationData
+            ?? metadata.specClarificationData
+            ?? rawResponse.payload?.specClarificationData;
+        const interactiveQuestions = rawResponse.interactiveQuestions
+            ?? metadata.interactiveQuestions
+            ?? rawResponse.payload?.interactiveQuestions;
+
         const sessionId = chatState.currentSessionId;
         const projectId = chatState.projectSettings?.projectId;
+
+        const enrichedMetadata = {
+            ...metadata,
+            ...(specClarificationData ? { specClarificationData } : {}),
+            ...(interactiveQuestions ? { interactiveQuestions } : {}),
+            samuraiAgentResponse: Boolean(metadata.samuraiAgentResponse || rawResponse.samuraiAgentResponse)
+        };
 
         return {
             id: `assistant-${Date.now()}`,
@@ -540,9 +533,9 @@
             type: globalScope?.MessageType?.ASSISTANT || 'assistant',
             role: 'assistant',
             content,
-            metadata,
-            specClarificationData: metadata?.specClarificationData,
-            interactiveQuestions: metadata?.interactiveQuestions
+            metadata: enrichedMetadata,
+            specClarificationData,
+            interactiveQuestions
         };
     }
 
@@ -618,7 +611,7 @@
                             return;
                         }
 
-                        const assistantResponse = handleAgentExecuteResponse(result);
+                        const assistantResponse = buildAssistantMessageFromAgentResponse(result);
                         if (assistantResponse) {
                             await persistAssistantMessage(assistantResponse);
                             displayMessage(assistantResponse);

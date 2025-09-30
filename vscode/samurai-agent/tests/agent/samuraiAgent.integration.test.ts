@@ -427,7 +427,7 @@ describe('SamuraiAgent Integration Tests', () => {
       expect(result.metadata.interactiveQuestions).toEqual([{
         type: 'button',
         label: 'Create specs for the tasks we discussed; AI will resolve any ambiguity.',
-        messageToSend: 'Create specs now'
+        messageToSend: 'Create specs for the tasks we discussed'
       }]);
     });
 

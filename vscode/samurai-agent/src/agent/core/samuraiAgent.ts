@@ -162,7 +162,7 @@ export class SamuraiAgent {
           interactiveQuestions = [{
             type: 'button',
             label: 'Create specs for the tasks we discussed; AI will resolve any ambiguity.',
-            messageToSend: 'Create specs now'
+            messageToSend: 'Create specs for the tasks we discussed'
           }];
           break;
           
