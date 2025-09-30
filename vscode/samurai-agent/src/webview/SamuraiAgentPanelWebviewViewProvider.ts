@@ -154,7 +154,21 @@ export class SamuraiAgentPanelWebviewViewProvider
                 };
                 
                 // Execute through SamuraiAgent
-                this.samuraiAgent.execute(chatMessage, sessionResponse.payload)
+                this.samuraiAgent.execute(
+                  chatMessage,
+                  sessionResponse.payload,
+                  (update) => {
+                    try {
+                      webview.postMessage({
+                        type: "agentProgress",
+                        payload: update,
+                        timestamp: new Date(),
+                      });
+                    } catch (error) {
+                      console.error("Failed to send progress update", error);
+                    }
+                  }
+                )
                   .then((result: any) => {
                     // Create assistant message from result
                     const assistantMessage: ChatMessage = {
@@ -188,7 +202,10 @@ export class SamuraiAgentPanelWebviewViewProvider
                       requestId: message.requestId,
                       payload: {
                         content: result.message || 'No response',
-                        metadata: result.metadata || {}
+                        metadata: {
+                          ...(result.metadata || {}),
+                          samuraiAgentResponse: true,
+                        },
                       },
                       timestamp: new Date(),
                     });

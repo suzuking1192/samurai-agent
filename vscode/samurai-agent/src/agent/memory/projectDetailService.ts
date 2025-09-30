@@ -98,14 +98,14 @@ export class ProjectDetailService {
     model: string;
     messages: LLMMessage[];
   } {
-    const systemPrompt = this.readPrompt("merge_system_prompt.md");
-    const content = `EXISTING PROJECT DETAIL:\n${existingContent}\n\nNEW INSIGHTS TO MERGE:\n${newInsights}\n\nINSTRUCTIONS: Perform the merge according to the rules above, ensuring preservation of existing content while intelligently incorporating new insights.`;
+    const systemPrompt = this.readPrompt("merge_project_details.md")
+      .replace("{{EXISTING_DETAIL}}", existingContent)
+      .replace("{{NEW_INSIGHTS}}", newInsights);
     return {
       provider: "auto",
       model: "",
       messages: [
         { role: "system", content: systemPrompt },
-        { role: "user", content },
       ] as LLMMessage[],
     };
   }

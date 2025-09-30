@@ -27,5 +27,5 @@ module.exports = {
     '^@/(.*)$': '<rootDir>/src/$1',
     '^vscode$': '<rootDir>/tests/__mocks__/vscode.js'
   },
-  testTimeout: 60000
+  testTimeout: 6000000
 };

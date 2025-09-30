@@ -9,7 +9,9 @@
         projectSettings: null,
         availableModels: [],
         llmModels: null,
-        currentSessionId: null
+        currentSessionId: null,
+        lastAssistantMessageContent: null,
+        lastAssistantMessageTimestamp: 0
     };
 
     const MessageType = {
@@ -18,6 +20,114 @@
         SYSTEM: 'system',
         ERROR: 'error'
     };
+
+    function escapeHtml(str) {
+        if (!str || typeof str !== 'string') {
+            return '';
+        }
+        return str
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function renderInlineMarkdown(text) {
+        if (!text) {
+            return '';
+        }
+
+        let escaped = escapeHtml(text);
+
+        // Links [text](url)
+        escaped = escaped.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (_match, label, url) => {
+            const safeLabel = escapeHtml(label);
+            const safeUrl = escapeHtml(url);
+            return `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer">${safeLabel}</a>`;
+        });
+
+        // Bold **text**
+        escaped = escaped.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+
+        // Italic *text*
+        escaped = escaped.replace(/(^|\s)\*([^*]+)\*(?=\s|$)/g, (_match, prefix, value) => {
+            return `${prefix}<em>${value}</em>`;
+        });
+
+        // Inline code `code`
+        escaped = escaped.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+        return escaped;
+    }
+
+    function renderMarkdown(text) {
+        if (!text) {
+            return '';
+        }
+
+        const codeBlockRegex = /```([\s\S]*?)```/g;
+        let lastIndex = 0;
+        let match;
+        const segments = [];
+
+        while ((match = codeBlockRegex.exec(text)) !== null) {
+            const before = text.slice(lastIndex, match.index);
+            if (before) {
+                segments.push(renderMarkdownBlocks(before));
+            }
+            const codeContent = escapeHtml(match[1].trim());
+            segments.push(`<pre><code>${codeContent}</code></pre>`);
+            lastIndex = match.index + match[0].length;
+        }
+
+        const remaining = text.slice(lastIndex);
+        if (remaining) {
+            segments.push(renderMarkdownBlocks(remaining));
+        }
+
+        return segments.join('');
+    }
+
+    function renderMarkdownBlocks(text) {
+        const lines = text.split(/\r?\n/);
+        const parts = [];
+        let inList = false;
+
+        const closeList = () => {
+            if (inList) {
+                parts.push('</ul>');
+                inList = false;
+            }
+        };
+
+        for (const line of lines) {
+            const trimmed = line.trim();
+
+            if (trimmed.startsWith('- ')) {
+                if (!inList) {
+                    parts.push('<ul>');
+                    inList = true;
+                }
+                const itemContent = renderInlineMarkdown(trimmed.slice(2).trim());
+                parts.push(`<li>${itemContent}</li>`);
+                continue;
+            }
+
+            closeList();
+
+            if (trimmed.length === 0) {
+                parts.push('<br>');
+                continue;
+            }
+
+            const paragraphContent = renderInlineMarkdown(line);
+            parts.push(`<p>${paragraphContent}</p>`);
+        }
+
+        closeList();
+        return parts.join('');
+    }
 
     function safeGetDocumentElement(id) {
         return typeof document !== 'undefined' ? document.getElementById(id) : null;
@@ -36,10 +146,39 @@
             return;
         }
 
+        // Deduplicate consecutive identical assistant messages
+        if (chatMessages.lastElementChild) {
+            const lastElement = chatMessages.lastElementChild;
+            if (
+                message.role === 'assistant' &&
+                lastElement.dataset?.role === 'assistant' &&
+                lastElement.dataset?.content === (message.content || '')
+            ) {
+                console.log('Chat: Skipping duplicate assistant message');
+                return;
+            }
+        }
+
+        if (message.role === 'assistant') {
+            const now = Date.now();
+            if (
+                chatState.lastAssistantMessageContent === (message.content || '') &&
+                now - chatState.lastAssistantMessageTimestamp < 1000
+            ) {
+                console.log('Chat: Skipping duplicate assistant message (within threshold)');
+                return;
+            }
+
+            chatState.lastAssistantMessageContent = message.content || '';
+            chatState.lastAssistantMessageTimestamp = now;
+        }
+
         console.log('Chat: Creating message element for:', message.content);
 
         const messageElement = document.createElement('div');
         messageElement.className = 'chat-message';
+        messageElement.dataset.role = message.role || '';
+        messageElement.dataset.content = message.content || '';
 
         if (message.type === (MessageType.ASSISTANT || 'assistant') || message.role === 'assistant') {
             messageElement.classList.add('assistant-message');
@@ -49,11 +188,63 @@
             messageElement.classList.add('system-message');
         }
 
-        messageElement.textContent = message.content;
+        const contentHtml = renderMarkdown(message.content || '');
+        if (contentHtml) {
+            messageElement.innerHTML = contentHtml;
+        } else {
+            messageElement.textContent = message.content || '';
+        }
+
+        // Ensure links open safely
+        messageElement.querySelectorAll('a').forEach((link) => {
+            link.setAttribute('target', '_blank');
+            link.setAttribute('rel', 'noopener noreferrer');
+        });
         chatMessages.appendChild(messageElement);
 
         console.log('Chat: Message element appended to chatMessages');
-        chatMessages.scrollTop = chatMessages.scrollHeight;
+        messageElement.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    }
+
+    function showProgressIndicator(update) {
+        const chatContainer = safeGetDocumentElement('chatMessages');
+        if (!chatContainer) {
+            return;
+        }
+
+        let banner = document.getElementById('agent-progress-banner');
+        if (!banner) {
+            banner = document.createElement('div');
+            banner.id = 'agent-progress-banner';
+            banner.className = 'agent-progress-banner';
+            chatContainer.parentElement?.insertBefore(banner, chatContainer);
+        }
+
+        const { stage, data } = update || {};
+        let message = 'Working...';
+        if (stage === 'analyzing') {
+            message = 'Analyzing conversation...';
+        } else if (stage === 'extracting-code') {
+            message = 'Finding relevant code context...';
+        } else if (stage === 'extraction-complete') {
+            const files = (data?.files || []).map((file) => file.path).slice(0, 3);
+            message = files.length
+                ? `Code context ready: ${files.join(', ')}`
+                : 'Code context ready.';
+        } else if (stage === 'extraction-failed') {
+            message = 'Code extraction failed; continuing without new context.';
+        } else if (stage === 'rendering-response') {
+            message = 'Generating response...';
+        }
+
+        banner.textContent = message;
+        banner.style.display = 'block';
+
+        if (stage === 'rendering-response' || stage === 'extraction-complete' || stage === 'extraction-failed') {
+            setTimeout(() => {
+                banner.style.display = 'none';
+            }, 3000);
+        }
     }
 
     async function initializeChatSession() {
@@ -176,7 +367,7 @@
                 metadata: {}
             };
 
-            const llmResponse = await globalScope.WebviewApi.llm.chat(llmRequest);
+            const llmResponse = await globalScope.WebviewApi.llm.chat(llmRequest, 12000000);
 
             if (chatMessagesElement && pendingIndicator.parentElement === chatMessagesElement) {
                 chatMessagesElement.removeChild(pendingIndicator);
@@ -218,9 +409,7 @@
                 metadata: assistantMetadata
             };
 
-            console.log('Chat: Displaying assistant message:', assistantMessage);
-            displayMessage(assistantMessage);
-
+            showProgressIndicator({ stage: 'rendering-response' });
             await globalScope.WebviewApi.persistence.saveChatMessage({
                 sessionId,
                 projectId: chatState.projectSettings.projectId,
@@ -530,11 +719,53 @@
                 return;
             }
 
-            if (message.requestId || !message.type) {
+            if (message.type === 'success' && message.requestId) {
+                const payload = message.payload || {};
+
+                if (payload?.content && payload?.metadata?.samuraiAgentResponse) {
+                    const assistantMessage = {
+                        id: `assistant-${Date.now()}`,
+                        sessionId: chatState.currentSessionId,
+                        projectId: chatState.projectSettings?.projectId,
+                        type: globalScope?.MessageType?.ASSISTANT || 'assistant',
+                        role: 'assistant',
+                        content: payload.content,
+                        metadata: payload.metadata || {}
+                    };
+
+                    displayMessage(assistantMessage);
+                    chatState.lastAssistantMessageContent = assistantMessage.content;
+                    chatState.lastAssistantMessageTimestamp = Date.now();
+                }
+
                 return;
             }
 
-            await dispatchNotification(message.type, message.payload);
+            if (message.type === 'error' && message.requestId) {
+                const errorMessage = {
+                    id: `assistant-error-${Date.now()}`,
+                    sessionId: chatState.currentSessionId,
+                    projectId: chatState.projectSettings?.projectId,
+                    type: globalScope?.MessageType?.ERROR || 'error',
+                    role: 'assistant',
+                    content: `Error: ${message.error || 'Unknown error from agent'}`,
+                    metadata: { error: message.error }
+                };
+
+                displayMessage(errorMessage);
+                chatState.lastAssistantMessageContent = errorMessage.content;
+                chatState.lastAssistantMessageTimestamp = Date.now();
+                return;
+            }
+
+            if (message.type === 'agentProgress') {
+                showProgressIndicator(message.payload);
+                return;
+            }
+
+            if (!message.requestId && message.type) {
+                await dispatchNotification(message.type, message.payload);
+            }
         };
 
         globalScope.addEventListener('message', async event => {

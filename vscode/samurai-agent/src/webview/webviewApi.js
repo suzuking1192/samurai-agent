@@ -136,7 +136,7 @@ const persistenceApi = {
  * LLM operations exposed to the webview
  */
 const llmApi = {
-    chat: (request) => postCommand('samurai-agent.llm.chat', request)
+    chat: (request, timeout = 1200000) => postCommand('samurai-agent.llm.chat', request, timeout)
 };
 
 /**

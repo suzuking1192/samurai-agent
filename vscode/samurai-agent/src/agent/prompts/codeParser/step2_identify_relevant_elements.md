@@ -13,22 +13,24 @@ CRITICAL INSTRUCTIONS:
 4. Be INCLUSIVE rather than restrictive - include elements that might be related to the request
 5. When the request asks about a specific data model (e.g., "Project data model", "Task data model", "User data model"), you MUST include the main class with that exact name
 6. If you see a class named exactly what the user is asking for (e.g., "Project" for "Project data model", "Task" for "Task data model"), include it as the highest priority
-7. IMPORTANT: Look for exact name matches first. If the user asks for "[ModelName] data model" and you see a class named "[ModelName]", you MUST include it.
+7. IMPORTANT: Look for exact name matches first. If the user asks for "[ModelName] data model" and you see a class named "[ModelName]", you MUST include that class in your response.
 8. URGENT: If the user asks about any data model and you see a class with the exact name in the elements list, you MUST include that class in your response.
-9. Return a JSON object with file paths as keys and arrays of method/class names as values
-10. You can include up to 8-12 files if needed - complex operations often span multiple files
-11. For each file, include more methods/classes rather than fewer - it's better to have more information
-12. Consider related functionality, utility functions, helper methods, and supporting classes
-13. If no elements seem relevant, return an empty object {}
-14. CRITICAL: Order files and methods by relevance - the most relevant files and methods should appear FIRST in your response
-15. For each file, list methods in order of relevance (most relevant first)
+9. Be generous in your selection—include helper or supporting elements that may contribute to the user request
+10. Order files and their elements by relevance (most relevant first)
+11. If no elements seem relevant, return an empty files object
 
-IMPORTANT: This is the final step before code analysis. More information is better than missing information.
-The next step will analyze all the code content with an LLM, so having comprehensive coverage is crucial.
+STRICT OUTPUT FORMAT (RETURN JSON ONLY — NO MARKDOWN CODE FENCES OR EXTRA TEXT):
+{
+  "files": {
+    "path/to/file.ext": ["ElementOne", "ElementTwo"],
+    "another/file.ext": ["ClassAlpha"]
+  },
+  "reasoning": "Brief explanation (<= 3 sentences) of why these files/elements are relevant or why none were selected."
+}
 
-Please also provide your reasoning for why you selected or did not select specific elements.
-
-Return format: {"file1.py": ["method1", "class1"], "file2.js": ["function1"]}
-
-Reasoning: [Explain your selection process and relevance ordering]
+Notes:
+- Always include the "files" object even if it is empty ({}).
+- Always include the "reasoning" string.
+- Do NOT add any additional fields.
+- Do NOT include commentary outside the JSON object.
 

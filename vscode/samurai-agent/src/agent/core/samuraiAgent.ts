@@ -37,8 +37,13 @@ export class SamuraiAgent {
    * Main entry point for agent operations
    * Orchestrates the processing of user messages within a given session
    */
-  public async execute(userMessage: ChatMessage, session: Session): Promise<AgentExecutionResult> {
+  public async execute(
+    userMessage: ChatMessage,
+    session: Session,
+    onProgress?: (update: { stage: string; data?: unknown }) => void,
+  ): Promise<AgentExecutionResult> {
     this.logInvocation("execute", userMessage.content);
+    onProgress?.({ stage: "analyzing" });
     
     try {
       // Load chat session history
@@ -47,6 +52,8 @@ export class SamuraiAgent {
         role: msg.role as 'system' | 'user' | 'assistant',
         content: msg.content
       }));
+
+      chatHistory.push({ role: 'user', content: userMessage.content });
       
       // Load project detail memory
       const projectDetails = await this.projectDetailService.getProjectDetails(session.metadata.projectId) || "";
@@ -73,17 +80,28 @@ export class SamuraiAgent {
       
       // Conditional code extraction based on analysis result
       if (codeExtractionAnalysisResult.new_code_context_necessary && codeExtractionAnalysisResult.extraction_query) {
+        onProgress?.({
+          stage: "extracting-code",
+          data: { query: codeExtractionAnalysisResult.extraction_query },
+        });
         try {
-          // Execute code extraction with parameters from analysis result
           const extractionResult = await this.extractCodeTool.execute({
             query: codeExtractionAnalysisResult.extraction_query,
             filePathPattern: undefined, // Could be added to analysis result in the future
             projectId: session.metadata.projectId,
             sessionId: session.id,
-            connectedCodebasePath: session.metadata.connectedCodebasePath
+            connectedCodebasePath: session.metadata.connectedCodebasePath,
           });
 
           if (extractionResult.success && extractionResult.result) {
+            const extractedFiles = (extractionResult.result as any)?.relevantCodeElements?.map((ctx: any) => ({
+              path: ctx.path,
+              elementCount: ctx.elements?.length,
+            })) || [];
+            console.log("SamuraiAgent: extractCodeTool.execute succeeded", {
+              files: extractedFiles,
+            });
+            onProgress?.({ stage: "extraction-complete", data: { files: extractedFiles } });
             // Save the extracted code context
             const newCodeContextId = await this.dataStore.saveCodeContext(
               extractionResult.result as ExtractCodeToolResultPayload,
@@ -103,10 +121,15 @@ export class SamuraiAgent {
             this.logInvocation("extractCodeTool.execute", `Successfully extracted and saved code context: ${newCodeContextId}`);
           } else {
             this.logInvocation("extractCodeTool.execute", `Code extraction failed: ${extractionResult.error}`);
+            onProgress?.({ stage: "extraction-failed", data: { error: extractionResult.error } });
           }
         } catch (error) {
           console.error('Error in code extraction:', error);
           this.logInvocation("extractCodeTool.execute", `Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          onProgress?.({
+            stage: "extraction-failed",
+            data: { error: error instanceof Error ? error.message : String(error) },
+          });
         }
       }
       
@@ -266,14 +289,14 @@ export class SamuraiAgent {
       const parsedResult = parseAndValidateLlmJson<{
         new_code_context_necessary: boolean;
         extraction_query: string | null;
-        reasoning?: string;
-      }>(responseContent, ['new_code_context_necessary', 'extraction_query']);
+        reasoning: string;
+      }>(responseContent, ['new_code_context_necessary', 'extraction_query', 'reasoning']);
       
       // Step 8: Return the parsed result
       return {
         new_code_context_necessary: parsedResult.new_code_context_necessary,
         extraction_query: parsedResult.extraction_query,
-        reasoning: parsedResult.reasoning || 'No reasoning provided'
+        reasoning: parsedResult.reasoning
       };
       
     } catch (error) {
@@ -299,7 +322,7 @@ export class SamuraiAgent {
       const formattedCodeContexts = this._formatCodeContextsForPrompt(codeContexts);
       
       // Build conversation summary
-      const conversationSummary = this._buildConversationSummary(chatHistory);
+      const conversationSummary = this._buildConversationSummary(chatHistory) + `\n\nLatest user request: ${userMessage.content}`;
       
       // Load and format the system prompt
       const systemPrompt = await this._loadAndFormatSystemPrompt(
@@ -364,7 +387,7 @@ export class SamuraiAgent {
       const formattedCodeContexts = this._formatCodeContextsForPrompt(codeContexts);
       
       // Build conversation summary
-      const conversationSummary = this._buildConversationSummary(chatHistory);
+      const conversationSummary = this._buildConversationSummary(chatHistory) + `\n\nLatest user request: ${userMessage.content}`;
       
       // Load and format the system prompt
       const systemPrompt = await this._loadAndFormatSystemPrompt(
@@ -429,7 +452,7 @@ export class SamuraiAgent {
       const formattedCodeContexts = this._formatCodeContextsForPrompt(codeContexts);
       
       // Build conversation summary
-      const conversationSummary = this._buildConversationSummary(chatHistory);
+      const conversationSummary = this._buildConversationSummary(chatHistory) + `\n\nLatest user request: ${userMessage.content}`;
       
       // Load and format the system prompt
       const systemPrompt = await this._loadAndFormatSystemPrompt(
@@ -494,7 +517,7 @@ export class SamuraiAgent {
       const formattedCodeContexts = this._formatCodeContextsForPrompt(codeContexts);
       
       // Build conversation summary
-      const conversationSummary = this._buildConversationSummary(chatHistory);
+      const conversationSummary = this._buildConversationSummary(chatHistory) + `\n\nLatest user request: ${userMessage.content}`;
       
       // Load and format the system prompt
       const systemPrompt = await this._loadAndFormatSystemPrompt(
@@ -825,23 +848,16 @@ export class SamuraiAgent {
    * @returns Formatted conversation summary string
    */
   private _buildConversationSummary(chatHistory: LLMMessage[]): string {
-    if (!chatHistory || chatHistory.length === 0) {
-      return "No conversation history available.";
+    if (chatHistory.length === 0) {
+        return "No conversation history available.";
     }
 
-    // Take the last few messages to keep summary concise
-    const recentMessages = chatHistory.slice(-20); // Last 5 messages
-    const summaryParts: string[] = [];
+    const recentMessages = chatHistory.slice(-8);
+    const formatted = recentMessages.map((message, index) => {
+        return `${index + 1}. (${message.role.toUpperCase()}) ${message.content}`;
+    });
 
-    for (const message of recentMessages) {
-      const role = message.role === 'user' ? 'User' : 'Assistant';
-      const content = message.content.length > 200000 
-        ? message.content.substring(0, 200000) + '...' 
-        : message.content;
-      summaryParts.push(`${role}: ${content}`);
-    }
-
-    return summaryParts.join('\n');
+    return formatted.join('\n');
   }
 
   /**

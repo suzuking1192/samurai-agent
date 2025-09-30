@@ -13,21 +13,16 @@ Instructions:
 5. Provide comprehensive technical details about the relevant elements, including their role in the overall system architecture.
 6. If no elements are relevant to the request, indicate this clearly.
 
-IMPORTANT: You must respond with ONLY a valid JSON object. Do not include any other text, explanations, or formatting outside the JSON.
-
-Return a JSON object with:
-- "relevance_score": 0-10 (how relevant the identified code elements are to the request)
-- "context": A detailed analysis focusing on the most relevant code elements, including their purpose, functionality, parameters, dependencies, relationships, and implementation specifics that directly address the user's request
-- "file_path": The file path containing the most relevant elements
-
-If no elements are relevant, set relevance_score to 0.
-
-Example response format:
-```json
+STRICT OUTPUT FORMAT (RETURN JSON ONLY — NO MARKDOWN OR EXTRA TEXT):
 {
-  "relevance_score": 8,
-  "context": "The analyzeCodeElement function implements the core logic for parsing and extracting code elements. It takes a file path and language as parameters, uses regex patterns to identify functions and classes, and returns an array of CodeElement objects. The function handles multiple programming languages and includes error handling for malformed code. Key dependencies include the CodeParserService and FileInfo models.",
-  "file_path": "src/agent/code_parser/CodeParserService.ts"
+  "relevance_score": number (0-10),
+  "context": "Detailed analysis of the most relevant code elements and how they relate to the request",
+  "file_path": "File path containing the most relevant elements (use null if none)",
+  "reasoning": "Brief justification (<= 3 sentences) describing why these elements were selected or why no elements were relevant"
 }
-```
+
+Rules:
+- Do NOT add extra fields.
+- Do NOT wrap the JSON in markdown fences.
+- If nothing is relevant, set "relevance_score" to 0, "context" to "", "file_path" to null, and explain why in "reasoning".
 

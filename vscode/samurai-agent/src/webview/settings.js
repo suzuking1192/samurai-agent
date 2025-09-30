@@ -343,12 +343,15 @@ async function ingestAndPersistProjectDetail() {
         settingsState.projectSettings.digestedProjectDetailContent = finalText;
         await window.WebviewApi.persistence.saveProjectSettings(settingsState.projectSettings);
 
-        showSaveSuccess('Project details processed successfully!');
+        const textarea = document.getElementById('digested-memory-text');
+        if (textarea) {
+            textarea.value = finalText;
+        }
         const display = document.getElementById('digested-memory-display');
-    if (display) {
-        display.textContent = finalText || 'No digested project detail available yet.';
-        display.style.display = 'block';
-    }
+        if (display) {
+            display.style.display = 'block';
+        }
+        showSaveSuccess('Project details processed successfully!');
     } catch (error) {
         showSaveError(`Failed to process project detail: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
@@ -571,7 +574,10 @@ async function generateDigestedMemory() {
         const finalText = result?.finalText || result || '';
 
         settingsState.projectSettings.digestedProjectDetailContent = finalText;
-        display.textContent = finalText || 'No digested project detail available yet.';
+        const textarea = document.getElementById('digested-memory-text');
+        if (textarea) {
+            textarea.value = finalText;
+        }
         display.style.display = 'block';
         button.textContent = 'Hide Digested Project Detail Memory';
 

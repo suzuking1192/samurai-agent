@@ -27,30 +27,23 @@ export function extractJsonFromMarkdown(text: string): Record<string, any> | nul
     const jsonBlockMatch = trimmedText.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
     if (jsonBlockMatch) {
         const jsonContent = jsonBlockMatch[1].trim();
-        try {
-            return JSON.parse(jsonContent);
-        } catch (error) {
-            // Continue to other methods if markdown parsing fails
+        const parsed = attemptJsonParse(jsonContent);
+        if (parsed) {
+            return parsed;
         }
     }
 
     // Try to find JSON-like content between curly braces
     const jsonMatch = trimmedText.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
-        try {
-            return JSON.parse(jsonMatch[0]);
-        } catch (error) {
-            // Continue to other methods if JSON parsing fails
+        const parsed = attemptJsonParse(jsonMatch[0]);
+        if (parsed) {
+            return parsed;
         }
     }
 
     // Try to parse the entire text as JSON (fallback)
-    try {
-        return JSON.parse(trimmedText);
-    } catch (error) {
-        // If all methods fail, return null
-        return null;
-    }
+    return attemptJsonParse(trimmedText);
 }
 
 /**
@@ -174,4 +167,49 @@ export function parseAndValidateLlmJson<T = Record<string, any>>(
     
     // Return the validated JSON as the requested type
     return extractedJson as T;
+}
+
+function attemptJsonParse(raw: string): Record<string, any> | null {
+    if (!raw) {
+        return null;
+    }
+
+    const trimmed = raw.trim();
+
+    const tryParse = (value: string): Record<string, any> | null => {
+        try {
+            return JSON.parse(value);
+        } catch (error) {
+            return null;
+        }
+    };
+
+    const direct = tryParse(trimmed);
+    if (direct) {
+        return direct;
+    }
+
+    const withoutTrailingCommas = trimmed.replace(/,\s*(?=[}\]])/g, "");
+    const parsedWithoutTrailingCommas = tryParse(withoutTrailingCommas);
+    if (parsedWithoutTrailingCommas) {
+        return parsedWithoutTrailingCommas;
+    }
+
+    const firstBrace = trimmed.indexOf("{");
+    const lastBrace = trimmed.lastIndexOf("}");
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+        const candidate = trimmed.slice(firstBrace, lastBrace + 1);
+        const balanced = tryParse(candidate);
+        if (balanced) {
+            return balanced;
+        }
+
+        const fixedCandidate = candidate.replace(/,\s*(?=[}\]])/g, "");
+        const parsedFixedCandidate = tryParse(fixedCandidate);
+        if (parsedFixedCandidate) {
+            return parsedFixedCandidate;
+        }
+    }
+
+    return null;
 }

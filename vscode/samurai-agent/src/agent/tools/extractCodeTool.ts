@@ -14,7 +14,7 @@ import { CodeElement, FileInfo } from "../../common/models/context-models";
 import { ResponseType } from "../../common/models/response-models";
 import { TextDecoder } from "util";
 import * as vscode from "vscode";
-import { extractJsonFromMarkdown } from "../../common/utils/llmResponseParser";
+import { parseAndValidateLlmJson } from "../../common/utils/llmResponseParser";
 
 const DEFAULT_MAX_ITERATIONS = 2;
 const DEFAULT_MAX_FILES = 2000;
@@ -124,24 +124,42 @@ export class ExtractCodeTool {
         throw new Error("No code files found that match the provided parameters.");
       }
 
-      // The rankRelevantFiles method now returns element selections directly
-      // No need for separate file ranking step
-
       const relevantElementSelections = await this.rankRelevantFiles(
         filteredFileInfos,
         normalizedParams.query,
         normalizedParams.projectId,
       );
 
-      const structuredContext = await this.buildStructuredCodeContextSnippets(
+      let structuredContext = await this.buildStructuredCodeContextSnippets(
         filteredFileInfos,
         relevantElementSelections,
         GLOBAL_CONTEXT_TOKEN_LIMIT,
       );
 
       if (structuredContext.length === 0) {
+        const fallbackSelections = this.heuristicFallbackSelections(
+          filteredFileInfos,
+          normalizedParams.query,
+        );
+
+        if (fallbackSelections.size) {
+          structuredContext = await this.buildStructuredCodeContextSnippets(
+            filteredFileInfos,
+            fallbackSelections,
+            GLOBAL_CONTEXT_TOKEN_LIMIT,
+          );
+        }
+      }
+
+      if (structuredContext.length === 0) {
         throw new Error("No relevant code elements found for the given query.");
       }
+
+      console.log("ExtractCodeTool: Structured context prepared", structuredContext.map(ctx => ({
+        path: ctx.path,
+        elementNames: ctx.elements.map(el => `${el.type}:${el.name}`),
+        snippetPreview: ctx.snippet.slice(0, 120),
+      })));
 
       const llmAnalysis = await this.identifyRelevantCodeElementsWithLLM(
         structuredContext,
@@ -315,6 +333,13 @@ export class ExtractCodeTool {
       .replace("{{USER_REQUEST}}", query)
       .replace("{{FILE_ELEMENTS_SUMMARY}}", fileElementsSummary);
 
+    console.log("ExtractCodeTool: Ranking prompt prepared", {
+      fileCount: fileInfos.size,
+      query,
+      projectId,
+      promptPreview: prompt.slice(0, 300),
+    });
+
     const messages: LLMMessage[] = [
       { role: "system", content: prompt },
     ];
@@ -340,29 +365,30 @@ export class ExtractCodeTool {
       }
 
       const payload = response.payload as LLMResponse;
-      const parsedJson = extractJsonFromMarkdown(payload.content);
-      
-      if (!parsedJson || typeof parsedJson !== 'object') {
-        console.warn("Failed to parse LLM ranking response, falling back to file-level ranking");
-        return this.fallbackToFileRanking(fileInfos, query);
-      }
+      const json = parseAndValidateLlmJson<{ files: Record<string, string[]>; reasoning: string }>(
+        payload.content,
+        ["files", "reasoning"],
+      );
 
-      // Convert the parsed JSON to our expected format
-      const result = new Map<string, Array<{ name: string; type: string; }>>();
-      
-      for (const [filePath, elements] of Object.entries(parsedJson)) {
-        if (Array.isArray(elements)) {
-          const elementSelections = elements.map(elementName => {
-            // Try to find the element in the file info to get its type
-            const fileInfo = fileInfos.get(filePath);
-            const element = fileInfo?.elements.find(el => el.name === elementName);
-            return {
-              name: elementName,
-              type: element?.type || 'unknown'
-            };
-          });
-          result.set(filePath, elementSelections);
+      const filesObject = json.files || {};
+
+      const result = new Map<string, Array<{ name: string; type: string }>>();
+
+      for (const [filePath, elements] of Object.entries(filesObject)) {
+        if (!Array.isArray(elements)) {
+          continue;
         }
+
+        const elementSelections = elements.map((elementName) => {
+          const fileInfo = fileInfos.get(filePath);
+          const element = fileInfo?.elements.find((el) => el.name === elementName);
+          return {
+            name: elementName,
+            type: element?.type || "unknown",
+          };
+        });
+
+        result.set(filePath, elementSelections);
       }
 
       return result;
@@ -415,15 +441,15 @@ export class ExtractCodeTool {
     }
 
     const payload = response.payload as LLMResponse;
-    
-    // Use the robust JSON parser
-    const parsedJson = extractJsonFromMarkdown(payload.content);
-    
-    if (!parsedJson) {
-      throw new Error("Failed to parse LLM response as JSON");
-    }
-    
-    return parsedJson;
+
+    const result = parseAndValidateLlmJson<{
+      relevance_score: number;
+      context: string;
+      file_path: string;
+      reasoning: string;
+    }>(payload.content, ["relevance_score", "context", "file_path", "reasoning"]);
+
+    return result;
   }
 
   private async buildStructuredCodeContextSnippets(
@@ -656,6 +682,66 @@ export class ExtractCodeTool {
       }
     }
     
+    return result;
+  }
+
+  private heuristicFallbackSelections(
+    fileInfos: Map<string, FileInfo>,
+    query: string,
+  ): Map<string, Array<{ name: string; type: string }>> {
+    const keywords = query.toLowerCase();
+    const matches: Array<{ path: string; elements: Array<{ name: string; type: string }> }> = [];
+
+    const candidatePatterns = [
+      /cost/i,
+      /llm/i,
+      /consumption/i,
+      /tracking/i,
+      /usage/i,
+      /pricing/i,
+    ];
+
+    for (const [filePath, info] of fileInfos.entries()) {
+      const haystack = `${info.name} ${filePath}`.toLowerCase();
+      if (
+        candidatePatterns.some((pattern) => pattern.test(haystack)) ||
+        candidatePatterns.some((pattern) =>
+          info.elements.some((el) => pattern.test(el.name)),
+        )
+      ) {
+        matches.push({
+          path: filePath,
+          elements: info.elements.slice(0, 5).map((el) => ({
+            name: el.name,
+            type: el.type,
+          })),
+        });
+      }
+    }
+
+    if (!matches.length && keywords.includes("cost")) {
+      const largestFiles = Array.from(fileInfos.values())
+        .sort((a, b) => b.size - a.size)
+        .slice(0, 3);
+
+      for (const file of largestFiles) {
+        matches.push({
+          path: file.path,
+          elements: file.elements.slice(0, 5).map((el) => ({
+            name: el.name,
+            type: el.type,
+          })),
+        });
+      }
+    }
+
+    const result = new Map<string, Array<{ name: string; type: string }>>();
+    for (const match of matches) {
+      if (match.elements.length) {
+        result.set(match.path, match.elements);
+      }
+    }
+
     return result;
   }
 }
