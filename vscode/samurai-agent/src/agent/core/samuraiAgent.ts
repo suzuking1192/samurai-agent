@@ -25,6 +25,8 @@ export interface SpecGenerationResult {
 }
 
 export class SamuraiAgent {
+  private currentExecutionCost: number = 0;
+  
   constructor(
     private readonly llmProviderService: LLMProviderService,
     private readonly dataStore: DataStore,
@@ -44,6 +46,10 @@ export class SamuraiAgent {
   ): Promise<AgentExecutionResult> {
     this.logInvocation("execute", userMessage.content);
     onProgress?.({ stage: "analyzing" });
+    
+    // Reset execution cost for this run
+    this.currentExecutionCost = 0;
+    console.log('[COST DEBUG] SamuraiAgent - Reset execution cost to 0');
     
     try {
       // Load chat session history
@@ -185,6 +191,8 @@ export class SamuraiAgent {
         previous_session_intent: userIntent
       });
       
+      console.log('[COST DEBUG] SamuraiAgent - Final execution cost:', this.currentExecutionCost);
+      
       return {
         success: true,
         message: agentResponse,
@@ -196,8 +204,7 @@ export class SamuraiAgent {
           codeExtractionAnalysis: codeExtractionAnalysisResult,
           specClarificationData,
           interactiveQuestions,
-          tokens: specClarificationData?.usageTokens ?? 0,
-          cost: specClarificationData?.cost ?? 0
+          cost: this.currentExecutionCost
         }
       };
     } catch (error) {
@@ -300,6 +307,9 @@ export class SamuraiAgent {
         throw new Error('error' in llmResponse ? llmResponse.error : "LLM request failed");
       }
       
+      // Track cost from this LLM call
+      this.trackLLMCost(llmResponse, 'analyzeCodeExtractionNeeds');
+      
       const responseContent = llmResponse.content?.trim() || "";
       const parsedResult = parseAndValidateLlmJson<{
         new_code_context_necessary: boolean;
@@ -381,6 +391,9 @@ export class SamuraiAgent {
         throw new Error('error' in llmResponse ? llmResponse.error : "LLM request failed");
       }
       
+      // Track cost from this LLM call
+      this.trackLLMCost(llmResponse, 'handlePureDiscussion');
+      
       return llmResponse.content?.trim() || "I'm here to help with your project! What would you like to discuss?";
       
     } catch (error) {
@@ -446,6 +459,9 @@ export class SamuraiAgent {
         throw new Error('error' in llmResponse ? llmResponse.error : "LLM request failed");
       }
       
+      // Track cost from this LLM call
+      this.trackLLMCost(llmResponse, 'handleFeatureExploration');
+      
       return llmResponse.content?.trim() || "That's an interesting feature idea! Tell me more about what you have in mind.";
       
     } catch (error) {
@@ -509,6 +525,9 @@ export class SamuraiAgent {
       if (!llmResponse || 'error' in llmResponse) {
         throw new Error('error' in llmResponse ? llmResponse.error : "LLM request failed");
       }
+      
+      // Track cost from this LLM call
+      this.trackLLMCost(llmResponse, 'handleSpecClarification');
       
       const responseContent = llmResponse.content?.trim() || "";
       
@@ -592,6 +611,9 @@ export class SamuraiAgent {
       if (!llmResponse || 'error' in llmResponse) {
         throw new Error('error' in llmResponse ? llmResponse.error : "LLM request failed");
       }
+      
+      // Track cost from this LLM call
+      this.trackLLMCost(llmResponse, 'handleGeneratingSpecs');
       
       const responseContent = llmResponse.content?.trim() || "";
       
@@ -744,6 +766,10 @@ export class SamuraiAgent {
       if (!llmResponse || 'error' in llmResponse) {
         throw new Error('error' in llmResponse ? llmResponse.error : "LLM request failed");
       }
+      
+      // Track cost from this LLM call
+      this.trackLLMCost(llmResponse, 'performLLMIntentAnalysis');
+      
       const intentResponse = llmResponse.content?.trim().toLowerCase() || "";
       
       // Map the response to UserIntentEnum
@@ -982,6 +1008,18 @@ export class SamuraiAgent {
 
   private logInvocation(methodName: string, message: string): void {
     console.log(`SamuraiAgent.${methodName} invoked with message:`, message);
+  }
+  
+  /**
+   * Track cost from an LLM response
+   */
+  private trackLLMCost(llmResponse: any, methodName: string): void {
+    if (llmResponse?.cost && typeof llmResponse.cost === 'number') {
+      this.currentExecutionCost += llmResponse.cost;
+      console.log(`[COST DEBUG] ${methodName} - Added cost:`, llmResponse.cost, 'Total:', this.currentExecutionCost);
+    } else {
+      console.log(`[COST DEBUG] ${methodName} - No cost in LLM response`);
+    }
   }
 }
 

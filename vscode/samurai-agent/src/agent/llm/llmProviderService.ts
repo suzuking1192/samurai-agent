@@ -121,6 +121,15 @@ export class LLMProviderService {
     if (response.type === ResponseType.SUCCESS && response.payload) {
       const llmResponse = response.payload as LLMResponse;
       
+      console.log('[COST DEBUG] LLMProviderService - before cost calculation:', {
+        provider: llmResponse.provider,
+        model: llmResponse.model,
+        usage: llmResponse.usage,
+        hasUsage: !!llmResponse.usage,
+        promptTokens: llmResponse.usage?.promptTokens,
+        completionTokens: llmResponse.usage?.completionTokens
+      });
+      
       // Calculate cost based on token usage
       const costCalculation = calculateLLMCost({
         provider: llmResponse.provider,
@@ -129,8 +138,17 @@ export class LLMProviderService {
         completionTokens: llmResponse.usage.completionTokens,
       });
       
+      console.log('[COST DEBUG] LLMProviderService - cost calculation result:', {
+        costCalculation,
+        totalCost: costCalculation.totalCost,
+        promptCost: costCalculation.promptCost,
+        completionCost: costCalculation.completionCost
+      });
+      
       // Update the response with calculated cost
       llmResponse.cost = costCalculation.totalCost;
+      
+      console.log('[COST DEBUG] LLMProviderService - updated llmResponse.cost to:', llmResponse.cost);
       
       // Add cost breakdown to metadata for debugging/transparency
       llmResponse.metadata = {
@@ -141,6 +159,8 @@ export class LLMProviderService {
           pricing: costCalculation.pricing,
         },
       };
+    } else {
+      console.log('[COST DEBUG] LLMProviderService - NOT calculating cost, response type:', response.type);
     }
     
     return response;

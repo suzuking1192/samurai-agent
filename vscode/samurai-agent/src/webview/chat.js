@@ -134,20 +134,45 @@
         return typeof document !== 'undefined' ? document.getElementById(id) : null;
     }
 
-    // Track session cost
-    let sessionTotalCost = 0;
+    // Track monthly cost
+    let monthlyTotalCost = 0;
 
-    function updateApiCostDisplay(cost) {
-        if (typeof cost === 'number' && cost > 0) {
-            sessionTotalCost += cost;
+    async function updateApiCostDisplay(newCost) {
+        console.log('[COST DEBUG] updateApiCostDisplay called with cost:', {
+            cost: newCost,
+            costType: typeof newCost,
+            currentMonthlyTotal: monthlyTotalCost
+        });
+        
+        // Query the backend for current monthly cost
+        try {
+            if (globalScope.WebviewApi?.cost?.getStatistics) {
+                const stats = await globalScope.WebviewApi.cost.getStatistics();
+                console.log('[COST DEBUG] Got cost statistics from backend:', stats);
+                
+                if (stats && typeof stats.currentMonthCost === 'number') {
+                    monthlyTotalCost = stats.currentMonthCost;
+                    console.log('[COST DEBUG] Updated monthlyTotalCost to:', monthlyTotalCost);
+                }
+            }
+        } catch (error) {
+            console.error('[COST DEBUG] Failed to get cost statistics:', error);
         }
         
         const costDisplay = safeGetDocumentElement('api-cost-display');
+        console.log('[COST DEBUG] Cost display element:', {
+            found: !!costDisplay,
+            monthlyTotalCost
+        });
+        
         if (costDisplay) {
-            const formattedCost = sessionTotalCost < 0.01 
-                ? `$${sessionTotalCost.toFixed(4)}` 
-                : `$${sessionTotalCost.toFixed(2)}`;
-            costDisplay.textContent = `API Cost: ${formattedCost} this session`;
+            const formattedCost = monthlyTotalCost < 0.01 
+                ? `$${monthlyTotalCost.toFixed(4)}` 
+                : `$${monthlyTotalCost.toFixed(2)}`;
+            costDisplay.textContent = `API Cost: ${formattedCost} this month`;
+            console.log('[COST DEBUG] Updated cost display to:', costDisplay.textContent);
+        } else {
+            console.warn('[COST DEBUG] Cost display element not found!');
         }
     }
 
@@ -540,8 +565,20 @@
 
         // Extract and update API cost if available
         const cost = rawResponse.cost ?? metadata.cost ?? rawResponse.payload?.cost;
+        console.log('[COST DEBUG] buildAssistantMessageFromAgentResponse - cost extraction:', {
+            rawResponseCost: rawResponse.cost,
+            metadataCost: metadata.cost,
+            payloadCost: rawResponse.payload?.cost,
+            finalCost: cost,
+            costType: typeof cost,
+            rawResponse: rawResponse
+        });
+        
         if (cost && typeof cost === 'number') {
+            console.log('[COST DEBUG] Calling updateApiCostDisplay with cost:', cost);
             updateApiCostDisplay(cost);
+        } else {
+            console.log('[COST DEBUG] Not updating cost display - cost is:', cost, 'type:', typeof cost);
         }
 
         const sessionId = chatState.currentSessionId;
@@ -666,6 +703,9 @@
             const llmModelSelect = safeGetDocumentElement('llm-model-select');
 
             initializeMessageListener(chatMessages);
+            
+            // Initialize cost display with monthly cost
+            updateApiCostDisplay(0);
 
             if (chatInput && chatInput.tagName?.toLowerCase() === 'input') {
                 const textArea = document.createElement('textarea');
@@ -1015,15 +1055,17 @@
             }
         };
 
-        globalScope.addEventListener('message', async event => {
-            await onMessage(event.data);
-        });
-
+        // Use WebviewApi.subscribe if available (modern approach)
+        // Otherwise fall back to window message listener
         if (globalScope.WebviewApi?.subscribe) {
             const unsubscribe = globalScope.WebviewApi.subscribe(async message => {
                 await onMessage(message);
             });
             listeners.add(unsubscribe);
+        } else {
+            globalScope.addEventListener('message', async event => {
+                await onMessage(event.data);
+            });
         }
 
         return () => {

@@ -119,6 +119,75 @@ export class SamuraiAgentPanelWebviewViewProvider
     const { command } = message;
 
     try {
+      // Direct agent execute command
+      if (command === "samurai-agent.execute") {
+        console.log('[COST DEBUG] WebviewProvider - Received samurai-agent.execute command', {
+          hasSamuraiAgent: !!this.samuraiAgent,
+          hasPayload: !!message.payload
+        });
+        
+        if (this.samuraiAgent && message.payload?.userMessage && message.payload?.session) {
+          const { userMessage, session } = message.payload;
+          
+          this.samuraiAgent.execute(
+            userMessage,
+            session,
+            (update) => {
+              try {
+                webview.postMessage({
+                  type: "agentProgress",
+                  payload: update,
+                  timestamp: new Date(),
+                });
+              } catch (error) {
+                console.error("Failed to send progress update", error);
+              }
+            }
+          )
+            .then((result: any) => {
+              console.log('[COST DEBUG] WebviewProvider - Agent execute result:', {
+                requestId: message.requestId,
+                hasCost: result.metadata?.cost !== undefined,
+                cost: result.metadata?.cost
+              });
+              
+              webview.postMessage({
+                type: "success",
+                requestId: message.requestId,
+                payload: {
+                  content: result.message || 'No response',
+                  metadata: {
+                    ...(result.metadata || {}),
+                    samuraiAgentResponse: true,
+                  },
+                  cost: result.metadata?.cost,
+                },
+                timestamp: new Date(),
+              });
+            })
+            .catch((error: any) => {
+              console.error('[COST DEBUG] WebviewProvider - Agent execute error:', error);
+              webview.postMessage({
+                type: "error",
+                requestId: message.requestId,
+                error: error instanceof Error ? error.message : "Agent execution failed",
+                timestamp: new Date(),
+              });
+            });
+          return;
+        } else {
+          // Agent not available or invalid payload
+          console.warn('[COST DEBUG] WebviewProvider - Cannot execute: agent not available or invalid payload');
+          webview.postMessage({
+            type: "error",
+            requestId: message.requestId,
+            error: "Agent not available or invalid request",
+            timestamp: new Date(),
+          });
+          return;
+        }
+      }
+      
       // LLM chat handling - route through SamuraiAgent if available
       if (command === "samurai-agent.llm.chat") {
         if (this.samuraiAgent && message.payload) {
@@ -196,10 +265,14 @@ export class SamuraiAgentPanelWebviewViewProvider
                     }
                     
                     // Return response in LLM format for compatibility
-                    console.log('Sending response to webview:', {
+                    console.log('[COST DEBUG] WebviewProvider - Sending agent response to webview:', {
                       requestId: message.requestId,
-                      content: result.message || 'No response'
+                      content: result.message || 'No response',
+                      metadata: result.metadata,
+                      hasCost: result.metadata?.cost !== undefined,
+                      cost: result.metadata?.cost
                     });
+                    
                     webview.postMessage({
                       type: "success",
                       requestId: message.requestId,
@@ -209,6 +282,8 @@ export class SamuraiAgentPanelWebviewViewProvider
                           ...(result.metadata || {}),
                           samuraiAgentResponse: true,
                         },
+                        // Include cost at payload level for easier extraction
+                        cost: result.metadata?.cost,
                       },
                       timestamp: new Date(),
                     });
@@ -340,6 +415,32 @@ export class SamuraiAgentPanelWebviewViewProvider
           }
         }
         webview.postMessage(response);
+        return;
+      }
+
+      // Handle cost statistics command
+      if (command === "samurai-agent.getCostStatistics") {
+        const commandPromise = vscode.commands.executeCommand(command);
+        if (commandPromise && typeof commandPromise.then === "function") {
+          commandPromise.then(
+            (result: unknown) => {
+              webview.postMessage({
+                type: "success",
+                requestId: message.requestId,
+                payload: result,
+                timestamp: new Date(),
+              });
+            },
+            (error: unknown) => {
+              webview.postMessage({
+                type: "error",
+                requestId: message.requestId,
+                error: error instanceof Error ? error.message : "Failed to get cost statistics",
+                timestamp: new Date(),
+              });
+            }
+          );
+        }
         return;
       }
 

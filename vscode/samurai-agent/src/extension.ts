@@ -114,11 +114,32 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand(
       "samurai-agent.llm.chat",
       async (request) => {
+        console.log('[COST DEBUG] LLM chat command called with request:', {
+          provider: request.provider,
+          model: request.model,
+          hasMessages: !!request.messages?.length
+        });
+        
         const response = await llmProviderService.chat(request);
+        
+        console.log('[COST DEBUG] LLM response received:', {
+          responseType: response.type,
+          hasPayload: !!response.payload,
+          payloadType: response.payload ? typeof response.payload : 'none'
+        });
         
         // Track cost if successful
         if (response.type === ResponseType.SUCCESS && response.payload) {
           const llmResponse = response.payload as LLMResponse;
+          
+          console.log('[COST DEBUG] LLM Response details:', {
+            provider: llmResponse.provider,
+            model: llmResponse.model,
+            usage: llmResponse.usage,
+            cost: llmResponse.cost,
+            hasCost: llmResponse.cost !== undefined,
+            costType: typeof llmResponse.cost
+          });
           
           const costRecord: LLMCostRecord = {
             id: `cost-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -132,8 +153,12 @@ export function activate(context: vscode.ExtensionContext) {
             requestId: llmResponse.requestId,
           };
           
+          console.log('[COST DEBUG] Saving cost record:', costRecord);
           await llmCostStorage.saveRecord(costRecord);
           updateCostStatusBar(costStatusBarItem, llmCostStorage);
+          console.log('[COST DEBUG] Cost record saved and status bar updated');
+        } else {
+          console.log('[COST DEBUG] Not tracking cost - response type:', response.type);
         }
         
         return response;
@@ -178,14 +203,25 @@ export function activate(context: vscode.ExtensionContext) {
         const message = `
 LLM Cost Tracker
 
-Session Cost: ${formatCost(stats.currentSessionCost)}
-Total Cost: ${formatCost(stats.totalCost)}
+This Month: ${formatCost(stats.currentMonthCost)}
+Session (24h): ${formatCost(stats.currentSessionCost)}
+Total (All Time): ${formatCost(stats.totalCost)}
 Total Requests: ${stats.totalRecords}
 
 Click to see details in the Samurai Agent panel.
         `.trim();
         
         vscode.window.showInformationMessage(message);
+      }
+    )
+  );
+
+  // Register command to get cost statistics
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'samurai-agent.getCostStatistics',
+      () => {
+        return llmCostStorage.getStatistics();
       }
     )
   );

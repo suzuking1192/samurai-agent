@@ -141,6 +141,23 @@ export class LLMCostStorage {
     }
     
     /**
+     * Get cost for the current month
+     * @returns Current month's cost in USD
+     */
+    getCurrentMonthCost(): number {
+        const now = new Date();
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        
+        const data = this.loadStoredData();
+        const monthRecords = data.records.filter(r => {
+            const recordTime = new Date(r.timestamp);
+            return recordTime >= monthStart;
+        });
+        
+        return monthRecords.reduce((sum, record) => sum + record.cost, 0);
+    }
+    
+    /**
      * Clear all stored cost records
      */
     async clearRecords(): Promise<void> {
@@ -160,16 +177,19 @@ export class LLMCostStorage {
         totalRecords: number;
         totalCost: number;
         currentSessionCost: number;
+        currentMonthCost: number;
         oldestRecord?: string;
         newestRecord?: string;
     } {
         const data = this.loadStoredData();
         const currentSessionCost = this.getCurrentSessionCost();
+        const currentMonthCost = this.getCurrentMonthCost();
         
         return {
             totalRecords: data.records.length,
             totalCost: data.totalCost,
             currentSessionCost,
+            currentMonthCost,
             oldestRecord: data.records.length > 0 ? data.records[0].timestamp : undefined,
             newestRecord: data.records.length > 0 ? data.records[data.records.length - 1].timestamp : undefined,
         };

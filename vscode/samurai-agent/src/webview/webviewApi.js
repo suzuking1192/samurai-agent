@@ -289,6 +289,10 @@ const uiFeedback = {
     }
 
     // Export the API
+    const costApi = {
+        getStatistics: () => postCommand('samurai-agent.getCostStatistics')
+    };
+
     window.WebviewApi = {
         postCommand,
         subscribe,
@@ -297,6 +301,7 @@ const uiFeedback = {
         agent: agentApi,
         projectDetail: projectDetailApi,
         ui: uiFeedback,
+        cost: costApi,
         chat: {
             loadChatHistoryForCurrentSession: (sessionId) =>
                 postCommand('chat.loadHistoryForCurrentSession', { sessionId })
