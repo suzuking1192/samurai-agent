@@ -602,9 +602,14 @@ export class SamuraiAgent {
       }>;
       
       try {
-        parsedSpecs = JSON.parse(responseContent);
+        parsedSpecs = parseAndValidateLlmJson<Array<{
+          title: string;
+          description: string;
+          parent_spec_id?: string | null;
+        }>>(responseContent, []);
       } catch (error) {
-        throw new Error(`Failed to parse JSON response: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        const fallbackMessage = responseContent || 'No content received from LLM.';
+        throw new Error(`Failed to parse JSON response: ${error instanceof Error ? error.message : 'Unknown error'}\nLLM output:\n${fallbackMessage}`);
       }
       
       if (!Array.isArray(parsedSpecs)) {
@@ -613,6 +618,9 @@ export class SamuraiAgent {
       
       // Validate that each spec has required fields
       for (const spec of parsedSpecs) {
+        if (!spec || typeof spec !== 'object') {
+          throw new Error(`Invalid spec structure: expected object but received ${JSON.stringify(spec)}`);
+        }
         if (!spec.title || !spec.description) {
           throw new Error(`Invalid spec structure: missing title or description. Spec: ${JSON.stringify(spec)}`);
         }

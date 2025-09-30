@@ -798,7 +798,8 @@ describe('SamuraiAgent', () => {
       const result = await samuraiAgent.handleGeneratingSpecs(userMessage, codeContexts, chatHistory, projectDetails);
 
       expect(result.success).toBe(false);
-      expect(result.message).toContain('Error generating specs');
+      expect(result.message).toContain('Error generating specs: Failed to parse JSON response');
+      expect(result.message).toContain('LLM output');
       expect(mockCreateSpecTool.execute).not.toHaveBeenCalled();
     });
 
