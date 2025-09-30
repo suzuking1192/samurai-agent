@@ -37,6 +37,7 @@ exports.SamuraiAgentPanelWebviewViewProvider = void 0;
 const vscode = __importStar(require("vscode"));
 const fs = __importStar(require("fs"));
 const llm_models_1 = require("../common/constants/llm-models");
+const chat_models_1 = require("../common/models/chat-models");
 // Resolve each asset to whichever folder actually has that file
 const assetUri = (webview, extUri, filename) => {
     const out = vscode.Uri.joinPath(extUri, "out", "webview", filename);
@@ -54,6 +55,7 @@ class SamuraiAgentPanelWebviewViewProvider {
     projectDetailService;
     treeSitterLoaderService;
     extractCodeTool;
+    samuraiAgent;
     constructor(_extensionUri, dependencies) {
         this._extensionUri = _extensionUri;
         this.llmProviderService = dependencies.llmProviderService;
@@ -62,6 +64,7 @@ class SamuraiAgentPanelWebviewViewProvider {
         this.globalDataStore = dependencies.globalDataStore;
         this.treeSitterLoaderService = dependencies.treeSitterLoaderService;
         this.extractCodeTool = dependencies.extractCodeTool;
+        this.samuraiAgent = dependencies.samuraiAgent;
     }
     resolveWebviewView(webviewView, context, _token) {
         console.log("Webview Provider: resolveWebviewView called");
@@ -107,8 +110,105 @@ class SamuraiAgentPanelWebviewViewProvider {
     handleWebviewMessage(webview, message) {
         const { command } = message;
         try {
-            // LLM chat handling
+            // LLM chat handling - route through SamuraiAgent if available
             if (command === "samurai-agent.llm.chat") {
+                if (this.samuraiAgent && message.payload) {
+                    // Extract user message from the LLM request
+                    const llmRequest = message.payload;
+                    const userMessage = llmRequest.messages?.find((msg) => msg.role === 'user');
+                    if (userMessage && this.dataStore) {
+                        // Get current session
+                        const projectSettings = this.dataStore.readProjectSettings();
+                        const currentSessionId = projectSettings?.payload?.currentSessionId;
+                        if (currentSessionId) {
+                            // Load session
+                            const sessionResponse = this.dataStore.handleWebviewMessage({
+                                command: 'loadSession',
+                                payload: { sessionId: currentSessionId }
+                            });
+                            if (sessionResponse.type === 'success' && sessionResponse.payload) {
+                                // Create ChatMessage object
+                                const chatMessage = {
+                                    id: `msg-${Date.now()}`,
+                                    sessionId: currentSessionId,
+                                    projectId: sessionResponse.payload.metadata?.projectId || 'default',
+                                    type: chat_models_1.MessageType.USER,
+                                    content: userMessage.content,
+                                    role: 'user',
+                                    metadata: {},
+                                    isEdited: false,
+                                    createdAt: new Date(),
+                                    updatedAt: new Date()
+                                };
+                                // Execute through SamuraiAgent
+                                this.samuraiAgent.execute(chatMessage, sessionResponse.payload, (update) => {
+                                    try {
+                                        webview.postMessage({
+                                            type: "agentProgress",
+                                            payload: update,
+                                            timestamp: new Date(),
+                                        });
+                                    }
+                                    catch (error) {
+                                        console.error("Failed to send progress update", error);
+                                    }
+                                })
+                                    .then((result) => {
+                                    // Create assistant message from result
+                                    const assistantMessage = {
+                                        id: `assistant-${Date.now()}`,
+                                        sessionId: currentSessionId,
+                                        projectId: sessionResponse.payload.metadata?.projectId || 'default',
+                                        type: chat_models_1.MessageType.ASSISTANT,
+                                        content: result.message || 'No response',
+                                        role: 'assistant',
+                                        metadata: result.metadata || {},
+                                        isEdited: false,
+                                        createdAt: new Date(),
+                                        updatedAt: new Date(),
+                                        // Extract specClarificationData and interactiveQuestions from result metadata
+                                        specClarificationData: result.metadata?.specClarificationData,
+                                        interactiveQuestions: result.metadata?.interactiveQuestions
+                                    };
+                                    // Save assistant message
+                                    if (this.dataStore) {
+                                        this.dataStore.handleWebviewMessage({
+                                            command: 'saveChatMessage',
+                                            payload: assistantMessage
+                                        });
+                                    }
+                                    // Return response in LLM format for compatibility
+                                    console.log('Sending response to webview:', {
+                                        requestId: message.requestId,
+                                        content: result.message || 'No response'
+                                    });
+                                    webview.postMessage({
+                                        type: "success",
+                                        requestId: message.requestId,
+                                        payload: {
+                                            content: result.message || 'No response',
+                                            metadata: {
+                                                ...(result.metadata || {}),
+                                                samuraiAgentResponse: true,
+                                            },
+                                        },
+                                        timestamp: new Date(),
+                                    });
+                                })
+                                    .catch((error) => {
+                                    webview.postMessage({
+                                        type: "error",
+                                        requestId: message.requestId,
+                                        error: error instanceof Error ? error.message : "SamuraiAgent execution failed",
+                                        timestamp: new Date(),
+                                    });
+                                });
+                                return;
+                            }
+                        }
+                    }
+                }
+                // Fallback to direct LLM chat if SamuraiAgent is not available
                 const commandPromise = vscode.commands.executeCommand("samurai-agent.llm.chat", message.payload);
                 if (commandPromise && typeof commandPromise.then === "function") {
                     commandPromise.then((result) => {
@@ -130,9 +230,15 @@ class SamuraiAgentPanelWebviewViewProvider {
                 return;
             }
             if (command === "projectDetail.ingest") {
+                console.log("Webview Provider: Received projectDetail.ingest command", {
+                    hasSamuraiAgent: !!this.samuraiAgent,
+                    payload: message.payload,
+                    requestId: message.requestId,
+                });
                 const commandPromise = vscode.commands.executeCommand("samurai-agent.projectDetail.ingest", message.payload);
                 if (commandPromise && typeof commandPromise.then === "function") {
                     commandPromise.then((result) => {
+                        console.log("Webview Provider: projectDetail.ingest success", message.requestId);
                         webview.postMessage({
                             type: "success",
                             requestId: message.requestId,
@@ -140,6 +246,7 @@ class SamuraiAgentPanelWebviewViewProvider {
                             timestamp: new Date(),
                         });
                     }, (error) => {
+                        console.error("Webview Provider: projectDetail.ingest error", error);
                         webview.postMessage({
                             type: "error",
                             requestId: message.requestId,

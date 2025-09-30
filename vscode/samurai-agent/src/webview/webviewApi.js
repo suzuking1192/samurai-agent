@@ -227,6 +227,33 @@ const uiFeedback = {
     }
 };
 
+    const agentApi = {
+        execute: ({ userMessage, session, message }) => {
+            // Provide backward compatibility: if userMessage is not supplied, construct from message
+            const payload = {};
+
+            if (userMessage) {
+                payload.userMessage = userMessage;
+            } else if (message) {
+                payload.userMessage = {
+                    id: `user-${Date.now()}`,
+                    sessionId: session?.id || null,
+                    projectId: session?.metadata?.projectId || session?.projectId || 'default',
+                    type: 'user',
+                    role: 'user',
+                    content: message,
+                    metadata: {}
+                };
+            }
+
+            if (session) {
+                payload.session = session;
+            }
+
+            return postCommand('samurai-agent.execute', payload);
+        }
+    };
+
     // Listen for messages from extension host
     window.addEventListener('message', (event) => {
         const message = event.data;
@@ -267,6 +294,7 @@ const uiFeedback = {
         subscribe,
         persistence: persistenceApi,
         llm: llmApi,
+        agent: agentApi,
         projectDetail: projectDetailApi,
         ui: uiFeedback,
         chat: {

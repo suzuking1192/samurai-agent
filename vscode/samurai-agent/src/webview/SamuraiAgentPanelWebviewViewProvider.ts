@@ -181,7 +181,10 @@ export class SamuraiAgentPanelWebviewViewProvider
                       metadata: result.metadata || {},
                       isEdited: false,
                       createdAt: new Date(),
-                      updatedAt: new Date()
+                      updatedAt: new Date(),
+                      // Extract specClarificationData and interactiveQuestions from result metadata
+                      specClarificationData: result.metadata?.specClarificationData,
+                      interactiveQuestions: result.metadata?.interactiveQuestions
                     };
                     
                     // Save assistant message

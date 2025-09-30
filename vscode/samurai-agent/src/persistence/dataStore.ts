@@ -173,7 +173,9 @@ export class DataStore {
             ...stored,
             createdAt: new Date(stored.createdAt),
             updatedAt: new Date(stored.updatedAt),
-            metadata: stored.metadata ?? {}
+            metadata: stored.metadata ?? {},
+            specClarificationData: stored.specClarificationData,
+            interactiveQuestions: stored.interactiveQuestions
         };
     }
 
@@ -284,6 +286,8 @@ export class DataStore {
             metadata: { ...(request.metadata ?? {}) },
             parentMessageId: request.parentMessageId,
             isEdited: false,
+            specClarificationData: request.specClarificationData,
+            interactiveQuestions: request.interactiveQuestions,
             createdAt: now,
             updatedAt: now
         };

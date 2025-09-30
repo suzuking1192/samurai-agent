@@ -287,7 +287,10 @@ describe('SamuraiAgent', () => {
       mockLLMProviderService.chat.mockResolvedValue({
         type: 'success',
         payload: {
-          content: 'I understand you want to clarify authentication requirements. Let me ask some specific questions to help you define this clearly.',
+          content: JSON.stringify({
+            clarification_text: 'I understand you want to clarify authentication requirements. Let me ask some specific questions to help you define this clearly.',
+            score: 70
+          }),
           role: 'assistant'
         }
       } as any);
@@ -299,7 +302,10 @@ describe('SamuraiAgent', () => {
         codeContexts
       );
 
-      expect(result).toBe('I understand you want to clarify authentication requirements. Let me ask some specific questions to help you define this clearly.');
+      expect(result).toEqual({
+        clarification_text: 'I understand you want to clarify authentication requirements. Let me ask some specific questions to help you define this clearly.',
+        score: 70
+      });
       expect(mockLLMProviderService.chat).toHaveBeenCalledWith(
         expect.objectContaining({
           metadata: expect.objectContaining({ type: 'spec_clarification' })
@@ -338,7 +344,10 @@ describe('SamuraiAgent', () => {
         codeContexts
       );
 
-      expect(result).toBe("I'm here to help clarify your specifications! What would you like to specify?");
+      expect(result).toEqual({
+        clarification_text: "I'm here to help clarify your specifications! What would you like to specify?",
+        score: 0
+      });
     });
   });
 
@@ -522,13 +531,27 @@ describe('SamuraiAgent', () => {
       // Mock LLM response for spec clarification
       mockLLMProviderService.chat.mockResolvedValueOnce({
         type: 'success',
-        payload: { content: 'I understand you want to clarify authentication requirements. Let me ask some specific questions to help you define this clearly.' }
+        payload: { 
+          content: JSON.stringify({
+            clarification_text: 'I understand you want to clarify authentication requirements. Let me ask some specific questions to help you define this clearly.',
+            score: 60
+          })
+        }
       } as any);
 
       const result = await samuraiAgent.execute(userMessage, session);
 
       expect(result.success).toBe(true);
       expect(result.message).toBe('I understand you want to clarify authentication requirements. Let me ask some specific questions to help you define this clearly.');
+      expect(result.metadata.specClarificationData).toEqual({
+        clarification_text: 'I understand you want to clarify authentication requirements. Let me ask some specific questions to help you define this clearly.',
+        score: 60
+      });
+      expect(result.metadata.interactiveQuestions).toEqual([{
+        type: 'button',
+        label: 'Create specs for the tasks we discussed; AI will resolve any ambiguity.',
+        messageToSend: 'Create specs now'
+      }]);
       expect(mockDataStore.updateSession).toHaveBeenCalledWith('session1', {
         messageCount: 2,
         previous_session_intent: UserIntentEnum.SPEC_CLARIFICATION
@@ -791,6 +814,211 @@ describe('SamuraiAgent', () => {
       expect(result.success).toBe(false);
       expect(result.message).toContain('I encountered issues creating the specs');
       expect(mockCreateSpecTool.execute).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('handleSpecClarification', () => {
+    const mockUserMessage: ChatMessage = {
+      id: 'user-1',
+      sessionId: 'session-1',
+      projectId: 'project-1',
+      type: 'user' as any,
+      content: 'I want to build a login feature',
+      role: 'user',
+      metadata: {},
+      isEdited: false,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+
+    const mockChatHistory: LLMMessage[] = [
+      { role: 'user', content: 'Previous message' },
+      { role: 'assistant', content: 'Previous response' }
+    ];
+
+    beforeEach(() => {
+      // Mock the prompt file content
+      mockedFs.readFileSync.mockReturnValue(
+        'Mock prompt with {projectDetails} and {codeContexts} and {conversationSummary} and {activeTaskHeader} and {noActiveTaskInference}'
+      );
+    });
+
+    it('should successfully parse JSON response with clarification_text and score', async () => {
+      const mockLLMResponse = {
+        type: 'success' as const,
+        payload: {
+          content: JSON.stringify({
+            clarification_text: 'Please clarify the authentication method',
+            score: 65
+          })
+        }
+      };
+
+      mockLLMProviderService.chat.mockResolvedValue(mockLLMResponse);
+
+      const result = await samuraiAgent.handleSpecClarification(
+        mockUserMessage,
+        mockChatHistory,
+        'Project details',
+        []
+      );
+
+      expect(result).toEqual({
+        clarification_text: 'Please clarify the authentication method',
+        score: 65
+      });
+      expect(mockLLMProviderService.chat).toHaveBeenCalledWith(
+        expect.objectContaining({
+          metadata: { type: 'spec_clarification' }
+        })
+      );
+    });
+
+    it('should handle JSON wrapped in markdown code blocks', async () => {
+      const mockLLMResponse = {
+        type: 'success' as const,
+        payload: {
+          content: '```json\n{"clarification_text": "What database will you use?", "score": 50}\n```'
+        }
+      };
+
+      mockLLMProviderService.chat.mockResolvedValue(mockLLMResponse);
+
+      const result = await samuraiAgent.handleSpecClarification(
+        mockUserMessage,
+        mockChatHistory,
+        'Project details',
+        []
+      );
+
+      expect(result.clarification_text).toBe('What database will you use?');
+      expect(result.score).toBe(50);
+    });
+
+    it('should validate score is within 0-100 range', async () => {
+      const mockLLMResponse = {
+        type: 'success' as const,
+        payload: {
+          content: JSON.stringify({
+            clarification_text: 'Invalid score test',
+            score: 150
+          })
+        }
+      };
+
+      mockLLMProviderService.chat.mockResolvedValue(mockLLMResponse);
+
+      const result = await samuraiAgent.handleSpecClarification(
+        mockUserMessage,
+        mockChatHistory,
+        'Project details',
+        []
+      );
+
+      // Should return fallback response with score 0
+      expect(result.score).toBe(0);
+      expect(result.clarification_text).toBe("I'm here to help clarify your specifications! What would you like to specify?");
+    });
+
+    it('should handle missing required fields in JSON', async () => {
+      const mockLLMResponse = {
+        type: 'success' as const,
+        payload: {
+          content: JSON.stringify({
+            clarification_text: 'Missing score field'
+          })
+        }
+      };
+
+      mockLLMProviderService.chat.mockResolvedValue(mockLLMResponse);
+
+      const result = await samuraiAgent.handleSpecClarification(
+        mockUserMessage,
+        mockChatHistory,
+        'Project details',
+        []
+      );
+
+      // Should return fallback response
+      expect(result.score).toBe(0);
+      expect(result.clarification_text).toBe("I'm here to help clarify your specifications! What would you like to specify?");
+    });
+
+    it('should handle LLM request failure', async () => {
+      mockLLMProviderService.chat.mockResolvedValue({
+        type: 'error' as const,
+        error: 'LLM service unavailable'
+      });
+
+      const result = await samuraiAgent.handleSpecClarification(
+        mockUserMessage,
+        mockChatHistory,
+        'Project details',
+        []
+      );
+
+      // Should return fallback response
+      expect(result.score).toBe(0);
+      expect(result.clarification_text).toBe("I'm here to help clarify your specifications! What would you like to specify?");
+    });
+
+    it('should handle malformed JSON response', async () => {
+      const mockLLMResponse = {
+        type: 'success' as const,
+        payload: {
+          content: 'This is not JSON at all'
+        }
+      };
+
+      mockLLMProviderService.chat.mockResolvedValue(mockLLMResponse);
+
+      const result = await samuraiAgent.handleSpecClarification(
+        mockUserMessage,
+        mockChatHistory,
+        'Project details',
+        []
+      );
+
+      // Should return fallback response
+      expect(result.score).toBe(0);
+      expect(result.clarification_text).toBe("I'm here to help clarify your specifications! What would you like to specify?");
+    });
+
+    it('should correctly format code contexts and conversation summary in prompt', async () => {
+      const mockCodeContexts: ExtractCodeToolResultPayload[] = [{
+        relevantCodeElements: [{
+          path: '/test/file.ts',
+          elements: [{ type: 'function', name: 'testFunc', startLine: 1, endLine: 10 }],
+          snippet: 'function testFunc() {}'
+        }],
+        query: 'test query'
+      }];
+
+      const mockLLMResponse = {
+        type: 'success' as const,
+        payload: {
+          content: JSON.stringify({
+            clarification_text: 'Test response',
+            score: 75
+          })
+        }
+      };
+
+      mockLLMProviderService.chat.mockResolvedValue(mockLLMResponse);
+
+      await samuraiAgent.handleSpecClarification(
+        mockUserMessage,
+        mockChatHistory,
+        'Project details',
+        mockCodeContexts
+      );
+
+      const chatCall = mockLLMProviderService.chat.mock.calls[0][0];
+      const systemPrompt = chatCall.messages[0].content;
+
+      // Should include formatted code contexts and conversation summary
+      expect(systemPrompt).toContain('Project details');
+      expect(chatCall.messages).toHaveLength(mockChatHistory.length + 2); // system + history + user
     });
   });
 });

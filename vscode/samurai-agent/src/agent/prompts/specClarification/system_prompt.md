@@ -161,3 +161,28 @@ When you need to ask questions to the user, phrase them in a way that can be pro
 - Examples: "Choose A or B or C", "Select option 1, 2, or 3", "Choose approach A or approach B or approach C"
 
 This formatting enables the system to provide interactive buttons for user responses.
+
+## OUTPUT FORMAT (CRITICAL)
+You MUST return your response as a JSON object with the following structure:
+```json
+{
+  "clarification_text": "Your clarification questions and analysis here...",
+  "score": 85
+}
+```
+
+**Score Calculation Guidelines (0-100):**
+- **90-100**: All requirements are crystal clear, no ambiguity, follows best practices perfectly
+- **80-89**: Minor clarifications needed, mostly clear with excellent best practice alignment
+- **70-79**: Some clarifications needed, generally clear with good best practice alignment
+- **60-69**: Multiple clarifications needed, moderate ambiguity, some best practice concerns
+- **50-59**: Many clarifications needed, significant ambiguity, several best practice issues
+- **Below 50**: Major ambiguity, many unknowns, significant best practice violations, scope too broad
+
+**Score Factors to Consider:**
+1. Clarity of requirements (40 points)
+2. Completeness of information (30 points)
+3. Alignment with best practices (20 points)
+4. Scope appropriateness (10 points)
+
+**Important:** The clarification_text should contain all your analysis, questions, and recommendations. The score should objectively reflect the specification readiness for implementation.

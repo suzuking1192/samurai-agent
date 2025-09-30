@@ -10,6 +10,7 @@
         availableModels: [],
         llmModels: null,
         currentSessionId: null,
+        currentSession: null,
         lastAssistantMessageContent: null,
         lastAssistantMessageTimestamp: 0
     };
@@ -200,10 +201,84 @@
             link.setAttribute('target', '_blank');
             link.setAttribute('rel', 'noopener noreferrer');
         });
+        
+        // Render spec clarification score if present
+        if (message.specClarificationData && typeof message.specClarificationData.score === 'number') {
+            const scoreElement = document.createElement('div');
+            scoreElement.className = 'spec-score-container';
+            
+            const scoreValue = message.specClarificationData.score;
+            let scoreClass = 'score-red';
+            if (scoreValue >= 80) {
+                scoreClass = 'score-green';
+            } else if (scoreValue >= 50) {
+                scoreClass = 'score-yellow';
+            }
+            
+            scoreElement.innerHTML = `<span class="spec-score ${scoreClass}">Spec Readiness Score: ${scoreValue}/100</span>`;
+            messageElement.appendChild(scoreElement);
+        }
+        
+        // Render interactive buttons if present
+        if (message.interactiveQuestions && Array.isArray(message.interactiveQuestions)) {
+            message.interactiveQuestions.forEach((question) => {
+                if (question.type === 'button') {
+                    const buttonElement = document.createElement('button');
+                    buttonElement.className = 'interactive-question-button';
+                    buttonElement.textContent = question.label;
+                    buttonElement.addEventListener('click', async () => {
+                        console.log('Chat: Interactive button clicked, sending message:', question.messageToSend);
+                        if (globalScope.WebviewApi?.agent?.execute) {
+                            try {
+                                const result = await globalScope.WebviewApi.agent.execute({
+                                    userMessage: {
+                                        id: `user-${Date.now()}`,
+                                        sessionId: chatState.currentSessionId,
+                                        projectId: chatState.projectSettings?.projectId,
+                                        type: globalScope?.MessageType?.USER || 'user',
+                                        role: 'user',
+                                        content: question.messageToSend,
+                                        metadata: {}
+                                    },
+                                    session: chatState.currentSession,
+                                    message: question.messageToSend
+                                });
+
+                                const assistantMessage = handleAgentExecuteResponse(result);
+                                if (assistantMessage) {
+                                    if (chatState.currentSessionId && chatState.projectSettings?.projectId) {
+                                        await globalScope.WebviewApi.persistence.saveChatMessage({
+                                            sessionId: chatState.currentSessionId,
+                                            projectId: chatState.projectSettings.projectId,
+                                            type: assistantMessage.type,
+                                            content: assistantMessage.content,
+                                            role: assistantMessage.role,
+                                            metadata: assistantMessage.metadata,
+                                            specClarificationData: assistantMessage.specClarificationData,
+                                            interactiveQuestions: assistantMessage.interactiveQuestions
+                                        });
+                                    }
+                                    displayMessage(assistantMessage);
+                                }
+                                return;
+                            } catch (error) {
+                                console.error('Chat: Failed to execute agent command', error);
+                            }
+                        }
+
+                        sendMessage(question.messageToSend);
+                    });
+                    messageElement.appendChild(buttonElement);
+                }
+            });
+        }
+        
         chatMessages.appendChild(messageElement);
 
         console.log('Chat: Message element appended to chatMessages');
         messageElement.scrollIntoView({ block: 'start', behavior: 'smooth' });
+
+        return messageElement;
     }
 
     function showProgressIndicator(update) {
@@ -324,6 +399,12 @@
                 throw new Error('Chat session is not initialized');
             }
 
+            let currentSession = chatState.currentSession;
+            if (!currentSession) {
+                currentSession = await globalScope.WebviewApi.persistence.loadSession(sessionId);
+                chatState.currentSession = currentSession;
+            }
+
             const chatMessages = safeGetDocumentElement('chatMessages');
             const pendingIndicator = document.createElement('div');
             pendingIndicator.className = 'assistant-message pending';
@@ -341,14 +422,16 @@
 
             displayMessage(userMessage);
 
-            await globalScope.WebviewApi.persistence.saveChatMessage({
-                sessionId,
-                projectId: chatState.projectSettings.projectId,
-                type: userMessage.type,
-                content: userMessage.content,
-                role: userMessage.role,
-                metadata: userMessage.metadata
-            });
+            if (chatState.currentSessionId && chatState.projectSettings?.projectId) {
+                await globalScope.WebviewApi.persistence.saveChatMessage({
+                    sessionId: chatState.currentSessionId,
+                    projectId: chatState.projectSettings.projectId,
+                    type: userMessage.type,
+                    content: userMessage.content,
+                    role: userMessage.role,
+                    metadata: userMessage.metadata
+                });
+            }
 
             const chatMessagesElement = safeGetDocumentElement('chatMessages');
             if (chatMessagesElement) {
@@ -418,6 +501,9 @@
                 role: assistantMessage.role,
                 metadata: assistantMessage.metadata
             });
+
+            const messageElement = displayMessage(assistantMessage);
+            renderAssistantResponse(messageElement, assistantMessage);
         } catch (error) {
             console.error('Chat: Failed to send message', error);
             displayMessage({
@@ -432,6 +518,118 @@
         }
     }
 
+    function handleAgentExecuteResponse(result) {
+        if (!result || typeof result !== 'object') {
+            console.warn('Chat: Agent execute returned unexpected result', result);
+            return null;
+        }
+
+        const { message, metadata } = result;
+        const assistantMessage = buildAssistantMessageFromAgentResponse(message || 'No response', metadata || {});
+        return assistantMessage;
+    }
+
+    function buildAssistantMessageFromAgentResponse(content, metadata) {
+        const sessionId = chatState.currentSessionId;
+        const projectId = chatState.projectSettings?.projectId;
+
+        return {
+            id: `assistant-${Date.now()}`,
+            sessionId: sessionId || 'unknown-session',
+            projectId: projectId || 'unknown-project',
+            type: globalScope?.MessageType?.ASSISTANT || 'assistant',
+            role: 'assistant',
+            content,
+            metadata,
+            specClarificationData: metadata?.specClarificationData,
+            interactiveQuestions: metadata?.interactiveQuestions
+        };
+    }
+
+    async function persistAssistantMessage(message) {
+        if (!message || !message.sessionId || !message.projectId) {
+            console.warn('Chat: Cannot persist assistant message without session/project context');
+            return;
+        }
+
+        await globalScope.WebviewApi.persistence.saveChatMessage({
+            sessionId: message.sessionId,
+            projectId: message.projectId,
+            type: message.type,
+            content: message.content,
+            role: message.role,
+            metadata: message.metadata,
+            specClarificationData: message.specClarificationData,
+            interactiveQuestions: message.interactiveQuestions
+        });
+    }
+
+    function renderAssistantResponse(messageElement, assistantMessage) {
+        if (!assistantMessage) {
+            return;
+        }
+
+        if (assistantMessage.specClarificationData) {
+            const scoreValue = assistantMessage.specClarificationData.score;
+            let scoreClass = 'score-red';
+            if (scoreValue >= 80) {
+                scoreClass = 'score-green';
+            } else if (scoreValue >= 50) {
+                scoreClass = 'score-yellow';
+            }
+
+            const scoreElement = document.createElement('div');
+            scoreElement.className = 'spec-score-container';
+            scoreElement.innerHTML = `<span class="spec-score ${scoreClass}">Spec Readiness Score: ${scoreValue}/100</span>`;
+            messageElement.appendChild(scoreElement);
+        }
+
+        if (assistantMessage.interactiveQuestions && Array.isArray(assistantMessage.interactiveQuestions)) {
+            assistantMessage.interactiveQuestions.forEach((question) => {
+                if (question.type === 'button') {
+                    const buttonElement = document.createElement('button');
+                    buttonElement.className = 'interactive-question-button';
+                    buttonElement.textContent = question.label;
+                    buttonElement.addEventListener('click', async () => {
+                        console.log('Chat: Interactive button clicked, sending message:', question.messageToSend);
+                        let result;
+                        if (globalScope.WebviewApi?.agent?.execute) {
+                            try {
+                                result = await globalScope.WebviewApi.agent.execute({
+                                    userMessage: {
+                                        id: `user-${Date.now()}`,
+                                        sessionId: chatState.currentSessionId,
+                                        projectId: chatState.projectSettings?.projectId,
+                                        type: globalScope?.MessageType?.USER || 'user',
+                                        role: 'user',
+                                        content: question.messageToSend,
+                                        metadata: {}
+                                    },
+                                    session: chatState.currentSession,
+                                    message: question.messageToSend
+                                });
+                            } catch (error) {
+                                console.error('Chat: Failed to execute agent command', error);
+                                await sendMessage(question.messageToSend);
+                                return;
+                            }
+                        } else {
+                            await sendMessage(question.messageToSend);
+                            return;
+                        }
+
+                        const assistantResponse = handleAgentExecuteResponse(result);
+                        if (assistantResponse) {
+                            await persistAssistantMessage(assistantResponse);
+                            displayMessage(assistantResponse);
+                        }
+                    });
+                    messageElement.appendChild(buttonElement);
+                }
+            });
+        }
+    }
+
     function initializeChat() {
         console.log('Chat: Initializing chat functionality...');
 
@@ -440,16 +638,38 @@
         }
 
         document.addEventListener('DOMContentLoaded', () => {
-            const chatInput = safeGetDocumentElement('chatInput');
+            let chatInput = safeGetDocumentElement('chatInput');
             const chatMessages = safeGetDocumentElement('chatMessages');
             const startNewConversationBtn = safeGetDocumentElement('start-new-conversation-btn');
             const llmModelSelect = safeGetDocumentElement('llm-model-select');
 
             initializeMessageListener(chatMessages);
 
+            if (chatInput && chatInput.tagName?.toLowerCase() === 'input') {
+                const textArea = document.createElement('textarea');
+                textArea.id = chatInput.id;
+                textArea.className = chatInput.className || '';
+                textArea.placeholder = chatInput.getAttribute('placeholder') || '';
+                textArea.value = chatInput.value || '';
+                textArea.rows = 3;
+                textArea.style.resize = 'vertical';
+                chatInput.replaceWith(textArea);
+                chatInput = textArea;
+
+                const hint = document.createElement('div');
+                hint.className = 'chat-input-hint';
+                hint.textContent = 'Press Enter to send • Shift + Enter for a new line';
+                if (textArea.parentElement) {
+                    textArea.parentElement.appendChild(hint);
+                }
+
+                injectChatInputStyles();
+            }
+
             if (chatInput) {
-                chatInput.addEventListener('keypress', event => {
-                    if (event.key === 'Enter') {
+                chatInput.addEventListener('keydown', event => {
+                    if (event.key === 'Enter' && !event.shiftKey) {
+                        // Only prevent default and send on Enter without Shift
                         event.preventDefault();
                         const message = chatInput.value.trim();
                         if (message) {
@@ -457,6 +677,7 @@
                             void sendMessage(message);
                         }
                     }
+                    // Shift+Enter: do nothing, let the browser insert a newline naturally
                 });
                 chatInput.focus();
             }
@@ -783,6 +1004,47 @@
             listeners.forEach(unsubscribe => unsubscribe());
             listeners.clear();
         };
+    }
+
+    function injectChatInputStyles() {
+        if (document.getElementById('chat-input-style')) {
+            return;
+        }
+
+        const style = document.createElement('style');
+        style.id = 'chat-input-style';
+        style.textContent = `
+            .chat-input-container {
+                padding: 10px;
+                background-color: var(--vscode-panel-background);
+                border-top: 1px solid var(--vscode-panel-border);
+                display: flex;
+                flex-direction: column;
+                gap: 6px;
+            }
+
+            #chatInput {
+                width: 100%;
+                padding: 12px;
+                border: 1px solid var(--vscode-input-border);
+                border-radius: 4px;
+                background-color: var(--vscode-input-background);
+                color: var(--vscode-input-foreground);
+                font-family: var(--vscode-font-family);
+                font-size: var(--vscode-font-size);
+                box-sizing: border-box;
+                resize: vertical;
+                min-height: 60px;
+            }
+
+            .chat-input-hint {
+                font-size: 11px;
+                color: var(--vscode-descriptionForeground);
+                user-select: none;
+            }
+        `;
+
+        document.head.appendChild(style);
     }
 
     // Bootstrapping

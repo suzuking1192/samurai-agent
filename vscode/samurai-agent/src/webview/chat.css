@@ -64,11 +64,14 @@ body {
     padding: 10px;
     background-color: var(--vscode-panel-background);
     border-top: 1px solid var(--vscode-panel-border);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
 }
 
 #chatInput {
     width: 100%;
-    padding: 16px 12px; /* Increased padding for larger height */
+    padding: 12px;
     border: 1px solid var(--vscode-input-border);
     border-radius: 4px;
     background-color: var(--vscode-input-background);
@@ -76,8 +79,8 @@ body {
     font-family: var(--vscode-font-family);
     font-size: var(--vscode-font-size);
     box-sizing: border-box;
-    min-height: 60px; /* Set minimum height to make it twice as tall */
-    resize: vertical; /* Allow vertical resizing */
+    min-height: 60px;
+    resize: vertical;
 }
 
 #chatInput:focus {
@@ -87,6 +90,12 @@ body {
 
 #chatInput::placeholder {
     color: var(--vscode-input-placeholderForeground);
+}
+
+.chat-input-hint {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    user-select: none;
 }
 
 /* Message styling for future use */
@@ -201,4 +210,75 @@ body {
 .assistant-message.pending {
     opacity: 0.7;
     font-style: italic;
+}
+
+/* Spec Clarification Score Styling */
+.spec-score-container {
+    margin-top: 12px;
+    padding: 8px 12px;
+    background-color: var(--vscode-editor-background);
+    border-radius: 6px;
+    border: 1px solid var(--vscode-panel-border);
+}
+
+.spec-score {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: 0.3px;
+}
+
+.score-green {
+    background-color: rgba(0, 128, 0, 0.2);
+    color: #4ade80;
+    border: 1px solid rgba(74, 222, 128, 0.5);
+}
+
+.score-yellow {
+    background-color: rgba(255, 165, 0, 0.2);
+    color: #fbbf24;
+    border: 1px solid rgba(251, 191, 36, 0.5);
+}
+
+.score-red {
+    background-color: rgba(255, 0, 0, 0.2);
+    color: #f87171;
+    border: 1px solid rgba(248, 113, 113, 0.5);
+}
+
+/* Interactive Question Button Styling */
+.interactive-question-button {
+    margin-top: 12px;
+    padding: 10px 16px;
+    background-color: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    border: 1px solid var(--vscode-button-border);
+    border-radius: 6px;
+    font-size: 14px;
+    font-family: var(--vscode-font-family);
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: block;
+    width: 100%;
+    text-align: center;
+}
+
+.interactive-question-button:hover {
+    background-color: var(--vscode-button-hoverBackground);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.interactive-question-button:active {
+    background-color: var(--vscode-button-activeBackground);
+    transform: translateY(0);
+    box-shadow: none;
+}
+
+.interactive-question-button:focus {
+    outline: 2px solid var(--vscode-focusBorder);
+    outline-offset: 2px;
 }

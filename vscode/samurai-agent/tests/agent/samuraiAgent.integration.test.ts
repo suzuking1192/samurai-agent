@@ -342,4 +342,206 @@ describe('SamuraiAgent Integration Tests', () => {
       );
     });
   });
+
+  describe('SPEC_CLARIFICATION Intent Flow', () => {
+    it('should process SPEC_CLARIFICATION intent and return score with interactive button', async () => {
+      const userMessage: ChatMessage = {
+        id: 'msg-1',
+        sessionId: 'session-1',
+        projectId: 'project-1',
+        type: MessageType.USER,
+        content: 'I want to build a user authentication feature',
+        role: 'user',
+        metadata: {},
+        isEdited: false,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+
+      const session: Session = {
+        id: 'session-1',
+        title: 'Test Session',
+        status: SessionStatus.ACTIVE,
+        messageCount: 0,
+        totalTokens: 0,
+        totalCost: 0,
+        lastMessageAt: new Date(),
+        tags: [],
+        metadata: {
+          projectId: 'project-1'
+        },
+        codeContextIds: [],
+        previous_session_intent: UserIntentEnum.PURE_DISCUSSION,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+
+      // Mock empty chat history
+      mockDataStore.loadChatMessagesForSession.mockReturnValue([]);
+      mockDataStore.loadAllCodeContextForSession.mockResolvedValue([]);
+      mockProjectDetailService.getProjectDetails.mockResolvedValue('Test project details');
+
+      // Mock intent analysis to return SPEC_CLARIFICATION
+      mockLLMProviderService.chat
+        .mockResolvedValueOnce({
+          type: 'success',
+          payload: {
+            content: 'spec_clarification'
+          }
+        })
+        // Mock code extraction analysis to return no new code needed
+        .mockResolvedValueOnce({
+          type: 'success',
+          payload: {
+            content: JSON.stringify({
+              new_code_context_necessary: false,
+              extraction_query: null,
+              reasoning: 'No code extraction needed'
+            })
+          }
+        })
+        // Mock spec clarification response
+        .mockResolvedValueOnce({
+          type: 'success',
+          payload: {
+            content: JSON.stringify({
+              clarification_text: 'Please clarify the following:\n1. What authentication method? (OAuth, JWT, etc.)\n2. Password requirements?\n3. Multi-factor authentication needed?',
+              score: 45
+            })
+          }
+        });
+
+      mockDataStore.updateSession.mockResolvedValue(session);
+
+      // Execute the agent
+      const result = await samuraiAgent.execute(userMessage, session);
+
+      // Verify the result
+      expect(result.success).toBe(true);
+      expect(result.message).toContain('Please clarify the following');
+      expect(result.metadata.userIntent).toBe(UserIntentEnum.SPEC_CLARIFICATION);
+      expect(result.metadata.specClarificationData).toEqual({
+        clarification_text: expect.any(String),
+        score: 45
+      });
+      expect(result.metadata.interactiveQuestions).toEqual([{
+        type: 'button',
+        label: 'Create specs for the tasks we discussed; AI will resolve any ambiguity.',
+        messageToSend: 'Create specs now'
+      }]);
+    });
+
+    it('should handle button click to trigger SPEC_GENERATION', async () => {
+      const buttonClickMessage: ChatMessage = {
+        id: 'msg-2',
+        sessionId: 'session-1',
+        projectId: 'project-1',
+        type: MessageType.USER,
+        content: 'Create specs now',
+        role: 'user',
+        metadata: {},
+        isEdited: false,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+
+      const session: Session = {
+        id: 'session-1',
+        title: 'Test Session',
+        status: SessionStatus.ACTIVE,
+        messageCount: 2,
+        totalTokens: 0,
+        totalCost: 0,
+        lastMessageAt: new Date(),
+        tags: [],
+        metadata: {
+          projectId: 'project-1'
+        },
+        codeContextIds: [],
+        previous_session_intent: UserIntentEnum.SPEC_CLARIFICATION,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+
+      // Mock chat history with previous clarification
+      mockDataStore.loadChatMessagesForSession.mockReturnValue([
+        {
+          id: 'msg-0',
+          sessionId: 'session-1',
+          projectId: 'project-1',
+          type: MessageType.USER,
+          content: 'I want to build a user authentication feature',
+          role: 'user',
+          metadata: {},
+          isEdited: false,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        },
+        {
+          id: 'msg-1',
+          sessionId: 'session-1',
+          projectId: 'project-1',
+          type: MessageType.ASSISTANT,
+          content: 'Please clarify...',
+          role: 'assistant',
+          metadata: {},
+          isEdited: false,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          specClarificationData: {
+            clarification_text: 'Please clarify...',
+            score: 45
+          }
+        }
+      ]);
+
+      mockDataStore.loadAllCodeContextForSession.mockResolvedValue([]);
+      mockProjectDetailService.getProjectDetails.mockResolvedValue('Test project details');
+
+      // Mock code extraction analysis response (no code extraction needed)
+      mockLLMProviderService.chat.mockResolvedValueOnce({
+        type: 'success',
+        payload: {
+          content: JSON.stringify({
+            new_code_context_necessary: false,
+            extraction_query: null,
+            reasoning: 'No code extraction needed'
+          })
+        }
+      });
+
+      // Mock spec generation LLM response
+      mockLLMProviderService.chat.mockResolvedValueOnce({
+        type: 'success',
+        payload: {
+          content: JSON.stringify([
+            {
+              title: 'User Authentication',
+              description: 'Implement JWT-based authentication'
+            }
+          ])
+        }
+      });
+
+      // Mock spec creation
+      mockCreateSpecTool.execute.mockResolvedValue({
+        success: true,
+        result: {
+          id: 'spec-1',
+          title: 'User Authentication',
+          description: 'Implement JWT-based authentication'
+        }
+      });
+
+      mockDataStore.updateSession.mockResolvedValue(session);
+
+      // Execute the agent (note: keyword "Create specs now" should trigger SPEC_GENERATION)
+      const result = await samuraiAgent.execute(buttonClickMessage, session);
+
+      // Verify SPEC_GENERATION was triggered
+      expect(result.success).toBe(true);
+      expect(result.message).toContain("I've generated and created");
+      expect(mockCreateSpecTool.execute).toHaveBeenCalled();
+    });
+  });
 });

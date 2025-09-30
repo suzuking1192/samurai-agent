@@ -39,6 +39,23 @@ export enum UserIntentEnum {
 }
 
 /**
+ * Output structure for SPEC_CLARIFICATION intent
+ */
+export interface ISpecClarificationOutput {
+    clarification_text: string;
+    score: number; // 0-100 score indicating specification readiness
+}
+
+/**
+ * Schema for interactive UI elements like buttons
+ */
+export interface QuestionSchema {
+    type: string;
+    label: string;
+    messageToSend: string;
+}
+
+/**
  * Main ChatMessage model
  * Represents a single message in a chat conversation
  */
@@ -59,6 +76,8 @@ export interface ChatMessage extends BaseModel {
     parentMessageId?: string; // For threaded conversations
     isEdited: boolean;
     editedAt?: Date;
+    specClarificationData?: ISpecClarificationOutput; // For SPEC_CLARIFICATION responses
+    interactiveQuestions?: QuestionSchema[]; // For interactive UI elements like buttons
 }
 
 /**
@@ -94,6 +113,8 @@ export interface CreateChatMessageRequest {
     role: string;
     metadata?: Record<string, any>;
     parentMessageId?: string;
+    specClarificationData?: ISpecClarificationOutput;
+    interactiveQuestions?: QuestionSchema[];
 }
 
 /**

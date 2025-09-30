@@ -4,6 +4,7 @@
 
 const path = require('path');
 const CopyWebpackPlugin = require('copy-webpack-plugin');
+const HtmlWebpackPlugin = require('html-webpack-plugin');
 
 //@ts-check
 /** @typedef {import('webpack').Configuration} WebpackConfig **/
@@ -68,6 +69,16 @@ const extensionConfig = {
           noErrorOnMissing: true
         }
       ]
+    }),
+    new HtmlWebpackPlugin({
+      filename: 'dist/chat.html',
+      template: path.resolve(__dirname, 'src', 'webview', 'chat.html'),
+      chunks: ['chat']
+    }),
+    new HtmlWebpackPlugin({
+      filename: 'out/webview/chat.html',
+      template: path.resolve(__dirname, 'src', 'webview', 'chat.html'),
+      chunks: ['chat']
     })
   ],
   devtool: 'nosources-source-map',

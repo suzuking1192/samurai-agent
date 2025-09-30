@@ -4,7 +4,7 @@ import * as path from "path";
 import { LLMProviderService } from "../llm/llmProviderService";
 import { ProjectDetailService } from "../memory/projectDetailService";
 import { DataStore } from "../../persistence/dataStore";
-import { ChatMessage, Session, UserIntentEnum } from "../../common/models/chat-models";
+import { ChatMessage, Session, UserIntentEnum, ISpecClarificationOutput } from "../../common/models/chat-models";
 import { AgentExecutionResult } from "../models/agent-models";
 import { LLMMessage } from "../../common/models/llm-models";
 import { ExtractCodeToolResultPayload } from "../../common/models/tool-models";
@@ -141,6 +141,8 @@ export class SamuraiAgent {
       
       // Dispatch to appropriate handler based on user intent
       let agentResponse: string;
+      let specClarificationData: ISpecClarificationOutput | undefined;
+      let interactiveQuestions: any[] | undefined;
       
       switch (userIntent) {
         case UserIntentEnum.PURE_DISCUSSION:
@@ -152,7 +154,16 @@ export class SamuraiAgent {
           break;
           
         case UserIntentEnum.SPEC_CLARIFICATION:
-          agentResponse = await this.handleSpecClarification(userMessage, chatHistory, projectDetails, codeContexts);
+          const clarificationResult = await this.handleSpecClarification(userMessage, chatHistory, projectDetails, codeContexts);
+          agentResponse = clarificationResult.clarification_text;
+          specClarificationData = clarificationResult;
+          
+          // Create interactive button for "Create specs"
+          interactiveQuestions = [{
+            type: 'button',
+            label: 'Create specs for the tasks we discussed; AI will resolve any ambiguity.',
+            messageToSend: 'Create specs now'
+          }];
           break;
           
         case UserIntentEnum.SPEC_GENERATION:
@@ -182,7 +193,9 @@ export class SamuraiAgent {
           chatHistoryLength: chatHistory.length,
           projectDetailsLength: projectDetails.length,
           codeContextsCount: codeContexts.length,
-          codeExtractionAnalysis: codeExtractionAnalysisResult
+          codeExtractionAnalysis: codeExtractionAnalysisResult,
+          specClarificationData,
+          interactiveQuestions
         }
       };
     } catch (error) {
@@ -204,7 +217,7 @@ export class SamuraiAgent {
     
     // Step 1: Check for keyword matching for spec_generation
     const messageContent = currentUserMessage.content.toLowerCase();
-    const specGenerationKeywords = ["create a spec", "create specs"];
+    const specGenerationKeywords = ["create specs now", "create a spec", "create specs"];
     
     for (const keyword of specGenerationKeywords) {
       if (messageContent.includes(keyword)) {
@@ -444,7 +457,7 @@ export class SamuraiAgent {
     chatHistory: LLMMessage[], 
     projectDetails: string, 
     codeContexts: ExtractCodeToolResultPayload[]
-  ): Promise<string> {
+  ): Promise<ISpecClarificationOutput> {
     this.logInvocation("handleSpecClarification", userMessage.content);
     
     try {
@@ -496,11 +509,28 @@ export class SamuraiAgent {
         throw new Error('error' in llmResponse ? llmResponse.error : "LLM request failed");
       }
       
-      return llmResponse.content?.trim() || "I'm here to help clarify your specifications! What would you like to specify?";
+      const responseContent = llmResponse.content?.trim() || "";
+      
+      // Parse and validate the JSON response
+      const parsedResult = parseAndValidateLlmJson<ISpecClarificationOutput>(
+        responseContent, 
+        ['clarification_text', 'score']
+      );
+      
+      // Validate score is in range 0-100
+      if (typeof parsedResult.score !== 'number' || parsedResult.score < 0 || parsedResult.score > 100) {
+        throw new Error(`Invalid score value: ${parsedResult.score}. Score must be between 0 and 100.`);
+      }
+      
+      return parsedResult;
       
     } catch (error) {
       console.error('Error in handleSpecClarification:', error);
-      return "I'm here to help clarify your specifications! What would you like to specify?";
+      // Return a fallback response with error indication
+      return {
+        clarification_text: "I'm here to help clarify your specifications! What would you like to specify?",
+        score: 0
+      };
     }
   }
 
