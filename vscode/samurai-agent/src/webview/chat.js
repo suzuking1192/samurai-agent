@@ -176,6 +176,110 @@
         }
     }
 
+    /**
+     * Creates a confirmation question block with interactive buttons
+     * @param {Object} confirmationQuestion - The confirmation question object with originalQuestionText
+     * @returns {HTMLElement} The confirmation block element
+     */
+    function createConfirmationQuestionBlock(confirmationQuestion) {
+        const blockContainer = document.createElement('div');
+        blockContainer.className = 'samurai-confirmation-block';
+        
+        // Create question paragraph
+        const questionParagraph = document.createElement('p');
+        questionParagraph.className = 'samurai-confirmation-question';
+        
+        // Store the original question text in a data attribute (for later retrieval)
+        questionParagraph.setAttribute('data-question', confirmationQuestion.originalQuestionText);
+        
+        // Render the question text with markdown
+        const renderedQuestionHtml = renderInlineMarkdown(confirmationQuestion.originalQuestionText);
+        questionParagraph.innerHTML = renderedQuestionHtml;
+        
+        blockContainer.appendChild(questionParagraph);
+        
+        // Create buttons container
+        const buttonsContainer = document.createElement('div');
+        buttonsContainer.className = 'samurai-confirmation-buttons';
+        
+        // Create Yes button
+        const yesButton = document.createElement('button');
+        yesButton.className = 'samurai-button-yes';
+        yesButton.textContent = 'Yes';
+        yesButton.addEventListener('click', () => {
+            handleConfirmationButtonClick(questionParagraph, 'YES');
+        });
+        
+        // Create No button
+        const noButton = document.createElement('button');
+        noButton.className = 'samurai-button-no';
+        noButton.textContent = 'No';
+        noButton.addEventListener('click', () => {
+            handleConfirmationButtonClick(questionParagraph, 'NO');
+        });
+        
+        // Create AI Recommendation button
+        const aiRecommendationButton = document.createElement('button');
+        aiRecommendationButton.className = 'samurai-button-ai-recommendation';
+        aiRecommendationButton.textContent = 'Ask for AI recommendation';
+        aiRecommendationButton.addEventListener('click', () => {
+            handleConfirmationButtonClick(questionParagraph, 'AI_RECOMMENDATION');
+        });
+        
+        buttonsContainer.appendChild(yesButton);
+        buttonsContainer.appendChild(noButton);
+        buttonsContainer.appendChild(aiRecommendationButton);
+        
+        blockContainer.appendChild(buttonsContainer);
+        
+        // Create separator
+        const separator = document.createElement('hr');
+        separator.className = 'samurai-button-separator';
+        blockContainer.appendChild(separator);
+        
+        return blockContainer;
+    }
+    
+    /**
+     * Handles confirmation button clicks and populates the chat input
+     * @param {HTMLElement} questionElement - The question paragraph element
+     * @param {string} buttonType - The type of button clicked (YES, NO, AI_RECOMMENDATION)
+     */
+    function handleConfirmationButtonClick(questionElement, buttonType) {
+        const questionText = questionElement.getAttribute('data-question');
+        if (!questionText) {
+            console.warn('Chat: No question text found in data-question attribute');
+            return;
+        }
+        
+        let messageText = '';
+        
+        switch (buttonType) {
+            case 'YES':
+                messageText = `I would like to answer "YES" to ${questionText}`;
+                break;
+            case 'NO':
+                messageText = `I would like to answer "NO" to ${questionText}`;
+                break;
+            case 'AI_RECOMMENDATION':
+                messageText = `I would like an AI recommendation for: ${questionText}`;
+                break;
+            default:
+                console.warn('Chat: Unknown button type:', buttonType);
+                return;
+        }
+        
+        // Populate the chat input field
+        const chatInput = safeGetDocumentElement('chatInput');
+        if (chatInput) {
+            chatInput.value = messageText;
+            chatInput.focus();
+            console.log('Chat: Populated chat input with:', messageText);
+        } else {
+            console.error('Chat: chatInput element not found');
+        }
+    }
+
     function displayMessage(message) {
         console.log('Chat: displayMessage called with:', message);
         
@@ -191,7 +295,8 @@
 
         const hasRichAssistantContent =
             !!message.specClarificationData ||
-            (Array.isArray(message.interactiveQuestions) && message.interactiveQuestions.length > 0);
+            (Array.isArray(message.interactiveQuestions) && message.interactiveQuestions.length > 0) ||
+            (Array.isArray(message.interactiveConfirmationQuestions) && message.interactiveConfirmationQuestions.length > 0);
 
         // Deduplicate consecutive identical assistant messages without special content
         if (chatMessages.lastElementChild) {
@@ -238,11 +343,70 @@
             messageElement.classList.add('system-message');
         }
 
-        const contentHtml = renderMarkdown(message.content || '');
+        // Process content to replace confirmation questions with unique markers
+        let processedContent = message.content || '';
+        const confirmationReplacements = [];
+        
+        if (message.interactiveConfirmationQuestions && Array.isArray(message.interactiveConfirmationQuestions)) {
+            message.interactiveConfirmationQuestions.forEach((confirmationQuestion, index) => {
+                const marker = `[[CONFIRMATION_BLOCK_${index}]]`;
+                confirmationReplacements.push({ marker, question: confirmationQuestion });
+                // Replace the question text with marker
+                processedContent = processedContent.replace(
+                    confirmationQuestion.originalQuestionText,
+                    marker
+                );
+            });
+        }
+        
+        const contentHtml = renderMarkdown(processedContent);
         if (contentHtml) {
             messageElement.innerHTML = contentHtml;
         } else {
-            messageElement.textContent = message.content || '';
+            messageElement.textContent = processedContent;
+        }
+
+        // Replace markers with interactive confirmation blocks
+        if (confirmationReplacements.length > 0) {
+            confirmationReplacements.forEach(({ marker, question }) => {
+                const confirmationBlock = createConfirmationQuestionBlock(question);
+                
+                // Find all text nodes containing the marker
+                const walker = document.createTreeWalker(
+                    messageElement,
+                    NodeFilter.SHOW_TEXT,
+                    null
+                );
+                
+                let nodesToReplace = [];
+                let node;
+                while (node = walker.nextNode()) {
+                    if (node.textContent && node.textContent.includes(marker)) {
+                        nodesToReplace.push(node);
+                    }
+                }
+                
+                // Replace each text node containing the marker
+                nodesToReplace.forEach(textNode => {
+                    const parent = textNode.parentNode;
+                    if (parent) {
+                        const parts = textNode.textContent.split(marker);
+                        if (parts.length > 1) {
+                            // Create text nodes for before and after
+                            const beforeText = document.createTextNode(parts[0]);
+                            const afterText = document.createTextNode(parts.slice(1).join(marker));
+                            
+                            // Insert in order: before, block, after
+                            parent.insertBefore(beforeText, textNode);
+                            parent.insertBefore(confirmationBlock, textNode);
+                            if (parts.slice(1).join(marker)) {
+                                parent.insertBefore(afterText, textNode);
+                            }
+                            parent.removeChild(textNode);
+                        }
+                    }
+                });
+            });
         }
 
         // Ensure links open safely
@@ -250,62 +414,6 @@
             link.setAttribute('target', '_blank');
             link.setAttribute('rel', 'noopener noreferrer');
         });
-        
-        // Render spec clarification score if present
-        if (message.specClarificationData && typeof message.specClarificationData.score === 'number') {
-            const scoreElement = document.createElement('div');
-            scoreElement.className = 'spec-score-container';
-            
-            const scoreValue = message.specClarificationData.score;
-            let scoreClass = 'score-red';
-            if (scoreValue >= 90) {
-                scoreClass = 'score-green';
-            } else if (scoreValue >= 70) {
-                scoreClass = 'score-yellow';
-            }
-            
-            scoreElement.innerHTML = `<span class="spec-score ${scoreClass}">Spec Readiness Score: ${scoreValue}/100</span>`;
-            messageElement.appendChild(scoreElement);
-        }
-        
-        // Render interactive buttons if present
-        if (message.interactiveQuestions && Array.isArray(message.interactiveQuestions)) {
-            message.interactiveQuestions.forEach((question) => {
-                if (question.type === 'button') {
-                    const buttonElement = document.createElement('button');
-                    buttonElement.className = 'interactive-question-button';
-                    buttonElement.textContent = question.label;
-                    buttonElement.addEventListener('click', async () => {
-                        console.log('Chat: Interactive button clicked, sending message:', question.messageToSend);
-                        if (globalScope.WebviewApi?.agent?.execute) {
-                            try {
-                                // Call agent.execute - backend will persist and broadcast the response
-                                await globalScope.WebviewApi.agent.execute({
-                                    userMessage: {
-                                        id: `user-${Date.now()}`,
-                                        sessionId: chatState.currentSessionId,
-                                        projectId: chatState.projectSettings?.projectId,
-                                        type: globalScope?.MessageType?.USER || 'user',
-                                        role: 'user',
-                                        content: question.messageToSend,
-                                        metadata: {}
-                                    },
-                                    session: chatState.currentSession,
-                                    message: question.messageToSend
-                                });
-                                // Don't manually display - the message listener will handle it
-                                return;
-                            } catch (error) {
-                                console.error('Chat: Failed to execute agent command', error);
-                            }
-                        }
-
-                        sendMessage(question.messageToSend);
-                    });
-                    messageElement.appendChild(buttonElement);
-                }
-            });
-        }
         
         chatMessages.appendChild(messageElement);
 
@@ -482,48 +590,56 @@
                 chatMessagesElement.scrollTop = chatMessagesElement.scrollHeight;
             }
 
-            const llmRequest = {
-                id: `llm-${Date.now()}`,
-                provider: chatState.projectSettings.primaryLLMModel ? undefined : 'auto',
-                model: chatState.projectSettings.primaryLLMModel || undefined,
-                messages: [
-                    { role: 'system', content: 'You are Samurai Agent.' },
-                    { role: 'user', content: messageText }
-                ],
-                metadata: {}
-            };
-
-            const llmResponse = await globalScope.WebviewApi.llm.chat(llmRequest, 12000000);
-
-            if (chatMessagesElement && pendingIndicator.parentElement === chatMessagesElement) {
-                chatMessagesElement.removeChild(pendingIndicator);
-            }
-
-            console.log('Chat: Received LLM response:', llmResponse);
-            
-            const normalizedResponse = llmResponse?.payload ? llmResponse.payload : llmResponse;
-
-            if (!normalizedResponse) {
-                const errorContent = llmResponse?.error ? `Error: ${llmResponse.error}` : 'No response generated.';
-                const fallbackMessage = buildAssistantMessageFromAgentResponse({ message: errorContent, metadata: { error: llmResponse?.error } });
-                if (fallbackMessage) {
-                    await persistAssistantMessage(fallbackMessage);
-                    const fallbackElement = displayMessage(fallbackMessage);
-                    if (fallbackElement) {
-                        renderAssistantResponse(fallbackElement, fallbackMessage);
+            // Use agent.execute for consistent execution path
+            if (globalScope.WebviewApi?.agent?.execute) {
+                try {
+                    // The agent.execute will handle everything and broadcast the response
+                    // The message listener will automatically display it
+                    await globalScope.WebviewApi.agent.execute({
+                        userMessage: userMessage,
+                        session: currentSession,
+                        message: messageText
+                    });
+                    
+                    // Remove pending indicator - the actual response will be displayed by the message listener
+                    if (chatMessagesElement && pendingIndicator.parentElement === chatMessagesElement) {
+                        chatMessagesElement.removeChild(pendingIndicator);
                     }
+                } catch (error) {
+                    console.error('Chat: Failed to execute agent command', error);
+                    
+                    // Remove pending indicator
+                    if (chatMessagesElement && pendingIndicator.parentElement === chatMessagesElement) {
+                        chatMessagesElement.removeChild(pendingIndicator);
+                    }
+                    
+                    // Display error message
+                    displayMessage({
+                        id: `error-${Date.now()}`,
+                        sessionId: chatState.currentSessionId,
+                        projectId: chatState.projectSettings.projectId,
+                        type: globalScope?.MessageType?.ERROR || 'error',
+                        role: 'assistant',
+                        content: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                        metadata: { error }
+                    });
                 }
                 return;
             }
-
-            const assistantMessage = buildAssistantMessageFromAgentResponse(normalizedResponse);
-            if (assistantMessage) {
-                await persistAssistantMessage(assistantMessage);
-                const messageElement = displayMessage(assistantMessage);
-                if (messageElement) {
-                    renderAssistantResponse(messageElement, assistantMessage);
-                }
+            
+            // Fallback error if agent not available
+            if (chatMessagesElement && pendingIndicator.parentElement === chatMessagesElement) {
+                chatMessagesElement.removeChild(pendingIndicator);
             }
+            displayMessage({
+                id: `error-${Date.now()}`,
+                sessionId: chatState.currentSessionId,
+                projectId: chatState.projectSettings.projectId,
+                type: globalScope?.MessageType?.ERROR || 'error',
+                role: 'assistant',
+                content: 'Agent not available. Please reload the extension.',
+                metadata: {}
+            });
         } catch (error) {
             console.error('Chat: Failed to send message', error);
             displayMessage({
@@ -562,6 +678,9 @@
         const interactiveQuestions = rawResponse.interactiveQuestions
             ?? metadata.interactiveQuestions
             ?? rawResponse.payload?.interactiveQuestions;
+        const interactiveConfirmationQuestions = rawResponse.interactiveConfirmationQuestions
+            ?? metadata.interactiveConfirmationQuestions
+            ?? rawResponse.payload?.interactiveConfirmationQuestions;
 
         // Extract and update API cost if available
         const cost = rawResponse.cost ?? metadata.cost ?? rawResponse.payload?.cost;
@@ -588,6 +707,7 @@
             ...metadata,
             ...(specClarificationData ? { specClarificationData } : {}),
             ...(interactiveQuestions ? { interactiveQuestions } : {}),
+            ...(interactiveConfirmationQuestions ? { interactiveConfirmationQuestions } : {}),
             samuraiAgentResponse: Boolean(metadata.samuraiAgentResponse || rawResponse.samuraiAgentResponse)
         };
 
@@ -600,7 +720,8 @@
             content,
             metadata: enrichedMetadata,
             specClarificationData,
-            interactiveQuestions
+            interactiveQuestions,
+            interactiveConfirmationQuestions
         };
     }
 
@@ -623,7 +744,8 @@
             role: message.role,
             metadata: message.metadata,
             specClarificationData: message.specClarificationData,
-            interactiveQuestions: message.interactiveQuestions
+            interactiveQuestions: message.interactiveQuestions,
+            interactiveConfirmationQuestions: message.interactiveConfirmationQuestions
         });
     }
 
@@ -655,27 +777,41 @@
                     buttonElement.textContent = question.label;
                     buttonElement.addEventListener('click', async () => {
                         console.log('Chat: Interactive button clicked, sending message:', question.messageToSend);
+                        
+                        // Display user message first
+                        const userMsg = {
+                            id: `user-${Date.now()}`,
+                            sessionId: chatState.currentSessionId,
+                            projectId: chatState.projectSettings?.projectId,
+                            type: globalScope?.MessageType?.USER || 'user',
+                            role: 'user',
+                            content: question.messageToSend,
+                            metadata: {}
+                        };
+                        displayMessage(userMsg);
+                        
                         if (globalScope.WebviewApi?.agent?.execute) {
                             try {
                                 // Call agent.execute - backend will persist and broadcast the response
                                 await globalScope.WebviewApi.agent.execute({
-                                    userMessage: {
-                                        id: `user-${Date.now()}`,
-                                        sessionId: chatState.currentSessionId,
-                                        projectId: chatState.projectSettings?.projectId,
-                                        type: globalScope?.MessageType?.USER || 'user',
-                                        role: 'user',
-                                        content: question.messageToSend,
-                                        metadata: {}
-                                    },
+                                    userMessage: userMsg,
                                     session: chatState.currentSession,
                                     message: question.messageToSend
                                 });
-                                // Don't manually display - the message listener will handle it
                                 return;
                             } catch (error) {
                                 console.error('Chat: Failed to execute agent command', error);
-                                await sendMessage(question.messageToSend);
+                                // sendMessage will display another user message, so don't call it
+                                // Instead, display the error directly
+                                displayMessage({
+                                    id: `error-${Date.now()}`,
+                                    sessionId: chatState.currentSessionId,
+                                    projectId: chatState.projectSettings?.projectId,
+                                    type: globalScope?.MessageType?.ERROR || 'error',
+                                    role: 'assistant',
+                                    content: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                                    metadata: { error }
+                                });
                                 return;
                             }
                         } else {
@@ -1011,6 +1147,7 @@
                         metadata: payload.metadata,
                         specClarificationData: payload.metadata?.specClarificationData || payload.specClarificationData,
                         interactiveQuestions: payload.metadata?.interactiveQuestions || payload.interactiveQuestions,
+                        interactiveConfirmationQuestions: payload.metadata?.interactiveConfirmationQuestions || payload.interactiveConfirmationQuestions,
                         cost: payload.metadata?.cost,
                         tokens: payload.metadata?.tokens
                     });

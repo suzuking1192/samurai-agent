@@ -32,7 +32,7 @@ function generateRequestId() {
  * @param {number} timeout - Request timeout in milliseconds (default: 10000)
  * @returns {Promise<any>} Promise that resolves with the response
  */
-function postCommand(command, payload = null, timeout = 10000) {
+function postCommand(command, payload = null, timeout = 1000000) {
     return new Promise((resolve, reject) => {
         const requestId = generateRequestId();
         
@@ -130,13 +130,6 @@ const persistenceApi = {
     saveProjectSettings: (settings) => postCommand('saveProjectSettings', settings),
     loadGlobalSettings: () => postCommand('loadGlobalSettings'),
     saveGlobalSettings: (settings) => postCommand('saveGlobalSettings', settings)
-};
-
-/**
- * LLM operations exposed to the webview
- */
-const llmApi = {
-    chat: (request, timeout = 1200000) => postCommand('samurai-agent.llm.chat', request, timeout)
 };
 
 /**
@@ -297,7 +290,6 @@ const uiFeedback = {
         postCommand,
         subscribe,
         persistence: persistenceApi,
-        llm: llmApi,
         agent: agentApi,
         projectDetail: projectDetailApi,
         ui: uiFeedback,

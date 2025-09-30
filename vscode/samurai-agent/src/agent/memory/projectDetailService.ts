@@ -5,6 +5,11 @@ import { DataStore } from "../../persistence/dataStore";
 import { IProjectSettings } from "../../common/models/settings-models";
 import { LLMMessage, LLMResponse } from "../../common/models/llm-models";
 
+export interface ProjectDetailIngestResult {
+  finalText: string;
+  llmResponse: LLMResponse;
+}
+
 export class ProjectDetailService {
   constructor(
     private readonly llmProviderService: LLMProviderService,
@@ -20,10 +25,26 @@ export class ProjectDetailService {
     projectId: string,
     rawText: string,
     mode: string = "merge",
-  ): Promise<string> {
+  ): Promise<ProjectDetailIngestResult> {
     const trimmed = (rawText || "").trim();
     if (!trimmed) {
-      return "";
+      // Return empty result with minimal LLM response
+      return {
+        finalText: "",
+        llmResponse: {
+          requestId: `project-detail-empty-${Date.now()}`,
+          content: "",
+          provider: "none",
+          model: "none",
+          usage: {
+            promptTokens: 0,
+            completionTokens: 0,
+            totalTokens: 0,
+          },
+          cost: 0,
+          metadata: {},
+        } as LLMResponse,
+      };
     }
 
     const settings = this.loadProjectSettings();
@@ -58,10 +79,14 @@ export class ProjectDetailService {
       throw new Error(response.error || "LLM request failed");
     }
 
-    const payload = response.payload as LLMResponse;
-    const finalText = (payload.content || "").trim();
+    const llmResponse = response.payload as LLMResponse;
+    const finalText = (llmResponse.content || "").trim();
     this.saveProjectContent(settings, trimmed, finalText);
-    return finalText;
+    
+    return {
+      finalText,
+      llmResponse,
+    };
   }
 
   private loadProjectSettings(): IProjectSettings {

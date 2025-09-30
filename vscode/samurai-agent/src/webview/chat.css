@@ -285,3 +285,141 @@ body {
     outline: 2px solid var(--vscode-focusBorder);
     outline-offset: 2px;
 }
+
+/* Confirmation Question Blocks */
+.samurai-confirmation-block {
+    margin-top: 16px;
+    padding: 16px;
+    background-color: var(--vscode-editor-background);
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 8px;
+}
+
+.samurai-confirmation-question {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--vscode-foreground);
+    margin: 0 0 12px 0;
+    line-height: 1.6;
+}
+
+/* Ensure markdown in confirmation questions is styled properly */
+.samurai-confirmation-question strong {
+    font-weight: 700;
+    color: var(--vscode-foreground);
+}
+
+.samurai-confirmation-question em {
+    font-style: italic;
+}
+
+.samurai-confirmation-question code {
+    background-color: var(--vscode-textCodeBlock-background);
+    color: var(--vscode-textPreformat-foreground);
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: var(--vscode-editor-font-family);
+    font-size: 0.9em;
+}
+
+.samurai-confirmation-question a {
+    color: var(--vscode-textLink-foreground);
+    text-decoration: none;
+}
+
+.samurai-confirmation-question a:hover {
+    color: var(--vscode-textLink-activeForeground);
+    text-decoration: underline;
+}
+
+/* Confirmation Buttons Container */
+.samurai-confirmation-buttons {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+}
+
+/* Base button styles for confirmation buttons */
+.samurai-confirmation-buttons button {
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-family: var(--vscode-font-family);
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: 1px solid transparent;
+    flex: 1;
+    min-width: 80px;
+}
+
+.samurai-confirmation-buttons button:focus {
+    outline: 2px solid var(--vscode-focusBorder);
+    outline-offset: 2px;
+}
+
+/* Yes Button */
+.samurai-button-yes {
+    background-color: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    border-color: var(--vscode-button-border);
+}
+
+.samurai-button-yes:hover {
+    background-color: var(--vscode-button-hoverBackground);
+}
+
+.samurai-button-yes:active {
+    background-color: var(--vscode-button-activeBackground);
+}
+
+/* No Button */
+.samurai-button-no {
+    background-color: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    border-color: var(--vscode-input-border);
+}
+
+.samurai-button-no:hover {
+    background-color: var(--vscode-button-secondaryHoverBackground);
+}
+
+.samurai-button-no:active {
+    opacity: 0.8;
+}
+
+/* AI Recommendation Button */
+.samurai-button-ai-recommendation {
+    background-color: var(--vscode-inputOption-activeBackground);
+    color: var(--vscode-inputOption-activeForeground);
+    border-color: var(--vscode-inputOption-activeBorder);
+}
+
+.samurai-button-ai-recommendation:hover {
+    background-color: var(--vscode-button-hoverBackground);
+    color: var(--vscode-button-foreground);
+}
+
+.samurai-button-ai-recommendation:active {
+    opacity: 0.8;
+}
+
+/* Button Separator */
+.samurai-button-separator {
+    margin: 0;
+    border: none;
+    border-top: 1px solid var(--vscode-panel-border);
+}
+
+/* Responsive adjustments for smaller screens */
+@media (max-width: 500px) {
+    .samurai-confirmation-buttons {
+        flex-direction: column;
+    }
+    
+    .samurai-confirmation-buttons button {
+        width: 100%;
+        min-width: auto;
+    }
+}

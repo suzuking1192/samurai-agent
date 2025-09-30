@@ -100,6 +100,7 @@ export function activate(context: vscode.ExtensionContext) {
       treeSitterLoaderService,
       extractCodeTool,
       samuraiAgent,
+      llmCostStorage,
     },
   );
 
@@ -110,61 +111,7 @@ export function activate(context: vscode.ExtensionContext) {
     ),
   );
 
-  context.subscriptions.push(
-    vscode.commands.registerCommand(
-      "samurai-agent.llm.chat",
-      async (request) => {
-        console.log('[COST DEBUG] LLM chat command called with request:', {
-          provider: request.provider,
-          model: request.model,
-          hasMessages: !!request.messages?.length
-        });
-        
-        const response = await llmProviderService.chat(request);
-        
-        console.log('[COST DEBUG] LLM response received:', {
-          responseType: response.type,
-          hasPayload: !!response.payload,
-          payloadType: response.payload ? typeof response.payload : 'none'
-        });
-        
-        // Track cost if successful
-        if (response.type === ResponseType.SUCCESS && response.payload) {
-          const llmResponse = response.payload as LLMResponse;
-          
-          console.log('[COST DEBUG] LLM Response details:', {
-            provider: llmResponse.provider,
-            model: llmResponse.model,
-            usage: llmResponse.usage,
-            cost: llmResponse.cost,
-            hasCost: llmResponse.cost !== undefined,
-            costType: typeof llmResponse.cost
-          });
-          
-          const costRecord: LLMCostRecord = {
-            id: `cost-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-            timestamp: new Date().toISOString(),
-            provider: llmResponse.provider,
-            model: llmResponse.model,
-            promptTokens: llmResponse.usage.promptTokens,
-            completionTokens: llmResponse.usage.completionTokens,
-            totalTokens: llmResponse.usage.totalTokens,
-            cost: llmResponse.cost,
-            requestId: llmResponse.requestId,
-          };
-          
-          console.log('[COST DEBUG] Saving cost record:', costRecord);
-          await llmCostStorage.saveRecord(costRecord);
-          updateCostStatusBar(costStatusBarItem, llmCostStorage);
-          console.log('[COST DEBUG] Cost record saved and status bar updated');
-        } else {
-          console.log('[COST DEBUG] Not tracking cost - response type:', response.type);
-        }
-        
-        return response;
-      },
-    ),
-  );
+  // Note: samurai-agent.llm.chat command removed - all chat now uses samurai-agent.execute for consistency
 
   if (projectDetailService) {
     context.subscriptions.push(
@@ -172,11 +119,34 @@ export function activate(context: vscode.ExtensionContext) {
         "samurai-agent.projectDetail.ingest",
         async (args) => {
           const { projectId, rawText, mode } = args;
-          return projectDetailService.ingestProjectDetail(
+          const result = await projectDetailService.ingestProjectDetail(
             projectId,
             rawText,
             mode,
           );
+          
+          // Track cost if LLM was used
+          if (result.llmResponse && result.llmResponse.cost !== undefined && result.llmResponse.cost > 0) {
+            const costRecord: LLMCostRecord = {
+              id: `cost-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+              timestamp: new Date().toISOString(),
+              provider: result.llmResponse.provider,
+              model: result.llmResponse.model,
+              promptTokens: result.llmResponse.usage.promptTokens,
+              completionTokens: result.llmResponse.usage.completionTokens,
+              totalTokens: result.llmResponse.usage.totalTokens,
+              cost: result.llmResponse.cost,
+              requestId: result.llmResponse.requestId,
+            };
+            
+            console.log('[COST DEBUG] projectDetail.ingest - Saving cost record:', costRecord);
+            await llmCostStorage.saveRecord(costRecord);
+            updateCostStatusBar(costStatusBarItem, llmCostStorage);
+            console.log('[COST DEBUG] projectDetail.ingest - Cost record saved and status bar updated');
+          }
+          
+          // Return the final text for backward compatibility
+          return result.finalText;
         },
       ),
     );
@@ -188,7 +158,32 @@ export function activate(context: vscode.ExtensionContext) {
         "samurai-agent.execute",
         async (args) => {
           const { userMessage, session } = args;
-          return samuraiAgent.execute(userMessage, session);
+          const result = await samuraiAgent.execute(userMessage, session);
+          
+          // Track cost if available
+          if (result.success && result.metadata?.cost !== undefined && result.metadata.cost > 0) {
+            // The cost in metadata is the total for this execution (may include multiple LLM calls)
+            // We need to extract individual LLM call information if available
+            // For now, we'll create a single record for the entire execution
+            const costRecord: LLMCostRecord = {
+              id: `cost-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+              timestamp: new Date().toISOString(),
+              provider: 'agent-execution', // Placeholder, actual provider may vary
+              model: session.metadata?.model || 'unknown',
+              promptTokens: 0, // Agent doesn't expose individual token counts
+              completionTokens: 0,
+              totalTokens: 0,
+              cost: result.metadata.cost,
+              requestId: `agent-${Date.now()}`,
+            };
+            
+            console.log('[COST DEBUG] samurai-agent.execute - Saving cost record:', costRecord);
+            await llmCostStorage.saveRecord(costRecord);
+            updateCostStatusBar(costStatusBarItem, llmCostStorage);
+            console.log('[COST DEBUG] samurai-agent.execute - Cost record saved and status bar updated');
+          }
+          
+          return result;
         },
       ),
     );

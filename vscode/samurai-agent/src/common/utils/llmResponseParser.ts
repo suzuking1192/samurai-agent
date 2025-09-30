@@ -23,17 +23,30 @@ export function extractJsonFromMarkdown(text: string): Record<string, any> | nul
         return null;
     }
 
-    // First, try to find JSON within markdown code blocks
-    const jsonBlockMatch = trimmedText.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+    // Strategy 1: Try to find JSON within markdown code blocks (greedy to get full content)
+    const jsonBlockMatch = trimmedText.match(/```(?:json)?\s*\n?([\s\S]*?)```/);
     if (jsonBlockMatch) {
         const jsonContent = jsonBlockMatch[1].trim();
         const parsed = attemptJsonParse(jsonContent);
         if (parsed) {
             return parsed;
         }
+        console.warn('Found JSON code block but failed to parse content');
     }
 
-    // Try to find JSON-like content between curly braces
+    // Strategy 2: Try to extract balanced JSON object by counting braces
+    const firstBrace = trimmedText.indexOf('{');
+    if (firstBrace !== -1) {
+        const extracted = extractBalancedJson(trimmedText, firstBrace);
+        if (extracted) {
+            const parsed = attemptJsonParse(extracted);
+            if (parsed) {
+                return parsed;
+            }
+        }
+    }
+
+    // Strategy 3: Try to find JSON-like content between curly braces (original approach)
     const jsonMatch = trimmedText.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
         const parsed = attemptJsonParse(jsonMatch[0]);
@@ -42,8 +55,52 @@ export function extractJsonFromMarkdown(text: string): Record<string, any> | nul
         }
     }
 
-    // Try to parse the entire text as JSON (fallback)
+    // Strategy 4: Try to parse the entire text as JSON (fallback)
     return attemptJsonParse(trimmedText);
+}
+
+/**
+ * Extracts a balanced JSON object by counting braces
+ * Handles nested objects and ensures complete JSON
+ */
+function extractBalancedJson(text: string, startIndex: number): string | null {
+    let depth = 0;
+    let inString = false;
+    let escapeNext = false;
+    
+    for (let i = startIndex; i < text.length; i++) {
+        const char = text[i];
+        
+        if (escapeNext) {
+            escapeNext = false;
+            continue;
+        }
+        
+        if (char === '\\') {
+            escapeNext = true;
+            continue;
+        }
+        
+        if (char === '"' && !escapeNext) {
+            inString = !inString;
+            continue;
+        }
+        
+        if (!inString) {
+            if (char === '{') {
+                depth++;
+            } else if (char === '}') {
+                depth--;
+                if (depth === 0) {
+                    // Found complete balanced JSON
+                    return text.substring(startIndex, i + 1);
+                }
+            }
+        }
+    }
+    
+    // No balanced JSON found
+    return null;
 }
 
 /**
@@ -184,17 +241,20 @@ function attemptJsonParse(raw: string): Record<string, any> | null {
         }
     };
 
+    // Attempt 1: Direct parse
     const direct = tryParse(trimmed);
     if (direct) {
         return direct;
     }
 
+    // Attempt 2: Remove trailing commas (common LLM mistake)
     const withoutTrailingCommas = trimmed.replace(/,\s*(?=[}\]])/g, "");
     const parsedWithoutTrailingCommas = tryParse(withoutTrailingCommas);
     if (parsedWithoutTrailingCommas) {
         return parsedWithoutTrailingCommas;
     }
 
+    // Attempt 3: Extract content between first { and last }
     const firstBrace = trimmed.indexOf("{");
     const lastBrace = trimmed.lastIndexOf("}");
     if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
@@ -209,6 +269,18 @@ function attemptJsonParse(raw: string): Record<string, any> | null {
         if (parsedFixedCandidate) {
             return parsedFixedCandidate;
         }
+    }
+
+    // Attempt 4: Try to fix common JSON issues
+    // Remove control characters and fix common formatting issues
+    const cleaned = trimmed
+        .replace(/[\u0000-\u001F\u007F-\u009F]/g, '') // Remove control characters
+        .replace(/,(\s*[}\]])/g, '$1') // Remove trailing commas
+        .replace(/([{,]\s*)(\w+):/g, '$1"$2":'); // Quote unquoted keys
+    
+    const cleanedParsed = tryParse(cleaned);
+    if (cleanedParsed) {
+        return cleanedParsed;
     }
 
     return null;

@@ -4,13 +4,14 @@ import * as path from "path";
 import { LLMProviderService } from "../llm/llmProviderService";
 import { ProjectDetailService } from "../memory/projectDetailService";
 import { DataStore } from "../../persistence/dataStore";
-import { ChatMessage, Session, UserIntentEnum, ISpecClarificationOutput } from "../../common/models/chat-models";
+import { ChatMessage, Session, UserIntentEnum, ISpecClarificationOutput, ConfirmationQuestion } from "../../common/models/chat-models";
 import { AgentExecutionResult } from "../models/agent-models";
 import { LLMMessage } from "../../common/models/llm-models";
 import { ExtractCodeToolResultPayload } from "../../common/models/tool-models";
 import { parseAndValidateLlmJson } from "../../common/utils/llmResponseParser";
 import { ExtractCodeTool } from "../tools/extractCodeTool";
 import { CreateSpecTool } from "../tools/createSpecTool";
+import { ConfirmationQuestionService } from "../../extension/services/confirmationQuestionService";
 
 export interface FeatureExplorationResult {
   ideas: string[];
@@ -181,6 +182,9 @@ export class SamuraiAgent {
           agentResponse = "I'm not sure how to handle that type of request. Please try rephrasing your message.";
       }
       
+      // Detect and extract confirmation questions from the agent response
+      const interactiveConfirmationQuestions = ConfirmationQuestionService.detectAndExtractQuestions(agentResponse);
+      
       // TODO: Implement message persistence
       // For now, we'll just return the response without persisting messages
       // This will be implemented when the DataStore has proper public methods for chat message persistence
@@ -204,6 +208,7 @@ export class SamuraiAgent {
           codeExtractionAnalysis: codeExtractionAnalysisResult,
           specClarificationData,
           interactiveQuestions,
+          interactiveConfirmationQuestions: interactiveConfirmationQuestions.length > 0 ? interactiveConfirmationQuestions : undefined,
           cost: this.currentExecutionCost
         }
       };
@@ -532,17 +537,28 @@ export class SamuraiAgent {
       const responseContent = llmResponse.content?.trim() || "";
       
       // Parse and validate the JSON response
-      const parsedResult = parseAndValidateLlmJson<ISpecClarificationOutput>(
-        responseContent, 
-        ['clarification_text', 'score']
-      );
-      
-      // Validate score is in range 0-100
-      if (typeof parsedResult.score !== 'number' || parsedResult.score < 0 || parsedResult.score > 100) {
-        throw new Error(`Invalid score value: ${parsedResult.score}. Score must be between 0 and 100.`);
+      try {
+        const parsedResult = parseAndValidateLlmJson<ISpecClarificationOutput>(
+          responseContent, 
+          ['clarification_text', 'score']
+        );
+        
+        // Validate score is in range 0-100
+        if (typeof parsedResult.score !== 'number' || parsedResult.score < 0 || parsedResult.score > 100) {
+          throw new Error(`Invalid score value: ${parsedResult.score}. Score must be between 0 and 100.`);
+        }
+        
+        return parsedResult;
+      } catch (parseError) {
+        // Log detailed parsing error with response content
+        console.error('Error parsing spec clarification JSON:', {
+          error: parseError,
+          responseContentLength: responseContent.length,
+          responsePreview: responseContent.substring(0, 500),
+          responseSuffix: responseContent.substring(Math.max(0, responseContent.length - 200))
+        });
+        throw parseError;
       }
-      
-      return parsedResult;
       
     } catch (error) {
       console.error('Error in handleSpecClarification:', error);
@@ -625,19 +641,52 @@ export class SamuraiAgent {
       }>;
       
       try {
-        parsedSpecs = parseAndValidateLlmJson<Array<{
-          title: string;
-          description: string;
-          parent_spec_id?: string | null;
-        }>>(responseContent, []);
+        const parsedResponse = parseAndValidateLlmJson<any>(responseContent, []);
+        
+        // Handle different response formats
+        if (Array.isArray(parsedResponse)) {
+          // Format 1: Direct array
+          parsedSpecs = parsedResponse;
+        } else if (parsedResponse && typeof parsedResponse === 'object') {
+          // Format 2: Object with specs array (try common field names)
+          if (Array.isArray(parsedResponse.specs)) {
+            parsedSpecs = parsedResponse.specs;
+          } else if (Array.isArray(parsedResponse.specifications)) {
+            parsedSpecs = parsedResponse.specifications;
+          } else if (Array.isArray(parsedResponse.items)) {
+            parsedSpecs = parsedResponse.items;
+          } else if (Array.isArray(parsedResponse.data)) {
+            parsedSpecs = parsedResponse.data;
+          } else {
+            // Try to find any array field
+            const arrayField = Object.values(parsedResponse).find(val => Array.isArray(val));
+            if (arrayField) {
+              parsedSpecs = arrayField as any[];
+            } else {
+              console.error('Parsed response object:', parsedResponse);
+              throw new Error(`LLM response is an object but contains no array field. Available fields: ${Object.keys(parsedResponse).join(', ')}`);
+            }
+          }
+        } else {
+          throw new Error("LLM response is not an array of specs");
+        }
       } catch (error) {
-        const fallbackMessage = responseContent || 'No content received from LLM.';
-        throw new Error(`Failed to parse JSON response: ${error instanceof Error ? error.message : 'Unknown error'}\nLLM output:\n${fallbackMessage}`);
+        const fallbackMessage = responseContent.substring(0, 1000) || 'No content received from LLM.';
+        console.error('Error parsing spec generation response:', {
+          error,
+          responseLength: responseContent.length,
+          responsePreview: fallbackMessage
+        });
+        throw new Error(`Failed to parse JSON response: ${error instanceof Error ? error.message : 'Unknown error'}\nLLM output preview:\n${fallbackMessage}`);
       }
       
       if (!Array.isArray(parsedSpecs)) {
+        console.error('parsedSpecs is not an array:', typeof parsedSpecs, parsedSpecs);
         throw new Error("LLM response is not an array of specs");
       }
+      
+      // Log what we got
+      console.log(`handleGeneratingSpecs: Parsed ${parsedSpecs.length} specs from LLM response`);
       
       // Validate that each spec has required fields
       for (const spec of parsedSpecs) {

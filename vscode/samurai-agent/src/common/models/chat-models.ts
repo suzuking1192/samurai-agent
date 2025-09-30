@@ -58,6 +58,13 @@ export interface QuestionSchema {
 }
 
 /**
+ * Confirmation question schema for interactive confirmation UI
+ */
+export interface ConfirmationQuestion {
+    originalQuestionText: string;
+}
+
+/**
  * Main ChatMessage model
  * Represents a single message in a chat conversation
  */
@@ -80,6 +87,7 @@ export interface ChatMessage extends BaseModel {
     editedAt?: Date;
     specClarificationData?: ISpecClarificationOutput; // For SPEC_CLARIFICATION responses
     interactiveQuestions?: QuestionSchema[]; // For interactive UI elements like buttons
+    interactiveConfirmationQuestions?: ConfirmationQuestion[]; // For confirmation question buttons
 }
 
 /**
@@ -117,6 +125,7 @@ export interface CreateChatMessageRequest {
     parentMessageId?: string;
     specClarificationData?: ISpecClarificationOutput;
     interactiveQuestions?: QuestionSchema[];
+    interactiveConfirmationQuestions?: ConfirmationQuestion[];
 }
 
 /**
