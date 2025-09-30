@@ -293,7 +293,7 @@ function attachSpecEventListeners() {
     document.querySelectorAll('[data-action="toggle-detail"]').forEach(button => {
         button.addEventListener('click', function() {
             const specId = this.getAttribute('data-spec-id');
-            toggleTaskDetail(specId);
+            toggleSpecDetail(specId);
         });
     });
     
@@ -309,7 +309,7 @@ function attachSpecEventListeners() {
     document.querySelectorAll('[data-action="copy-spec"]').forEach(button => {
         button.addEventListener('click', function() {
             const specId = this.getAttribute('data-spec-id');
-            copyTaskSpec(specId);
+            copySpec(specId);
         });
     });
     
@@ -317,7 +317,7 @@ function attachSpecEventListeners() {
     document.querySelectorAll('[data-action="save-spec"]').forEach(button => {
         button.addEventListener('click', async function() {
             const specId = this.getAttribute('data-spec-id');
-            await saveTaskSpec(specId);
+            await saveSpec(specId);
         });
     });
     
@@ -325,7 +325,7 @@ function attachSpecEventListeners() {
     document.querySelectorAll('[data-action="complete-spec"]').forEach(button => {
         button.addEventListener('click', async function() {
             const specId = this.getAttribute('data-spec-id');
-            await toggleTaskCompletionStatus(specId);
+            await toggleSpecCompletionStatus(specId);
         });
     });
     
@@ -364,13 +364,14 @@ function toggleSpecDetail(specId) {
     // Re-render the specific spec card
     const spec = specState.specs.find(s => s.id === specId);
     if (spec) {
-        const specCard = document.querySelector(`[data-spec-id="${specId}"]`);
+        // Check if it's a top-level spec or subspec
+        const specCard = document.querySelector(`.spec-card[data-spec-id="${specId}"], .subspec-card[data-spec-id="${specId}"]`);
         if (specCard) {
             const isExpanded = specState.expandedSpecs.has(specId);
             const showSubspecs = specState.visibleSubspecs.has(specId);
             
             // Update the spec card HTML
-            const newHtml = renderTaskCard(spec);
+            const newHtml = spec.parentSpecId ? renderSubspecCard(spec) : renderSpecCard(spec);
             specCard.outerHTML = newHtml;
             
             // Re-attach event listeners for this card
@@ -389,9 +390,9 @@ function toggleSubspecs(specId) {
     // Re-render the specific spec card
     const spec = specState.specs.find(s => s.id === specId);
     if (spec) {
-        const specCard = document.querySelector(`[data-spec-id="${specId}"]`);
+        const specCard = document.querySelector(`.spec-card[data-spec-id="${specId}"]`);
         if (specCard) {
-            const newHtml = renderTaskCard(spec);
+            const newHtml = renderSpecCard(spec);
             specCard.outerHTML = newHtml;
             
             // Re-attach event listeners for this card
@@ -432,7 +433,7 @@ async function saveSpec(specId) {
         spec.spec = textarea.value;
         
         // Save using persistence API
-        await saveTaskWithPersistence(spec);
+        await saveSpecWithPersistence(spec);
         
         // Show success feedback
         window.WebviewApi?.ui?.showSuccess(button, 'Saved!');
@@ -475,7 +476,7 @@ async function toggleSpecCompletionStatus(specId) {
         spec.isCompleted = !spec.isCompleted;
         
         // Save using persistence API
-        await saveTaskWithPersistence(spec);
+        await saveSpecWithPersistence(spec);
         
         // Show success feedback
         window.WebviewApi?.ui?.showSuccess(button, spec.isCompleted ? 'Completed!' : 'Marked as pending');
@@ -524,37 +525,37 @@ function showSpecError(message) {
 }
 
 // Export functions for potential external use
-window.TaskManager = {
+window.SpecManager = {
     renderSpecs: renderSpecs,
-    toggleTaskDetail: toggleTaskDetail,
+    toggleSpecDetail: toggleSpecDetail,
     toggleSubspecs: toggleSubspecs,
-    copyTaskSpec: copyTaskSpec,
-    saveTaskSpec: saveTaskSpec,
-    toggleTaskCompletionStatus: toggleTaskCompletionStatus,
+    copySpec: copySpec,
+    saveSpec: saveSpec,
+    toggleSpecCompletionStatus: toggleSpecCompletionStatus,
     setSpecFilter: setSpecFilter,
-    getTasks: () => specState.specs,
+    getSpecs: () => specState.specs,
     getCurrentFilter: () => specState.currentFilter,
-    loadTasksFromPersistence: loadTasksFromPersistence,
-    saveTaskWithPersistence: saveTaskWithPersistence,
-    addTask: async (spec) => {
+    loadSpecsFromPersistence: loadSpecsFromPersistence,
+    saveSpecWithPersistence: saveSpecWithPersistence,
+    addSpec: async (spec) => {
         try {
-            const savedTask = await saveTaskWithPersistence(spec);
+            const savedSpec = await saveSpecWithPersistence(spec);
             renderSpecs();
-            return savedTask;
+            return savedSpec;
         } catch (error) {
             console.error('Error adding spec:', error);
             showSpecError(`Failed to add spec: ${error.message}`);
             throw error;
         }
     },
-    updateTask: async (specId, updates) => {
+    updateSpec: async (specId, updates) => {
         try {
             const spec = specState.specs.find(s => s.id === specId);
             if (spec) {
                 Object.assign(spec, updates);
-                const savedTask = await saveTaskWithPersistence(spec);
+                const savedSpec = await saveSpecWithPersistence(spec);
                 renderSpecs();
-                return savedTask;
+                return savedSpec;
             }
         } catch (error) {
             console.error('Error updating spec:', error);

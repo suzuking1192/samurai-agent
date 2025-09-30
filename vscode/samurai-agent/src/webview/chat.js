@@ -134,6 +134,23 @@
         return typeof document !== 'undefined' ? document.getElementById(id) : null;
     }
 
+    // Track session cost
+    let sessionTotalCost = 0;
+
+    function updateApiCostDisplay(cost) {
+        if (typeof cost === 'number' && cost > 0) {
+            sessionTotalCost += cost;
+        }
+        
+        const costDisplay = safeGetDocumentElement('api-cost-display');
+        if (costDisplay) {
+            const formattedCost = sessionTotalCost < 0.01 
+                ? `$${sessionTotalCost.toFixed(4)}` 
+                : `$${sessionTotalCost.toFixed(2)}`;
+            costDisplay.textContent = `API Cost: ${formattedCost} this session`;
+        }
+    }
+
     function displayMessage(message) {
         console.log('Chat: displayMessage called with:', message);
         
@@ -147,20 +164,25 @@
             return;
         }
 
-        // Deduplicate consecutive identical assistant messages
+        const hasRichAssistantContent =
+            !!message.specClarificationData ||
+            (Array.isArray(message.interactiveQuestions) && message.interactiveQuestions.length > 0);
+
+        // Deduplicate consecutive identical assistant messages without special content
         if (chatMessages.lastElementChild) {
             const lastElement = chatMessages.lastElementChild;
             if (
                 message.role === 'assistant' &&
                 lastElement.dataset?.role === 'assistant' &&
-                lastElement.dataset?.content === (message.content || '')
+                lastElement.dataset?.content === (message.content || '') &&
+                !hasRichAssistantContent
             ) {
                 console.log('Chat: Skipping duplicate assistant message');
                 return;
             }
         }
 
-        if (message.role === 'assistant') {
+        if (message.role === 'assistant' && !hasRichAssistantContent) {
             const now = Date.now();
             if (
                 chatState.lastAssistantMessageContent === (message.content || '') &&
@@ -169,9 +191,11 @@
                 console.log('Chat: Skipping duplicate assistant message (within threshold)');
                 return;
             }
+        }
 
+        if (message.role === 'assistant') {
             chatState.lastAssistantMessageContent = message.content || '';
-            chatState.lastAssistantMessageTimestamp = now;
+            chatState.lastAssistantMessageTimestamp = Date.now();
         }
 
         console.log('Chat: Creating message element for:', message.content);
@@ -209,9 +233,9 @@
             
             const scoreValue = message.specClarificationData.score;
             let scoreClass = 'score-red';
-            if (scoreValue >= 80) {
+            if (scoreValue >= 90) {
                 scoreClass = 'score-green';
-            } else if (scoreValue >= 50) {
+            } else if (scoreValue >= 70) {
                 scoreClass = 'score-yellow';
             }
             
@@ -230,7 +254,8 @@
                         console.log('Chat: Interactive button clicked, sending message:', question.messageToSend);
                         if (globalScope.WebviewApi?.agent?.execute) {
                             try {
-                                const result = await globalScope.WebviewApi.agent.execute({
+                                // Call agent.execute - backend will persist and broadcast the response
+                                await globalScope.WebviewApi.agent.execute({
                                     userMessage: {
                                         id: `user-${Date.now()}`,
                                         sessionId: chatState.currentSessionId,
@@ -243,23 +268,7 @@
                                     session: chatState.currentSession,
                                     message: question.messageToSend
                                 });
-
-                                const assistantMessage = handleAgentExecuteResponse(result);
-                                if (assistantMessage) {
-                                    if (chatState.currentSessionId && chatState.projectSettings?.projectId) {
-                                        await globalScope.WebviewApi.persistence.saveChatMessage({
-                                            sessionId: chatState.currentSessionId,
-                                            projectId: chatState.projectSettings.projectId,
-                                            type: assistantMessage.type,
-                                            content: assistantMessage.content,
-                                            role: assistantMessage.role,
-                                            metadata: assistantMessage.metadata,
-                                            specClarificationData: assistantMessage.specClarificationData,
-                                            interactiveQuestions: assistantMessage.interactiveQuestions
-                                        });
-                                    }
-                                    displayMessage(assistantMessage);
-                                }
+                                // Don't manually display - the message listener will handle it
                                 return;
                             } catch (error) {
                                 console.error('Chat: Failed to execute agent command', error);
@@ -284,6 +293,7 @@
     function showProgressIndicator(update) {
         const chatContainer = safeGetDocumentElement('chatMessages');
         if (!chatContainer) {
+            console.warn('Chat: chatMessages element not found for progress indicator');
             return;
         }
 
@@ -292,7 +302,12 @@
             banner = document.createElement('div');
             banner.id = 'agent-progress-banner';
             banner.className = 'agent-progress-banner';
-            chatContainer.parentElement?.insertBefore(banner, chatContainer);
+            try {
+                chatContainer.appendChild(banner);
+            } catch (error) {
+                console.error('Chat: Error appending progress banner:', error);
+                return;
+            }
         }
 
         const { stage, data } = update || {};
@@ -314,6 +329,9 @@
 
         banner.textContent = message;
         banner.style.display = 'block';
+        
+        // Scroll to bottom to show the progress message
+        chatContainer.scrollTop = chatContainer.scrollHeight;
 
         if (stage === 'rendering-response' || stage === 'extraction-complete' || stage === 'extraction-failed') {
             setTimeout(() => {
@@ -466,7 +484,9 @@
                 if (fallbackMessage) {
                     await persistAssistantMessage(fallbackMessage);
                     const fallbackElement = displayMessage(fallbackMessage);
-                    renderAssistantResponse(fallbackElement, fallbackMessage);
+                    if (fallbackElement) {
+                        renderAssistantResponse(fallbackElement, fallbackMessage);
+                    }
                 }
                 return;
             }
@@ -475,7 +495,9 @@
             if (assistantMessage) {
                 await persistAssistantMessage(assistantMessage);
                 const messageElement = displayMessage(assistantMessage);
-                renderAssistantResponse(messageElement, assistantMessage);
+                if (messageElement) {
+                    renderAssistantResponse(messageElement, assistantMessage);
+                }
             }
         } catch (error) {
             console.error('Chat: Failed to send message', error);
@@ -516,6 +538,12 @@
             ?? metadata.interactiveQuestions
             ?? rawResponse.payload?.interactiveQuestions;
 
+        // Extract and update API cost if available
+        const cost = rawResponse.cost ?? metadata.cost ?? rawResponse.payload?.cost;
+        if (cost && typeof cost === 'number') {
+            updateApiCostDisplay(cost);
+        }
+
         const sessionId = chatState.currentSessionId;
         const projectId = chatState.projectSettings?.projectId;
 
@@ -545,6 +573,11 @@
             return;
         }
 
+        if (message.metadata?.samuraiAgentResponse) {
+            console.log('Chat: Skipping persistence for agent-managed response');
+            return;
+        }
+
         await globalScope.WebviewApi.persistence.saveChatMessage({
             sessionId: message.sessionId,
             projectId: message.projectId,
@@ -565,9 +598,9 @@
         if (assistantMessage.specClarificationData) {
             const scoreValue = assistantMessage.specClarificationData.score;
             let scoreClass = 'score-red';
-            if (scoreValue >= 80) {
+            if (scoreValue >= 90) {
                 scoreClass = 'score-green';
-            } else if (scoreValue >= 50) {
+            } else if (scoreValue >= 70) {
                 scoreClass = 'score-yellow';
             }
 
@@ -585,10 +618,10 @@
                     buttonElement.textContent = question.label;
                     buttonElement.addEventListener('click', async () => {
                         console.log('Chat: Interactive button clicked, sending message:', question.messageToSend);
-                        let result;
                         if (globalScope.WebviewApi?.agent?.execute) {
                             try {
-                                result = await globalScope.WebviewApi.agent.execute({
+                                // Call agent.execute - backend will persist and broadcast the response
+                                await globalScope.WebviewApi.agent.execute({
                                     userMessage: {
                                         id: `user-${Date.now()}`,
                                         sessionId: chatState.currentSessionId,
@@ -601,6 +634,8 @@
                                     session: chatState.currentSession,
                                     message: question.messageToSend
                                 });
+                                // Don't manually display - the message listener will handle it
+                                return;
                             } catch (error) {
                                 console.error('Chat: Failed to execute agent command', error);
                                 await sendMessage(question.messageToSend);
@@ -609,12 +644,6 @@
                         } else {
                             await sendMessage(question.messageToSend);
                             return;
-                        }
-
-                        const assistantResponse = buildAssistantMessageFromAgentResponse(result);
-                        if (assistantResponse) {
-                            await persistAssistantMessage(assistantResponse);
-                            displayMessage(assistantResponse);
                         }
                     });
                     messageElement.appendChild(buttonElement);
@@ -937,19 +966,23 @@
                 const payload = message.payload || {};
 
                 if (payload?.content && payload?.metadata?.samuraiAgentResponse) {
-                    const assistantMessage = {
-                        id: `assistant-${Date.now()}`,
-                        sessionId: chatState.currentSessionId,
-                        projectId: chatState.projectSettings?.projectId,
-                        type: globalScope?.MessageType?.ASSISTANT || 'assistant',
-                        role: 'assistant',
-                        content: payload.content,
-                        metadata: payload.metadata || {}
-                    };
+                    const assistantMessage = buildAssistantMessageFromAgentResponse({
+                        message: payload.content,
+                        metadata: payload.metadata,
+                        specClarificationData: payload.metadata?.specClarificationData || payload.specClarificationData,
+                        interactiveQuestions: payload.metadata?.interactiveQuestions || payload.interactiveQuestions,
+                        cost: payload.metadata?.cost,
+                        tokens: payload.metadata?.tokens
+                    });
 
-                    displayMessage(assistantMessage);
-                    chatState.lastAssistantMessageContent = assistantMessage.content;
-                    chatState.lastAssistantMessageTimestamp = Date.now();
+                    if (assistantMessage) {
+                        const element = displayMessage(assistantMessage);
+                        if (element) {
+                            renderAssistantResponse(element, assistantMessage);
+                        }
+                        chatState.lastAssistantMessageContent = assistantMessage.content;
+                        chatState.lastAssistantMessageTimestamp = Date.now();
+                    }
                 }
 
                 return;

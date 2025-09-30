@@ -44,6 +44,8 @@ export enum UserIntentEnum {
 export interface ISpecClarificationOutput {
     clarification_text: string;
     score: number; // 0-100 score indicating specification readiness
+    usageTokens?: number;
+    cost?: number;
 }
 
 /**

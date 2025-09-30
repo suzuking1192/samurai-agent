@@ -9,6 +9,7 @@ import {
 import { ApiResponse, ResponseType } from "../../common/models/response-models";
 import { LLM_MODELS } from "../../common/constants/llm-models";
 import { ProjectSettings } from "../../common/models/settings-models";
+import { calculateLLMCost } from "../../common/utils/llmCostCalculator";
 
 export interface ChatClient {
   chat(request: LLMRequest): Promise<ApiResponse<LLMResponse | LLMError>>;
@@ -113,7 +114,36 @@ export class LLMProviderService {
       modelRequest.maxTokens = projectMaxTokens;
     }
 
-    return client.chat(modelRequest);
+    // Execute the LLM request
+    const response = await client.chat(modelRequest);
+    
+    // Calculate and add cost if response is successful
+    if (response.type === ResponseType.SUCCESS && response.payload) {
+      const llmResponse = response.payload as LLMResponse;
+      
+      // Calculate cost based on token usage
+      const costCalculation = calculateLLMCost({
+        provider: llmResponse.provider,
+        model: llmResponse.model,
+        promptTokens: llmResponse.usage.promptTokens,
+        completionTokens: llmResponse.usage.completionTokens,
+      });
+      
+      // Update the response with calculated cost
+      llmResponse.cost = costCalculation.totalCost;
+      
+      // Add cost breakdown to metadata for debugging/transparency
+      llmResponse.metadata = {
+        ...llmResponse.metadata,
+        costBreakdown: {
+          promptCost: costCalculation.promptCost,
+          completionCost: costCalculation.completionCost,
+          pricing: costCalculation.pricing,
+        },
+      };
+    }
+    
+    return response;
   }
 
   private resolveProvider(

@@ -171,18 +171,50 @@ You MUST return your response as a JSON object with the following structure:
 }
 ```
 
-**Score Calculation Guidelines (0-100):**
-- **90-100**: All requirements are crystal clear, no ambiguity, follows best practices perfectly
-- **80-89**: Minor clarifications needed, mostly clear with excellent best practice alignment
-- **70-79**: Some clarifications needed, generally clear with good best practice alignment
-- **60-69**: Multiple clarifications needed, moderate ambiguity, some best practice concerns
-- **50-59**: Many clarifications needed, significant ambiguity, several best practice issues
-- **Below 50**: Major ambiguity, many unknowns, significant best practice violations, scope too broad
+### **Specification Scoring Rubric**
 
-**Score Factors to Consider:**
-1. Clarity of requirements (40 points)
-2. Completeness of information (30 points)
-3. Alignment with best practices (20 points)
-4. Scope appropriateness (10 points)
+The final score is the sum of points from four factors, totaling 100.
+
+**Final Score = Clarity (40) + Completeness (30) + Best Practices (20) + Scope (10)**
+
+---
+
+#### **1. Clarity of Requirements (40 pts)**
+- **35-40 (Excellent):** Crystal clear; zero ambiguity.
+- **25-34 (Good):** Mostly clear; only minor clarifications needed.
+- **15-24 (Fair):** Contains ambiguous areas requiring discussion.
+- **0-14 (Poor):** Vague, contradictory, or indecipherable.
+
+---
+
+#### **2. Completeness of Information (30 pts)**
+- **26-30 (Excellent):** All necessary info (APIs, data models, edge cases) is present.
+- **18-25 (Good):** Mostly complete; missing only minor, non-critical details.
+- **10-17 (Fair):** Significant components are missing.
+- **0-9 (Poor):** Lacks fundamental information to begin work.
+
+---
+
+#### **3. Alignment with Best Practices (20 pts)**
+- **17-20 (Excellent):** Follows all relevant standards (security, UX, architecture).
+- **12-16 (Good):** Minor, low-risk deviations from best practices.
+- **6-11 (Fair):** Significant deviations that introduce risk or tech debt.
+- **0-5 (Poor):** Disregards fundamental best practices.
+
+---
+
+#### **4. Scope Appropriateness (10 pts)**
+- **9-10 (Excellent):** Scope is concise, achievable, and well-defined.
+- **5-8 (Good):** Scope is mostly clear but risks minor scope creep.
+- **0-4 (Poor):** Scope is overly broad, vague, or impossible to estimate.
+
+---
+
+### **Score Interpretation & Instructions**
+
+* **90-100:** Ready to implement.
+* **70-89:** Needs minor revisions.
+* **50-69:** Needs major revisions; blocked.
+* **< 50:** Requires a full redraft.
 
 **Important:** The clarification_text should contain all your analysis, questions, and recommendations. The score should objectively reflect the specification readiness for implementation.

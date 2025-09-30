@@ -18,6 +18,7 @@ body {
     background-color: var(--vscode-panel-background);
     border-bottom: 1px solid var(--vscode-panel-border);
     min-height: 40px;
+    flex-shrink: 0; /* Prevent header from being collapsed */
 }
 
 .api-cost-display {
@@ -49,7 +50,8 @@ body {
 .chat-container {
     display: flex;
     flex-direction: column;
-    height: calc(100vh - 60px); /* Subtract header height */
+    flex: 1;
+    overflow: hidden;
 }
 
 .chat-messages {
@@ -189,8 +191,9 @@ body {
 .user-message {
     background-color: var(--vscode-button-background);
     color: var(--vscode-button-foreground);
-    margin-left: auto;
-    text-align: right;
+    margin-left: 0;
+    margin-right: auto;
+    text-align: left;
 }
 
 .assistant-message {

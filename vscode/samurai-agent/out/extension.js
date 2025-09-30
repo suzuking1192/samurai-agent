@@ -62,6 +62,9 @@ const extractCodeTool_1 = require("./agent/tools/extractCodeTool");
 const createSpecTool_1 = require("./agent/tools/createSpecTool");
 const CodeParserService_1 = require("./agent/code_parser/CodeParserService");
 const samuraiAgent_1 = require("./agent/core/samuraiAgent");
+const llmCostStorage_1 = require("./storage/llmCostStorage");
+const llmCostCalculator_1 = require("./common/utils/llmCostCalculator");
+const response_models_1 = require("./common/models/response-models");
 /**
  * Extension activation function - main backend entry point
  * Registers all commands, webview providers, and initializes the agent system
@@ -70,6 +73,15 @@ function activate(context) {
     const globalDataStore = new globalDataStore_1.GlobalDataStore();
     const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     const dataStore = workspaceRoot ? new dataStore_1.DataStore(workspaceRoot) : undefined;
+    // Initialize LLM Cost Storage
+    const llmCostStorage = new llmCostStorage_1.LLMCostStorage(context);
+    // Create status bar item for cost display
+    const costStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+    costStatusBarItem.command = 'samurai-agent.showCostDetails';
+    context.subscriptions.push(costStatusBarItem);
+    // Update status bar with initial cost
+    updateCostStatusBar(costStatusBarItem, llmCostStorage);
+    costStatusBarItem.show();
     const llmProviderService = new llmProviderService_1.LLMProviderService(globalDataStore, dataStore);
     llmProviderService.registerClient("openai", new openaiChatClient_1.OpenAIChatClient());
     llmProviderService.registerClient("google", new geminiChatClient_1.GeminiChatClient());
@@ -99,7 +111,25 @@ function activate(context) {
     });
     context.subscriptions.push(vscode.window.registerWebviewViewProvider(SamuraiAgentPanelWebviewViewProvider_1.SamuraiAgentPanelWebviewViewProvider.viewType, agentPanelProvider));
     context.subscriptions.push(vscode.commands.registerCommand("samurai-agent.llm.chat", async (request) => {
-        return llmProviderService.chat(request);
+        const response = await llmProviderService.chat(request);
+        // Track cost if successful
+        if (response.type === response_models_1.ResponseType.SUCCESS && response.payload) {
+            const llmResponse = response.payload;
+            const costRecord = {
+                id: `cost-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                timestamp: new Date().toISOString(),
+                provider: llmResponse.provider,
+                model: llmResponse.model,
+                promptTokens: llmResponse.usage.promptTokens,
+                completionTokens: llmResponse.usage.completionTokens,
+                totalTokens: llmResponse.usage.totalTokens,
+                cost: llmResponse.cost,
+                requestId: llmResponse.requestId,
+            };
+            await llmCostStorage.saveRecord(costRecord);
+            updateCostStatusBar(costStatusBarItem, llmCostStorage);
+        }
+        return response;
     }));
     if (projectDetailService) {
         context.subscriptions.push(vscode.commands.registerCommand("samurai-agent.projectDetail.ingest", async (args) => {
@@ -113,6 +143,39 @@ function activate(context) {
             return samuraiAgent.execute(userMessage, session);
         }));
     }
+    // Register command to show cost details
+    context.subscriptions.push(vscode.commands.registerCommand('samurai-agent.showCostDetails', () => {
+        const stats = llmCostStorage.getStatistics();
+        const message = `
+LLM Cost Tracker
+
+Session Cost: ${(0, llmCostCalculator_1.formatCost)(stats.currentSessionCost)}
+Total Cost: ${(0, llmCostCalculator_1.formatCost)(stats.totalCost)}
+Total Requests: ${stats.totalRecords}
+
+Click to see details in the Samurai Agent panel.
+        `.trim();
+        vscode.window.showInformationMessage(message);
+    }));
+    // Register command to clear cost history
+    context.subscriptions.push(vscode.commands.registerCommand('samurai-agent.clearCostHistory', async () => {
+        const answer = await vscode.window.showWarningMessage('Are you sure you want to clear all LLM cost history?', 'Yes', 'No');
+        if (answer === 'Yes') {
+            await llmCostStorage.clearRecords();
+            updateCostStatusBar(costStatusBarItem, llmCostStorage);
+            vscode.window.showInformationMessage('LLM cost history cleared.');
+        }
+    }));
+}
+/**
+ * Update the status bar with current cost information
+ */
+function updateCostStatusBar(statusBarItem, costStorage) {
+    const stats = costStorage.getStatistics();
+    const sessionCost = (0, llmCostCalculator_1.formatCost)(stats.currentSessionCost);
+    const totalCost = (0, llmCostCalculator_1.formatCost)(stats.totalCost);
+    statusBarItem.text = `$(graph) LLM: ${sessionCost} | Total: ${totalCost}`;
+    statusBarItem.tooltip = `Session Cost: ${sessionCost}\nTotal Cost: ${totalCost}\nTotal Requests: ${stats.totalRecords}\n\nClick for details`;
 }
 function deactivate() { }
 //# sourceMappingURL=extension.js.map

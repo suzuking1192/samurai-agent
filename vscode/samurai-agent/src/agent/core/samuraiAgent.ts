@@ -195,7 +195,9 @@ export class SamuraiAgent {
           codeContextsCount: codeContexts.length,
           codeExtractionAnalysis: codeExtractionAnalysisResult,
           specClarificationData,
-          interactiveQuestions
+          interactiveQuestions,
+          tokens: specClarificationData?.usageTokens ?? 0,
+          cost: specClarificationData?.cost ?? 0
         }
       };
     } catch (error) {
@@ -463,29 +465,28 @@ export class SamuraiAgent {
     try {
       // Format code contexts for prompt injection
       const formattedCodeContexts = this._formatCodeContextsForPrompt(codeContexts);
-      
-      // Build conversation summary
       const conversationSummary = this._buildConversationSummary(chatHistory) + `\n\nLatest user request: ${userMessage.content}`;
-      
-      // Load and format the system prompt
-      const systemPrompt = await this._loadAndFormatSystemPrompt(
+
+      const basePrompt = await this._loadAndFormatSystemPrompt(
         'specClarification/system_prompt.md',
         {
           projectDetails,
           codeContexts: formattedCodeContexts,
           conversationSummary,
-          activeTaskHeader: '', // No active task for now
-          noActiveTaskInference: '' // No active task inference for now
+          activeTaskHeader: '',
+          noActiveTaskInference: ''
         }
       );
-      
-      // Construct messages array for LLM request
+
+      const structuredPrompt = `${basePrompt.trim()}\n\nOUTPUT FORMAT (CRITICAL)\nYou must respond **only** with valid JSON in this exact structure (no extra text):\n{\n  "clarification_text": string,\n  "score": number\n}`;
+
       const messages: LLMMessage[] = [
-        { role: "system", content: systemPrompt },
-        ...chatHistory, // Include chat history for context
+        { role: "system", content: structuredPrompt },
+        { role: "system", content: "When responding, output only the JSON object specified. Do not include explanations or extra text." },
+        ...chatHistory,
         { role: "user", content: userMessage.content }
       ];
-      
+
       // Call LLM service
       const response = await this.llmProviderService.chat({
         id: `spec-clarification-${Date.now()}`,

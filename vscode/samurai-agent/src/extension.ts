@@ -26,6 +26,10 @@ import { ExtractCodeTool } from "./agent/tools/extractCodeTool";
 import { CreateSpecTool } from "./agent/tools/createSpecTool";
 import { CodeParserService } from "./agent/code_parser/CodeParserService";
 import { SamuraiAgent } from "./agent/core/samuraiAgent";
+import { LLMCostStorage, LLMCostRecord } from "./storage/llmCostStorage";
+import { formatCost } from "./common/utils/llmCostCalculator";
+import { LLMResponse } from "./common/models/llm-models";
+import { ResponseType } from "./common/models/response-models";
 
 /**
  * Extension activation function - main backend entry point
@@ -35,6 +39,21 @@ export function activate(context: vscode.ExtensionContext) {
   const globalDataStore = new GlobalDataStore();
   const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   const dataStore = workspaceRoot ? new DataStore(workspaceRoot) : undefined;
+
+  // Initialize LLM Cost Storage
+  const llmCostStorage = new LLMCostStorage(context);
+  
+  // Create status bar item for cost display
+  const costStatusBarItem = vscode.window.createStatusBarItem(
+    vscode.StatusBarAlignment.Right,
+    100
+  );
+  costStatusBarItem.command = 'samurai-agent.showCostDetails';
+  context.subscriptions.push(costStatusBarItem);
+  
+  // Update status bar with initial cost
+  updateCostStatusBar(costStatusBarItem, llmCostStorage);
+  costStatusBarItem.show();
 
   const llmProviderService = new LLMProviderService(globalDataStore, dataStore);
 
@@ -95,7 +114,29 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand(
       "samurai-agent.llm.chat",
       async (request) => {
-        return llmProviderService.chat(request);
+        const response = await llmProviderService.chat(request);
+        
+        // Track cost if successful
+        if (response.type === ResponseType.SUCCESS && response.payload) {
+          const llmResponse = response.payload as LLMResponse;
+          
+          const costRecord: LLMCostRecord = {
+            id: `cost-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            timestamp: new Date().toISOString(),
+            provider: llmResponse.provider,
+            model: llmResponse.model,
+            promptTokens: llmResponse.usage.promptTokens,
+            completionTokens: llmResponse.usage.completionTokens,
+            totalTokens: llmResponse.usage.totalTokens,
+            cost: llmResponse.cost,
+            requestId: llmResponse.requestId,
+          };
+          
+          await llmCostStorage.saveRecord(costRecord);
+          updateCostStatusBar(costStatusBarItem, llmCostStorage);
+        }
+        
+        return response;
       },
     ),
   );
@@ -127,6 +168,62 @@ export function activate(context: vscode.ExtensionContext) {
       ),
     );
   }
+
+  // Register command to show cost details
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'samurai-agent.showCostDetails',
+      () => {
+        const stats = llmCostStorage.getStatistics();
+        const message = `
+LLM Cost Tracker
+
+Session Cost: ${formatCost(stats.currentSessionCost)}
+Total Cost: ${formatCost(stats.totalCost)}
+Total Requests: ${stats.totalRecords}
+
+Click to see details in the Samurai Agent panel.
+        `.trim();
+        
+        vscode.window.showInformationMessage(message);
+      }
+    )
+  );
+
+  // Register command to clear cost history
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'samurai-agent.clearCostHistory',
+      async () => {
+        const answer = await vscode.window.showWarningMessage(
+          'Are you sure you want to clear all LLM cost history?',
+          'Yes',
+          'No'
+        );
+        
+        if (answer === 'Yes') {
+          await llmCostStorage.clearRecords();
+          updateCostStatusBar(costStatusBarItem, llmCostStorage);
+          vscode.window.showInformationMessage('LLM cost history cleared.');
+        }
+      }
+    )
+  );
+}
+
+/**
+ * Update the status bar with current cost information
+ */
+function updateCostStatusBar(
+  statusBarItem: vscode.StatusBarItem,
+  costStorage: LLMCostStorage
+): void {
+  const stats = costStorage.getStatistics();
+  const sessionCost = formatCost(stats.currentSessionCost);
+  const totalCost = formatCost(stats.totalCost);
+  
+  statusBarItem.text = `$(graph) LLM: ${sessionCost} | Total: ${totalCost}`;
+  statusBarItem.tooltip = `Session Cost: ${sessionCost}\nTotal Cost: ${totalCost}\nTotal Requests: ${stats.totalRecords}\n\nClick for details`;
 }
 
 export function deactivate() {}
