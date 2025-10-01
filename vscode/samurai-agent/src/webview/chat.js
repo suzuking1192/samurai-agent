@@ -483,10 +483,29 @@
             banner = document.createElement('div');
             banner.id = 'agent-progress-banner';
             banner.className = 'agent-progress-banner';
+            
+            // Find the last user message to insert the banner after it
+            const messages = chatContainer.querySelectorAll('.chat-message');
+            let lastUserMessage = null;
+            
+            // Find the last user message by iterating from the end
+            for (let i = messages.length - 1; i >= 0; i--) {
+                if (messages[i].classList.contains('user-message')) {
+                    lastUserMessage = messages[i];
+                    break;
+                }
+            }
+            
             try {
-                chatContainer.appendChild(banner);
+                if (lastUserMessage) {
+                    // Insert the banner right after the last user message
+                    lastUserMessage.parentNode.insertBefore(banner, lastUserMessage.nextSibling);
+                } else {
+                    // Fallback: append to the end if no user message found
+                    chatContainer.appendChild(banner);
+                }
             } catch (error) {
-                console.error('Chat: Error appending progress banner:', error);
+                console.error('Chat: Error inserting progress banner:', error);
                 return;
             }
         }
