@@ -310,19 +310,28 @@
                 messageText = `I would like to answer "NO" to ${questionText}`;
                 break;
             case 'AI_RECOMMENDATION':
-                messageText = `I would like an AI recommendation for: ${questionText}`;
+                messageText = `Please provide an AI recommendation for: ${questionText}`;
                 break;
             default:
                 console.warn('Chat: Unknown button type:', buttonType);
                 return;
         }
         
-        // Populate the chat input field
+        // Populate the chat input field with conditional logic for empty vs non-empty input
         const chatInput = safeGetDocumentElement('chatInput');
         if (chatInput) {
-            chatInput.value = messageText;
+            const currentValue = chatInput.value;
+            
+            if (currentValue.trim() === '') {
+                // If input field is empty, set the value directly without a leading space
+                chatInput.value = messageText;
+            } else {
+                // If input field is not empty, append with a single space separator
+                chatInput.value = `${currentValue} ${messageText}`;
+            }
+            
             chatInput.focus();
-            console.log('Chat: Populated chat input with:', messageText);
+            console.log('Chat: Updated chat input with:', chatInput.value);
         } else {
             console.error('Chat: chatInput element not found');
         }

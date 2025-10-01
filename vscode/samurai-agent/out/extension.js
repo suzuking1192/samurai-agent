@@ -184,6 +184,22 @@ Click to see details in the Samurai Agent panel.
     context.subscriptions.push(vscode.commands.registerCommand('samurai-agent.getCostStatistics', () => {
         return llmCostStorage.getStatistics();
     }));
+    // Register command to get monthly cost from local storage
+    context.subscriptions.push(vscode.commands.registerCommand('samurai-agent.getBackendMonthlyCost', () => {
+        try {
+            // Get monthly cost from local LLM cost storage
+            const stats = llmCostStorage.getStatistics();
+            return {
+                total_cost: stats.currentMonthCost,
+                call_count: stats.totalRecords, // This represents total calls, not just monthly
+                month: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long' })
+            };
+        }
+        catch (error) {
+            console.error('Error getting monthly cost from storage:', error);
+            return null;
+        }
+    }));
     // Register command to clear cost history
     context.subscriptions.push(vscode.commands.registerCommand('samurai-agent.clearCostHistory', async () => {
         const answer = await vscode.window.showWarningMessage('Are you sure you want to clear all LLM cost history?', 'Yes', 'No');
