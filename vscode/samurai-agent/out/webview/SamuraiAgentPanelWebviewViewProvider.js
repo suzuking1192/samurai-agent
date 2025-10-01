@@ -37,6 +37,7 @@ exports.SamuraiAgentPanelWebviewViewProvider = void 0;
 const vscode = __importStar(require("vscode"));
 const fs = __importStar(require("fs"));
 const llm_models_1 = require("../common/constants/llm-models");
+const chat_models_1 = require("../common/models/chat-models");
 // Resolve each asset to whichever folder actually has that file
 const assetUri = (webview, extUri, filename) => {
     const out = vscode.Uri.joinPath(extUri, "out", "webview", filename);
@@ -56,6 +57,7 @@ class SamuraiAgentPanelWebviewViewProvider {
     extractCodeTool;
     samuraiAgent;
     llmCostStorage;
+    _webviewView;
     constructor(_extensionUri, dependencies) {
         this._extensionUri = _extensionUri;
         this.llmProviderService = dependencies.llmProviderService;
@@ -68,6 +70,7 @@ class SamuraiAgentPanelWebviewViewProvider {
         this.llmCostStorage = dependencies.llmCostStorage;
     }
     resolveWebviewView(webviewView, context, _token) {
+        this._webviewView = webviewView;
         console.log("Webview Provider: resolveWebviewView called");
         console.log("Webview Provider: webviewView visible:", webviewView.visible);
         // Allow both src and out roots for maximum compatibility
@@ -104,6 +107,14 @@ class SamuraiAgentPanelWebviewViewProvider {
             enableCommandUris: true,
             localResourceRoots: [srcRoot.toString(), outRoot.toString()],
         });
+    }
+    /**
+     * Public method to post messages to the webview
+     */
+    postMessage(message) {
+        if (this._webviewView && this._webviewView.visible) {
+            this._webviewView.webview.postMessage(message);
+        }
     }
     /**
      * Handles messages from the webview
@@ -153,6 +164,29 @@ class SamuraiAgentPanelWebviewViewProvider {
                             console.log('[COST DEBUG] WebviewProvider - Saving cost record:', costRecord);
                             await this.llmCostStorage.saveRecord(costRecord);
                             console.log('[COST DEBUG] WebviewProvider - Cost record saved');
+                        }
+                        // Save assistant message to database for persistence
+                        const assistantMessage = {
+                            id: `assistant-${Date.now()}`,
+                            sessionId: userMessage.sessionId,
+                            projectId: userMessage.projectId,
+                            type: chat_models_1.MessageType.ASSISTANT,
+                            content: result.message || 'No response',
+                            role: 'assistant',
+                            metadata: result.metadata || {},
+                            isEdited: false,
+                            createdAt: new Date(),
+                            updatedAt: new Date(),
+                            specClarificationData: result.metadata?.specClarificationData,
+                            interactiveQuestions: result.metadata?.interactiveQuestions,
+                            interactiveConfirmationQuestions: result.metadata?.interactiveConfirmationQuestions
+                        };
+                        if (this.dataStore) {
+                            console.log('[PERSISTENCE DEBUG] WebviewProvider - Saving assistant message to DB');
+                            this.dataStore.handleWebviewMessage({
+                                command: 'saveChatMessage',
+                                payload: assistantMessage
+                            });
                         }
                         webview.postMessage({
                             type: "success",

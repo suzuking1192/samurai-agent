@@ -217,6 +217,16 @@ const uiFeedback = {
                 overlay.parentNode.removeChild(overlay);
             }
         };
+    },
+    
+    /**
+     * Switches to a specific tab
+     */
+    switchTab: (tabName) => {
+        const tabElement = document.getElementById(`${tabName}-tab`);
+        if (tabElement) {
+            tabElement.click();
+        }
     }
 };
 

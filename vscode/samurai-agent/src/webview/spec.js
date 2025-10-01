@@ -224,6 +224,9 @@ function renderSpecCard(spec) {
                         ${showSubspecs ? 'Hide Subspecs' : 'Show Subspecs'}
                     </button>
                 ` : ''}
+                <button class="spec-btn code-review-btn" data-action="code-review" data-spec-id="${spec.id}">
+                    Code Review
+                </button>
             </div>
             
             <div class="spec-detail ${isExpanded ? 'expanded' : ''}">
@@ -273,6 +276,9 @@ function renderSubspecCard(spec) {
             <div class="spec-actions">
                 <button class="spec-btn" data-action="toggle-detail" data-spec-id="${spec.id}">
                     ${isExpanded ? 'Hide Details' : 'Show Details'}
+                </button>
+                <button class="spec-btn code-review-btn" data-action="code-review" data-spec-id="${spec.id}">
+                    Code Review
                 </button>
             </div>
             
@@ -326,6 +332,14 @@ function attachSpecEventListeners() {
         button.addEventListener('click', async function() {
             const specId = this.getAttribute('data-spec-id');
             await toggleSpecCompletionStatus(specId);
+        });
+    });
+    
+    // Code review
+    document.querySelectorAll('[data-action="code-review"]').forEach(button => {
+        button.addEventListener('click', async function() {
+            const specId = this.getAttribute('data-spec-id');
+            await handleCodeReviewClick(specId);
         });
     });
     
@@ -524,6 +538,286 @@ function showSpecError(message) {
     }, 5000);
 }
 
+// ============ Code Review Functionality ============
+
+/**
+ * Handles the Code Review button click
+ */
+async function handleCodeReviewClick(specId) {
+    try {
+        // Load the spec and all its descendants
+        const specsToReview = await loadSpecAndDescendants(specId);
+        
+        if (!specsToReview || specsToReview.length === 0) {
+            showSpecError('No specs found for code review');
+            return;
+        }
+        
+        // Show confirmation modal
+        showCodeReviewConfirmationModal(specsToReview);
+    } catch (error) {
+        console.error('Error initiating code review:', error);
+        showSpecError(`Failed to initiate code review: ${error.message}`);
+    }
+}
+
+/**
+ * Loads a spec and all its descendants recursively
+ */
+async function loadSpecAndDescendants(specId) {
+    const result = [];
+    const visited = new Set();
+    
+    // Find the root spec
+    const rootSpec = specState.specs.find(s => s.id === specId);
+    if (!rootSpec) {
+        return result;
+    }
+    
+    // Add root spec
+    result.push(rootSpec);
+    visited.add(specId);
+    
+    // Recursively find all descendants using BFS
+    const queue = [specId];
+    
+    while (queue.length > 0) {
+        const currentId = queue.shift();
+        
+        // Find all children of current spec
+        const children = specState.specs.filter(s => s.parentSpecId === currentId);
+        
+        for (const child of children) {
+            if (!visited.has(child.id)) {
+                result.push(child);
+                visited.add(child.id);
+                queue.push(child.id);
+            }
+        }
+    }
+    
+    return result;
+}
+
+/**
+ * Shows the code review confirmation modal
+ */
+function showCodeReviewConfirmationModal(specsToReview) {
+    // Remove any existing modal
+    const existingModal = document.getElementById('code-review-modal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+    
+    // Build spec list HTML
+    const specListHtml = specsToReview.map(spec => {
+        const indent = spec.depth > 1 ? `style="padding-left: ${(spec.depth - 1) * 20}px;"` : '';
+        return `<li ${indent}>${spec.title}</li>`;
+    }).join('');
+    
+    // Create modal HTML
+    const modalHtml = `
+        <div id="code-review-modal" class="modal-overlay">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Confirm Code Review</h3>
+                    <button class="modal-close" data-action="close-modal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p>The following specifications will be included in the code review:</p>
+                    <ul class="spec-review-list">
+                        ${specListHtml}
+                    </ul>
+                    <p class="modal-note">Total: ${specsToReview.length} specification${specsToReview.length > 1 ? 's' : ''}</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="spec-btn secondary" data-action="cancel-review">Cancel</button>
+                    <button class="spec-btn code-review-confirm-btn" data-action="confirm-review">Confirm Code Review</button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Append modal to body
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    
+    // Attach event listeners
+    const modal = document.getElementById('code-review-modal');
+    
+    // Close modal on background click
+    modal.addEventListener('click', function(e) {
+        if (e.target === modal) {
+            closeCodeReviewModal();
+        }
+    });
+    
+    // Close button
+    modal.querySelector('[data-action="close-modal"]').addEventListener('click', closeCodeReviewModal);
+    
+    // Cancel button
+    modal.querySelector('[data-action="cancel-review"]').addEventListener('click', closeCodeReviewModal);
+    
+    // Confirm button
+    modal.querySelector('[data-action="confirm-review"]').addEventListener('click', async function() {
+        closeCodeReviewModal();
+        await sendCodeReviewMessage(specsToReview);
+    });
+}
+
+/**
+ * Closes the code review modal
+ */
+function closeCodeReviewModal() {
+    const modal = document.getElementById('code-review-modal');
+    if (modal) {
+        modal.remove();
+    }
+}
+
+/**
+ * Sends the code review message to chat and switches tabs
+ */
+async function sendCodeReviewMessage(specsToReview) {
+    try {
+        // Build the formatted message
+        let messageContent = "Attention required: Please conduct a thorough code review. Verify the latest codebase against the following specifications to ensure accurate and complete implementation:\n\n";
+        
+        // Add each spec to the message
+        specsToReview.forEach((spec, index) => {
+            messageContent += `**${spec.title}**\n\n`;
+            messageContent += "```\n";
+            messageContent += spec.spec || '(No specification content)';
+            messageContent += "\n```\n\n";
+        });
+        
+        // Get current session from project settings
+        const projectSettings = await window.WebviewApi.persistence.loadProjectSettings();
+        if (!projectSettings || !projectSettings.currentSessionId) {
+            showSpecError('No active session found. Please start a chat session first.');
+            return;
+        }
+        
+        // Load the current session
+        const currentSession = await window.WebviewApi.persistence.loadSession(projectSettings.currentSessionId);
+        if (!currentSession) {
+            showSpecError('Failed to load current session.');
+            return;
+        }
+        
+        // Switch to chat tab first
+        if (window.WebviewApi?.ui?.switchTab) {
+            window.WebviewApi.ui.switchTab('chat');
+        } else {
+            // Fallback: manually trigger tab click
+            const chatTab = document.getElementById('chat-tab');
+            if (chatTab) {
+                chatTab.click();
+            }
+        }
+        
+        // Small delay to ensure tab switch and chat UI are ready
+        await new Promise(resolve => setTimeout(resolve, 150));
+        
+        // Create user message object (same as chat.js does)
+        const userMessage = {
+            id: `user-${Date.now()}`,
+            sessionId: currentSession.id,
+            projectId: projectSettings.projectId,
+            type: 'user',
+            role: 'user',
+            content: messageContent,
+            metadata: {}
+        };
+        
+        // Display the user message immediately in chat
+        if (window.ChatManager && typeof window.ChatManager.displayMessage === 'function') {
+            window.ChatManager.displayMessage(userMessage);
+        }
+        
+        // Save the message to persistence
+        try {
+            await window.WebviewApi.persistence.saveChatMessage({
+                sessionId: currentSession.id,
+                projectId: projectSettings.projectId,
+                type: userMessage.type,
+                content: userMessage.content,
+                role: userMessage.role,
+                metadata: userMessage.metadata
+            });
+        } catch (saveError) {
+            console.warn('Failed to save message to persistence:', saveError);
+            // Continue anyway - the message is displayed
+        }
+        
+        // Add "Thinking..." indicator
+        const chatMessagesElement = document.getElementById('chatMessages');
+        const pendingIndicator = document.createElement('div');
+        pendingIndicator.className = 'assistant-message pending';
+        pendingIndicator.id = 'code-review-pending';
+        pendingIndicator.textContent = 'Analyzing code against specifications...';
+        
+        if (chatMessagesElement) {
+            chatMessagesElement.appendChild(pendingIndicator);
+            chatMessagesElement.scrollTop = chatMessagesElement.scrollHeight;
+        }
+        
+        // Send to agent for processing (with userMessage object for proper tracking)
+        if (window.WebviewApi?.agent?.execute) {
+            try {
+                await window.WebviewApi.agent.execute({
+                    userMessage: userMessage,
+                    session: currentSession,
+                    message: messageContent
+                });
+                
+                // Remove pending indicator
+                const indicator = document.getElementById('code-review-pending');
+                if (indicator && indicator.parentElement) {
+                    indicator.parentElement.removeChild(indicator);
+                }
+            } catch (executeError) {
+                console.error('Agent execution error:', executeError);
+                
+                // Remove pending indicator
+                const indicator = document.getElementById('code-review-pending');
+                if (indicator && indicator.parentElement) {
+                    indicator.parentElement.removeChild(indicator);
+                }
+                
+                // Show error in chat
+                if (window.ChatManager && typeof window.ChatManager.displayMessage === 'function') {
+                    window.ChatManager.displayMessage({
+                        id: `error-${Date.now()}`,
+                        sessionId: currentSession.id,
+                        projectId: projectSettings.projectId,
+                        type: 'error',
+                        role: 'assistant',
+                        content: `Error: ${executeError.message || 'Failed to execute code review'}`,
+                        metadata: { error: executeError }
+                    });
+                }
+            }
+        } else {
+            console.error('WebviewApi.agent.execute is not available');
+            
+            // Remove pending indicator
+            const indicator = document.getElementById('code-review-pending');
+            if (indicator && indicator.parentElement) {
+                indicator.parentElement.removeChild(indicator);
+            }
+            
+            showSpecError('Failed to send code review message: Agent API not available');
+            return;
+        }
+        
+    } catch (error) {
+        console.error('Error sending code review message:', error);
+        showSpecError(`Failed to send code review message: ${error.message}`);
+    }
+}
+
+// ============ End Code Review Functionality ============
+
 // Export functions for potential external use
 window.SpecManager = {
     renderSpecs: renderSpecs,
@@ -537,6 +831,7 @@ window.SpecManager = {
     getCurrentFilter: () => specState.currentFilter,
     loadSpecsFromPersistence: loadSpecsFromPersistence,
     saveSpecWithPersistence: saveSpecWithPersistence,
+    handleCodeReviewClick: handleCodeReviewClick,
     addSpec: async (spec) => {
         try {
             const savedSpec = await saveSpecWithPersistence(spec);

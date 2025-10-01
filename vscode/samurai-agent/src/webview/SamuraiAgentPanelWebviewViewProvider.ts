@@ -48,6 +48,7 @@ export class SamuraiAgentPanelWebviewViewProvider
   private extractCodeTool: ExtractCodeTool | undefined;
   private samuraiAgent: SamuraiAgent | undefined;
   private llmCostStorage: LLMCostStorage | undefined;
+  private _webviewView: vscode.WebviewView | undefined;
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
@@ -68,6 +69,7 @@ export class SamuraiAgentPanelWebviewViewProvider
     context: vscode.WebviewViewResolveContext,
     _token: vscode.CancellationToken,
   ) {
+    this._webviewView = webviewView;
     console.log("Webview Provider: resolveWebviewView called");
     console.log("Webview Provider: webviewView visible:", webviewView.visible);
 
@@ -114,6 +116,15 @@ export class SamuraiAgentPanelWebviewViewProvider
       enableCommandUris: true,
       localResourceRoots: [srcRoot.toString(), outRoot.toString()],
     });
+  }
+
+  /**
+   * Public method to post messages to the webview
+   */
+  public postMessage(message: any): void {
+    if (this._webviewView && this._webviewView.visible) {
+      this._webviewView.webview.postMessage(message);
+    }
   }
 
   /**

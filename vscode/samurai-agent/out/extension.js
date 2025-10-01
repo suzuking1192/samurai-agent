@@ -64,6 +64,8 @@ const CodeParserService_1 = require("./agent/code_parser/CodeParserService");
 const samuraiAgent_1 = require("./agent/core/samuraiAgent");
 const llmCostStorage_1 = require("./storage/llmCostStorage");
 const llmCostCalculator_1 = require("./common/utils/llmCostCalculator");
+const response_models_1 = require("./common/models/response-models");
+const chat_models_1 = require("./common/models/chat-models");
 /**
  * Extension activation function - main backend entry point
  * Registers all commands, webview providers, and initializes the agent system
@@ -191,6 +193,69 @@ Click to see details in the Samurai Agent panel.
             await llmCostStorage.clearRecords();
             updateCostStatusBar(costStatusBarItem, llmCostStorage);
             vscode.window.showInformationMessage('LLM cost history cleared.');
+        }
+    }));
+    // Register command to send assistant message to chat
+    context.subscriptions.push(vscode.commands.registerCommand('samurai-agent.ui.sendAssistantMessageToChat', async (args) => {
+        if (!dataStore) {
+            console.error('DataStore is not available');
+            return { success: false, error: 'DataStore is not available' };
+        }
+        try {
+            const { messageContent } = args;
+            // Load project settings to get projectId and sessionId
+            const projectSettingsResponse = dataStore.readProjectSettings();
+            if (projectSettingsResponse.type === response_models_1.ResponseType.ERROR || !projectSettingsResponse.payload) {
+                throw new Error('Failed to load project settings');
+            }
+            const projectSettings = projectSettingsResponse.payload;
+            const sessionId = projectSettings.currentSessionId;
+            const projectId = projectSettings.projectId;
+            if (!sessionId) {
+                throw new Error('No active session found');
+            }
+            // Create the assistant message
+            const chatMessage = {
+                id: `assistant-${Date.now()}`,
+                sessionId: sessionId,
+                projectId: projectId,
+                type: chat_models_1.MessageType.ASSISTANT,
+                role: 'assistant',
+                content: messageContent,
+                metadata: {},
+                isEdited: false,
+                createdAt: new Date(),
+                updatedAt: new Date()
+            };
+            // Save the message using DataStore
+            const saveResponse = dataStore.handleWebviewMessage({
+                command: 'saveChatMessage',
+                requestId: `save-${Date.now()}`,
+                payload: {
+                    sessionId: sessionId,
+                    projectId: projectId,
+                    type: chat_models_1.MessageType.ASSISTANT,
+                    role: 'assistant',
+                    content: messageContent,
+                    metadata: {}
+                }
+            });
+            if (saveResponse.type === response_models_1.ResponseType.ERROR) {
+                throw new Error(saveResponse.error || 'Failed to save message');
+            }
+            // Broadcast the message to the webview
+            agentPanelProvider.postMessage({
+                type: 'chatMessage',
+                payload: saveResponse.payload
+            });
+            return { success: true, message: saveResponse.payload };
+        }
+        catch (error) {
+            console.error('Error sending assistant message to chat:', error);
+            return {
+                success: false,
+                error: error instanceof Error ? error.message : 'Unknown error occurred'
+            };
         }
     }));
 }

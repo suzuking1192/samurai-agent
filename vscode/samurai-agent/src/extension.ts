@@ -240,6 +240,9 @@ Click to see details in the Samurai Agent panel.
       }
     )
   );
+
+  // Note: samurai-agent.ui.sendAssistantMessageToChat is now handled as a webview message
+  // in SamuraiAgentPanelWebviewViewProvider.handleSendAssistantMessageToChat()
 }
 
 /**

@@ -240,6 +240,20 @@ export class SamuraiAgent {
       }
     }
     
+    // Step 1.5: Check for code review keyword matching
+    const codeReviewKeywords = [
+      "please conduct a thorough code review",
+      "conduct a thorough code review",
+      "conduct a code review"
+    ];
+    
+    for (const keyword of codeReviewKeywords) {
+      if (messageContent.includes(keyword)) {
+        this.logInvocation("analyzeUserIntent", `Code review keyword match found: ${keyword} -> PURE_DISCUSSION`);
+        return UserIntentEnum.PURE_DISCUSSION;
+      }
+    }
+    
     // Step 2: If no keyword match, proceed to LLM analysis
     return await this.performLLMIntentAnalysis(chatHistory, currentUserMessage, projectDetails);
   }
@@ -351,6 +365,10 @@ export class SamuraiAgent {
       // Format code contexts for prompt injection
       const formattedCodeContexts = this._formatCodeContextsForPrompt(codeContexts);
       
+      console.log('[DEBUG handlePureDiscussion] codeContexts received:', codeContexts.length);
+      console.log('[DEBUG handlePureDiscussion] formattedCodeContexts length:', formattedCodeContexts.length);
+      console.log('[DEBUG handlePureDiscussion] formattedCodeContexts preview:', formattedCodeContexts.slice(0, 500));
+      
       // Build conversation summary
       const conversationSummary = this._buildConversationSummary(chatHistory) + `\n\nLatest user request: ${userMessage.content}`;
       
@@ -364,6 +382,14 @@ export class SamuraiAgent {
           activeTaskHeader: '', // No active task for now
           noActiveTaskInference: '' // No active task inference for now
         }
+      );
+      
+      console.log('[DEBUG handlePureDiscussion] systemPrompt contains CODE CONTEXT section:', systemPrompt.includes('## CODE CONTEXT'));
+      console.log('[DEBUG handlePureDiscussion] systemPrompt codeContexts section preview:', 
+        systemPrompt.substring(
+          systemPrompt.indexOf('## CODE CONTEXT'), 
+          Math.min(systemPrompt.indexOf('## CODE CONTEXT') + 1000, systemPrompt.length)
+        )
       );
       
       // Construct messages array for LLM request
