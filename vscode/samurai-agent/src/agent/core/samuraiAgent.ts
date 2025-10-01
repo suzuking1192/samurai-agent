@@ -745,6 +745,7 @@ export class SamuraiAgent {
       
       // Log what we got
       console.log(`handleGeneratingSpecs: Parsed ${parsedSpecs.length} specs from LLM response`);
+      console.log(`handleGeneratingSpecs: Spec titles:`, parsedSpecs.map(s => s.title));
       
       // Validate that each spec has required fields
       for (const spec of parsedSpecs) {
@@ -756,55 +757,109 @@ export class SamuraiAgent {
         }
       }
       
+      // Ensure we have at least one spec
+      if (parsedSpecs.length === 0) {
+        throw new Error("No specs were generated from the LLM response");
+      }
+      
       // Create specs using CreateSpecTool
       const createdSpecs = [];
       const errors = [];
       let rootSpecId: string | null = null;
       
-      for (const specData of parsedSpecs) {
+      // First, create the parent spec (first spec in the array)
+      if (parsedSpecs.length > 0) {
+        const parentSpecData = parsedSpecs[0];
         try {
-          // Determine parent spec ID
-          let parentSpecId: string | undefined = undefined;
-          if (specData.parent_spec_id) {
-            parentSpecId = specData.parent_spec_id;
-          } else if (rootSpecId && specData !== parsedSpecs[0]) {
-            // If this is not the first spec and we have a root, make it a child of root
-            parentSpecId = rootSpecId;
-          }
-          
           const createSpecResult = await this.createSpecTool.execute({
-            title: specData.title,
-            description: specData.description,
-            parentSpecId,
-            depth: parentSpecId ? 2 : 1
+            title: parentSpecData.title,
+            description: parentSpecData.description,
+            parentSpecId: parentSpecData.parent_spec_id || undefined,
+            depth: 1
           });
           
           if (createSpecResult.success && createSpecResult.result) {
             const createdSpec = createSpecResult.result as any;
             createdSpecs.push(createdSpec);
-            
-            // Store the first spec's ID as root for subsequent specs
-            if (!rootSpecId && !parentSpecId) {
-              rootSpecId = createdSpec.id;
-            }
+            rootSpecId = createdSpec.id;
+            console.log(`Created parent spec: ${createdSpec.title} with ID: ${rootSpecId}`);
           } else {
-            errors.push(`Failed to create spec "${specData.title}": ${createSpecResult.error}`);
+            errors.push(`Failed to create parent spec "${parentSpecData.title}": ${createSpecResult.error}`);
           }
         } catch (error) {
-          errors.push(`Error creating spec "${specData.title}": ${error instanceof Error ? error.message : 'Unknown error'}`);
+          errors.push(`Error creating parent spec "${parentSpecData.title}": ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+      }
+      
+      // Then, create child specs (remaining specs in the array)
+      if (rootSpecId && parsedSpecs.length > 1) {
+        for (let i = 1; i < parsedSpecs.length; i++) {
+          const specData = parsedSpecs[i];
+          try {
+            // All remaining specs should be children of the root spec
+            const createSpecResult = await this.createSpecTool.execute({
+              title: specData.title,
+              description: specData.description,
+              parentSpecId: specData.parent_spec_id || rootSpecId,
+              depth: 2
+            });
+            
+            if (createSpecResult.success && createSpecResult.result) {
+              const createdSpec = createSpecResult.result as any;
+              createdSpecs.push(createdSpec);
+              console.log(`Created child spec: ${createdSpec.title} with parent ID: ${rootSpecId}`);
+            } else {
+              errors.push(`Failed to create child spec "${specData.title}": ${createSpecResult.error}`);
+            }
+          } catch (error) {
+            errors.push(`Error creating child spec "${specData.title}": ${error instanceof Error ? error.message : 'Unknown error'}`);
+          }
+        }
+        
+        // Update the parent spec to mark it as having subspecs
+        if (createdSpecs.length > 1) {
+          try {
+            const parentSpec = createdSpecs[0];
+            const updatedParentSpec = {
+              ...parentSpec,
+              hasSubspecs: true
+            };
+            
+            const updateResult = this.dataStore.handleWebviewMessage({
+              command: "saveSpec",
+              payload: updatedParentSpec,
+            });
+            
+            if (updateResult.type === "error") {
+              console.warn(`Failed to update parent spec hasSubspecs: ${updateResult.error}`);
+            } else {
+              console.log(`Updated parent spec to mark it as having subspecs`);
+            }
+          } catch (error) {
+            console.warn(`Error updating parent spec hasSubspecs: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          }
         }
       }
       
       // Generate response message
       let responseMessage: string;
       if (createdSpecs.length > 0) {
+        const parentSpec = createdSpecs[0];
+        const childSpecs = createdSpecs.slice(1);
+        
         responseMessage = `Perfect! I've generated and created ${createdSpecs.length} specs based on your request:\n\n`;
-        createdSpecs.forEach((spec, index) => {
-          responseMessage += `${index + 1}. ${spec.title}\n`;
-        });
+        responseMessage += `**Parent Spec:**\n1. ${parentSpec.title}\n\n`;
+        
+        if (childSpecs.length > 0) {
+          responseMessage += `**Child Specs:**\n`;
+          childSpecs.forEach((spec, index) => {
+            responseMessage += `${index + 2}. ${spec.title}\n`;
+          });
+          responseMessage += `\nThe child specs are nested under the parent spec and can be expanded by clicking the "Show subspecs" button.`;
+        }
         
         if (errors.length > 0) {
-          responseMessage += `\nNote: ${errors.length} spec(s) could not be created due to errors.`;
+          responseMessage += `\n\nNote: ${errors.length} spec(s) could not be created due to errors.`;
         }
       } else {
         responseMessage = "I encountered issues creating the specs. Please try again or rephrase your request.";
@@ -818,9 +873,17 @@ export class SamuraiAgent {
         message: responseMessage,
         metadata: {
           createdSpecsCount: createdSpecs.length,
+          parentSpecId: rootSpecId,
+          childSpecsCount: createdSpecs.length - 1,
           errorsCount: errors.length,
           errors: errors,
-          specs: createdSpecs
+          specs: createdSpecs,
+          specCreationDetails: {
+            totalRequested: parsedSpecs.length,
+            totalCreated: createdSpecs.length,
+            parentSpec: createdSpecs[0] ? { id: createdSpecs[0].id, title: createdSpecs[0].title } : null,
+            childSpecs: createdSpecs.slice(1).map(spec => ({ id: spec.id, title: spec.title, parentId: spec.parentSpecId }))
+          }
         }
       };
       
