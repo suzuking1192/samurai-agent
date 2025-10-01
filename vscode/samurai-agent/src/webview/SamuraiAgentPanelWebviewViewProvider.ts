@@ -363,6 +363,32 @@ export class SamuraiAgentPanelWebviewViewProvider
         return;
       }
 
+      // Handle backend monthly cost command
+      if (command === "samurai-agent.getBackendMonthlyCost") {
+        const commandPromise = vscode.commands.executeCommand(command);
+        if (commandPromise && typeof commandPromise.then === "function") {
+          commandPromise.then(
+            (result: unknown) => {
+              webview.postMessage({
+                type: "success",
+                requestId: message.requestId,
+                payload: result,
+                timestamp: new Date(),
+              });
+            },
+            (error: unknown) => {
+              webview.postMessage({
+                type: "error",
+                requestId: message.requestId,
+                error: error instanceof Error ? error.message : "Failed to get backend monthly cost",
+                timestamp: new Date(),
+              });
+            }
+          );
+        }
+        return;
+      }
+
       // Route namespaced persistence commands to DataStore
       if (command?.startsWith("samurai-agent.persistence.")) {
         if (!this.dataStore) {

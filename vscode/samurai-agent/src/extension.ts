@@ -221,23 +221,21 @@ Click to see details in the Samurai Agent panel.
     )
   );
 
-  // Register command to get backend monthly cost
+  // Register command to get monthly cost from local storage
   context.subscriptions.push(
     vscode.commands.registerCommand(
       'samurai-agent.getBackendMonthlyCost',
-      async () => {
+      () => {
         try {
-          // Call the backend API to get monthly cost
-          const response = await fetch('http://localhost:8000/llm-usage/monthly-cost');
-          if (response.ok) {
-            const data = await response.json();
-            return data;
-          } else {
-            console.error('Failed to fetch backend monthly cost:', response.status, response.statusText);
-            return null;
-          }
+          // Get monthly cost from local LLM cost storage
+          const stats = llmCostStorage.getStatistics();
+          return {
+            total_cost: stats.currentMonthCost,
+            call_count: stats.totalRecords, // This represents total calls, not just monthly
+            month: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long' })
+          };
         } catch (error) {
-          console.error('Error fetching backend monthly cost:', error);
+          console.error('Error getting monthly cost from storage:', error);
           return null;
         }
       }

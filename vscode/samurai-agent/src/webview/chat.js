@@ -145,27 +145,27 @@
             timestamp: new Date().toISOString()
         });
         
-        // Query the backend for current monthly cost
+        // Query the extension for current monthly cost
         try {
-            // Try to get monthly cost from backend API first (persistent across F5 resets)
+            // Get monthly cost from extension's local storage (persistent across F5 resets)
             if (globalScope.WebviewApi?.postCommand) {
                 try {
-                    const backendStats = await globalScope.WebviewApi.postCommand('samurai-agent.getBackendMonthlyCost');
-                    console.log('[COST DEBUG] Got backend monthly cost:', backendStats);
+                    const monthlyStats = await globalScope.WebviewApi.postCommand('samurai-agent.getBackendMonthlyCost');
+                    console.log('[COST DEBUG] Got monthly cost from extension:', monthlyStats);
                     
-                    if (backendStats && typeof backendStats.total_cost === 'number') {
+                    if (monthlyStats && typeof monthlyStats.total_cost === 'number') {
                         const previousCost = monthlyTotalCost;
-                        monthlyTotalCost = backendStats.total_cost;
-                        console.log('[COST DEBUG] Updated monthlyTotalCost from backend:', {
+                        monthlyTotalCost = monthlyStats.total_cost;
+                        console.log('[COST DEBUG] Updated monthlyTotalCost from extension:', {
                             previous: previousCost,
                             current: monthlyTotalCost,
                             difference: monthlyTotalCost - previousCost,
-                            backendTotalCost: backendStats.total_cost,
-                            backendCallCount: backendStats.call_count
+                            extensionTotalCost: monthlyStats.total_cost,
+                            extensionCallCount: monthlyStats.call_count
                         });
                     }
-                } catch (backendError) {
-                    console.warn('[COST DEBUG] Backend monthly cost not available, falling back to extension storage:', backendError);
+                } catch (extensionError) {
+                    console.warn('[COST DEBUG] Extension monthly cost not available, falling back to extension storage:', extensionError);
                 }
             }
             
