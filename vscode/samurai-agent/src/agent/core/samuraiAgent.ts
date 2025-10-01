@@ -275,22 +275,34 @@ export class SamuraiAgent {
     this.logInvocation("analyzeCodeExtractionNeeds", `Intent: ${userIntent}`);
     
     try {
-      // Step 1: Load existing code context for the session
+      // Step 1: Get the current user message (last message in chat history)
+      const currentUserMessage = chatHistory.length > 0 ? chatHistory[chatHistory.length - 1].content : "No current message";
+      
+      // Step 2: Check for keyword detection first
+      const keywordDetected = this.detectCodeExtractionKeyword(currentUserMessage);
+      
+      if (keywordDetected) {
+        this.logInvocation("analyzeCodeExtractionNeeds", "Keyword detected - bypassing LLM call");
+        return {
+          new_code_context_necessary: true,
+          extraction_query: currentUserMessage,
+          reasoning: "Keyword 'Please read the latest code' detected in user message - bypassing LLM analysis"
+        };
+      }
+      
+      // Step 3: Load existing code context for the session
       let existingCodeContexts: ExtractCodeToolResultPayload[] = [];
       if (session.codeContextIds && session.codeContextIds.length > 0) {
         existingCodeContexts = await this.dataStore.loadAllCodeContextForSession(session.id, session.metadata.projectId);
       }
       
-      // Step 2: Format existing code context for LLM prompt
+      // Step 4: Format existing code context for LLM prompt
       const formattedExistingContext = this._formatExistingCodeContextForLLM(existingCodeContexts);
       
-      // Step 3: Build conversation summary from chat history
+      // Step 5: Build conversation summary from chat history
       const conversationSummary = this._buildConversationSummary(chatHistory);
       
-      // Step 4: Get the current user message (last message in chat history)
-      const currentUserMessage = chatHistory.length > 0 ? chatHistory[chatHistory.length - 1].content : "No current message";
-      
-      // Step 5: Load and populate the prompt template
+      // Step 6: Load and populate the prompt template
       const promptTemplate = this.readPromptFile('codeExtraction/analyze_code_extraction_needs.md');
       const populatedPrompt = promptTemplate
         .replace('{activeTaskHeader}', '') // No active task header for now
@@ -301,7 +313,7 @@ export class SamuraiAgent {
         .replace('{currentUserMessage}', currentUserMessage)
         .replace('{existingCodeContext}', formattedExistingContext);
       
-      // Step 6: Make LLM call
+      // Step 7: Make LLM call
       const response = await this.llmProviderService.chat({
         id: `code-extraction-analysis-${Date.now()}`,
         provider: "auto",
@@ -320,7 +332,7 @@ export class SamuraiAgent {
         throw new Error(response.error || "LLM request failed");
       }
       
-      // Step 7: Parse and validate LLM response
+      // Step 8: Parse and validate LLM response
       const llmResponse = response.payload;
       if (!llmResponse || 'error' in llmResponse) {
         throw new Error('error' in llmResponse ? llmResponse.error : "LLM request failed");
@@ -336,7 +348,7 @@ export class SamuraiAgent {
         reasoning: string;
       }>(responseContent, ['new_code_context_necessary', 'extraction_query', 'reasoning']);
       
-      // Step 8: Return the parsed result
+      // Step 9: Return the parsed result
       return {
         new_code_context_necessary: parsedResult.new_code_context_necessary,
         extraction_query: parsedResult.extraction_query,
@@ -351,6 +363,26 @@ export class SamuraiAgent {
         reasoning: `Error in code extraction analysis: ${error instanceof Error ? error.message : 'Unknown error'}`
       };
     }
+  }
+
+  /**
+   * Detects the hardcoded keyword "Please read the latest code" in user messages
+   * @param userMessage - The user's input message
+   * @returns boolean indicating whether the keyword is present
+   */
+  private detectCodeExtractionKeyword(userMessage: string): boolean {
+    if (!userMessage || typeof userMessage !== 'string') {
+      return false;
+    }
+    
+    // Perform case-insensitive, exact phrase matching
+    const keyword = "please read the latest code";
+    const normalizedMessage = userMessage.toLowerCase().trim();
+    
+    // Use word boundary regex to ensure the keyword is not part of a larger word
+    // This ensures "codebook" doesn't match "code"
+    const keywordRegex = new RegExp(`\\b${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
+    return keywordRegex.test(normalizedMessage);
   }
 
   public async handlePureDiscussion(

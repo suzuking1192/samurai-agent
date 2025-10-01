@@ -680,7 +680,7 @@ function closeCodeReviewModal() {
 async function sendCodeReviewMessage(specsToReview) {
     try {
         // Build the formatted message
-        let messageContent = "Attention required: Please conduct a thorough code review. Verify the latest codebase against the following specifications to ensure accurate and complete implementation:\n\n";
+        let messageContent = "Attention required: Please read the latest code and then please conduct a thorough code review.  Verify the latest codebase against the following specifications to ensure accurate and complete implementation:\n\n";
         
         // Add each spec to the message
         specsToReview.forEach((spec, index) => {

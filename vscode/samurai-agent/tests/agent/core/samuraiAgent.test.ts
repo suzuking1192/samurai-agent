@@ -139,6 +139,278 @@ describe('SamuraiAgent', () => {
     });
   });
 
+  describe('detectCodeExtractionKeyword', () => {
+    it('should detect exact keyword match (case insensitive)', () => {
+      const testCases = [
+        'please read the latest code',
+        'Please read the latest code',
+        'PLEASE READ THE LATEST CODE',
+        'Please Read The Latest Code'
+      ];
+
+      testCases.forEach(message => {
+        const result = (samuraiAgent as any).detectCodeExtractionKeyword(message);
+        expect(result).toBe(true);
+      });
+    });
+
+    it('should detect keyword when embedded in larger message', () => {
+      const testCases = [
+        'Can you please read the latest code and summarize it?',
+        'I need you to please read the latest code for me.',
+        'Please read the latest code. Thanks!',
+        'Hello, please read the latest code and let me know what you find.'
+      ];
+
+      testCases.forEach(message => {
+        const result = (samuraiAgent as any).detectCodeExtractionKeyword(message);
+        expect(result).toBe(true);
+      });
+    });
+
+    it('should NOT detect keyword when words are inserted within the phrase', () => {
+      const testCases = [
+        'please read the new latest code',
+        'please read the updated latest code',
+        'please read the most recent latest code',
+        'please read the very latest code'
+      ];
+
+      testCases.forEach(message => {
+        const result = (samuraiAgent as any).detectCodeExtractionKeyword(message);
+        expect(result).toBe(false);
+      });
+    });
+
+    it('should NOT detect keyword when it is part of a larger word', () => {
+      const testCases = [
+        'please read the latest codebook',
+        'please read the latest codebase',
+        'please read the latest codenames',
+        'please read the latest coders'
+      ];
+
+      testCases.forEach(message => {
+        const result = (samuraiAgent as any).detectCodeExtractionKeyword(message);
+        expect(result).toBe(false);
+      });
+    });
+
+    it('should NOT detect keyword when it is absent from the message', () => {
+      const testCases = [
+        'please read the code',
+        'read the latest code',
+        'please read latest code',
+        'please read the code latest',
+        'hello world',
+        'what is the weather like?'
+      ];
+
+      testCases.forEach(message => {
+        const result = (samuraiAgent as any).detectCodeExtractionKeyword(message);
+        expect(result).toBe(false);
+      });
+    });
+
+    it('should handle edge cases gracefully', () => {
+      const testCases = [
+        '',
+        null as any,
+        undefined as any,
+        '   ',
+        'please read the latest code   ',
+        '   please read the latest code'
+      ];
+
+      // Only the last two should return true (whitespace trimmed)
+      const expectedResults = [false, false, false, false, true, true];
+
+      testCases.forEach((message, index) => {
+        const result = (samuraiAgent as any).detectCodeExtractionKeyword(message);
+        expect(result).toBe(expectedResults[index]);
+      });
+    });
+  });
+
+  describe('analyzeCodeExtractionNeeds', () => {
+    const mockSession: Session = {
+      id: 'session1',
+      title: 'Test Session',
+      status: 'active' as any,
+      messageCount: 0,
+      totalTokens: 0,
+      totalCost: 0,
+      lastMessageAt: new Date(),
+      tags: [],
+      metadata: { projectId: 'project1' },
+      codeContextIds: [],
+      previous_session_intent: UserIntentEnum.PURE_DISCUSSION,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+
+    beforeEach(() => {
+      mockDataStore.loadAllCodeContextForSession.mockResolvedValue([]);
+    });
+
+    it('should bypass LLM call and return true when keyword is detected', async () => {
+      const chatHistory: LLMMessage[] = [
+        { role: 'user', content: 'Please read the latest code and summarize it' }
+      ];
+
+      const result = await (samuraiAgent as any).analyzeCodeExtractionNeeds(
+        chatHistory,
+        'Test project details',
+        mockSession,
+        UserIntentEnum.PURE_DISCUSSION
+      );
+
+      expect(result).toEqual({
+        new_code_context_necessary: true,
+        extraction_query: 'Please read the latest code and summarize it',
+        reasoning: "Keyword 'Please read the latest code' detected in user message - bypassing LLM analysis"
+      });
+
+      // Verify LLM was not called
+      expect(mockLLMProviderService.chat).not.toHaveBeenCalled();
+    });
+
+    it('should use original user message as extraction_query when keyword detected', async () => {
+      const originalMessage = 'Can you please read the latest code and tell me about the main functions?';
+      const chatHistory: LLMMessage[] = [
+        { role: 'user', content: originalMessage }
+      ];
+
+      const result = await (samuraiAgent as any).analyzeCodeExtractionNeeds(
+        chatHistory,
+        'Test project details',
+        mockSession,
+        UserIntentEnum.PURE_DISCUSSION
+      );
+
+      expect(result.extraction_query).toBe(originalMessage);
+      expect(result.new_code_context_necessary).toBe(true);
+    });
+
+    it('should proceed with normal LLM analysis when keyword is not detected', async () => {
+      const chatHistory: LLMMessage[] = [
+        { role: 'user', content: 'What is the weather like today?' }
+      ];
+
+      // Mock LLM response
+      mockLLMProviderService.chat.mockResolvedValue({
+        type: 'success',
+        payload: {
+          content: JSON.stringify({
+            new_code_context_necessary: false,
+            extraction_query: null,
+            reasoning: 'No code context needed for weather question'
+          })
+        }
+      } as any);
+
+      const result = await (samuraiAgent as any).analyzeCodeExtractionNeeds(
+        chatHistory,
+        'Test project details',
+        mockSession,
+        UserIntentEnum.PURE_DISCUSSION
+      );
+
+      expect(result).toEqual({
+        new_code_context_necessary: false,
+        extraction_query: null,
+        reasoning: 'No code context needed for weather question'
+      });
+
+      // Verify LLM was called
+      expect(mockLLMProviderService.chat).toHaveBeenCalledWith(
+        expect.objectContaining({
+          metadata: expect.objectContaining({ type: 'code_extraction_analysis' })
+        })
+      );
+    });
+
+    it('should handle case variations of the keyword correctly', async () => {
+      const testCases = [
+        'please read the latest code',
+        'Please read the latest code',
+        'PLEASE READ THE LATEST CODE',
+        'Please Read The Latest Code'
+      ];
+
+      for (const testMessage of testCases) {
+        const chatHistory: LLMMessage[] = [
+          { role: 'user', content: testMessage }
+        ];
+
+        const result = await (samuraiAgent as any).analyzeCodeExtractionNeeds(
+          chatHistory,
+          'Test project details',
+          mockSession,
+          UserIntentEnum.PURE_DISCUSSION
+        );
+
+        expect(result.new_code_context_necessary).toBe(true);
+        expect(result.extraction_query).toBe(testMessage);
+        expect(result.reasoning).toContain("Keyword 'Please read the latest code' detected");
+      }
+    });
+
+    it('should not detect keyword when words are inserted within the phrase', async () => {
+      const chatHistory: LLMMessage[] = [
+        { role: 'user', content: 'please read the new latest code' }
+      ];
+
+      // Mock LLM response since keyword should not be detected
+      mockLLMProviderService.chat.mockResolvedValue({
+        type: 'success',
+        payload: {
+          content: JSON.stringify({
+            new_code_context_necessary: false,
+            extraction_query: null,
+            reasoning: 'No extraction needed'
+          })
+        }
+      } as any);
+
+      const result = await (samuraiAgent as any).analyzeCodeExtractionNeeds(
+        chatHistory,
+        'Test project details',
+        mockSession,
+        UserIntentEnum.PURE_DISCUSSION
+      );
+
+      expect(result.new_code_context_necessary).toBe(false);
+      expect(mockLLMProviderService.chat).toHaveBeenCalled();
+    });
+
+    it('should handle empty chat history gracefully', async () => {
+      const chatHistory: LLMMessage[] = [];
+
+      // Mock LLM response
+      mockLLMProviderService.chat.mockResolvedValue({
+        type: 'success',
+        payload: {
+          content: JSON.stringify({
+            new_code_context_necessary: false,
+            extraction_query: null,
+            reasoning: 'No current message available'
+          })
+        }
+      } as any);
+
+      const result = await (samuraiAgent as any).analyzeCodeExtractionNeeds(
+        chatHistory,
+        'Test project details',
+        mockSession,
+        UserIntentEnum.PURE_DISCUSSION
+      );
+
+      expect(result.new_code_context_necessary).toBe(false);
+      expect(mockLLMProviderService.chat).toHaveBeenCalled();
+    });
+  });
+
   describe('handlePureDiscussion', () => {
     it('should handle pure discussion successfully', async () => {
       const userMessage: ChatMessage = {
@@ -1019,7 +1291,7 @@ describe('SamuraiAgent', () => {
 
       // Should include formatted code contexts and conversation summary
       expect(systemPrompt).toContain('Project details');
-      expect(chatCall.messages).toHaveLength(mockChatHistory.length + 2); // system + history + user
+      expect(chatCall.messages).toHaveLength(mockChatHistory.length + 3); // system + system2 + history + user
     });
   });
 });
