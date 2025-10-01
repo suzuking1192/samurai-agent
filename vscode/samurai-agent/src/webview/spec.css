@@ -1,37 +1,536 @@
-/* Spec Tab Styles */
-.spec-container {
-    padding: 20px;
-    height: 100%;
-    overflow-y: auto;
+/* ==========================================
+   Spec Tab - Modern UI Styles
+   ========================================== */
+
+/* VS Code Theme Variables Integration */
+:root {
+    /* Base Colors */
+    --spec-bg-primary: var(--vscode-editor-background, #1e1e1e);
+    --spec-bg-secondary: var(--vscode-input-background, #3c3c3c);
+    --spec-bg-tertiary: var(--vscode-list-hoverBackground, #2a2d2e);
+    --spec-bg-card: var(--vscode-input-background, #3c3c3c);
+    --spec-bg-hover: var(--vscode-list-hoverBackground, #2a2d2e);
+    
+    /* Text Colors */
+    --spec-text-primary: var(--vscode-foreground, #cccccc);
+    --spec-text-secondary: var(--vscode-descriptionForeground, #999999);
+    --spec-text-muted: var(--vscode-disabledForeground, #6a6a6a);
+    
+    /* Border Colors */
+    --spec-border-primary: var(--vscode-panel-border, #454545);
+    --spec-border-secondary: var(--vscode-input-border, #555555);
+    --spec-border-focus: var(--vscode-focusBorder, #007acc);
+    --spec-border-accent: var(--vscode-button-background, #007acc);
+    
+    /* Button Colors */
+    --spec-btn-primary-bg: var(--vscode-button-background, #007acc);
+    --spec-btn-primary-fg: var(--vscode-button-foreground, #ffffff);
+    --spec-btn-primary-hover: var(--vscode-button-hoverBackground, #005a9e);
+    --spec-btn-secondary-bg: var(--vscode-button-secondaryBackground, #5f6a79);
+    --spec-btn-secondary-fg: var(--vscode-button-secondaryForeground, #ffffff);
+    --spec-btn-secondary-hover: var(--vscode-button-secondaryHoverBackground, #4a5362);
+    
+    /* Status Colors */
+    --spec-status-success: #4ade80;
+    --spec-status-success-bg: rgba(74, 222, 128, 0.15);
+    --spec-status-warning: #fbbf24;
+    --spec-status-warning-bg: rgba(251, 191, 36, 0.15);
+    --spec-status-error: #f87171;
+    --spec-status-error-bg: rgba(248, 113, 113, 0.15);
+    
+    /* Spacing */
+    --spec-spacing-xs: 4px;
+    --spec-spacing-sm: 8px;
+    --spec-spacing-md: 12px;
+    --spec-spacing-lg: 16px;
+    --spec-spacing-xl: 20px;
+    --spec-spacing-2xl: 24px;
+    
+    /* Border Radius */
+    --spec-radius-sm: 4px;
+    --spec-radius-md: 6px;
+    --spec-radius-lg: 8px;
+    
+    /* Shadows */
+    --spec-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.12);
+    --spec-shadow-md: 0 2px 6px rgba(0, 0, 0, 0.15);
+    --spec-shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.2);
+    --spec-shadow-focus: 0 0 0 2px rgba(0, 122, 204, 0.2);
+    
+    /* Transitions */
+    --spec-transition-fast: 0.15s ease;
+    --spec-transition-normal: 0.2s ease;
+    --spec-transition-slow: 0.3s ease;
 }
 
-/* Loading and Error States */
+/* ==========================================
+   Global Spec Tab Container
+   ========================================== */
+
+.spec-container {
+    padding: var(--spec-spacing-xl);
+    height: 100%;
+    overflow-y: auto;
+    background-color: var(--spec-bg-primary);
+    font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif);
+    font-size: var(--vscode-font-size, 14px);
+    line-height: 1.5;
+    color: var(--spec-text-primary);
+}
+
+/* ==========================================
+   Header Section
+   ========================================== */
+
+.spec-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--spec-spacing-xl);
+    padding-bottom: var(--spec-spacing-md);
+    border-bottom: 1px solid var(--spec-border-primary);
+}
+
+.spec-header h3 {
+    margin: 0;
+    color: var(--spec-text-primary);
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+}
+
+.spec-stats {
+    display: flex;
+    align-items: center;
+    gap: var(--spec-spacing-sm);
+}
+
+.spec-stats span {
+    color: var(--spec-text-secondary);
+    font-size: 14px;
+    font-weight: 500;
+    padding: var(--spec-spacing-xs) var(--spec-spacing-md);
+    background-color: var(--spec-bg-tertiary);
+    border-radius: var(--spec-radius-md);
+    border: 1px solid var(--spec-border-secondary);
+}
+
+/* ==========================================
+   Filter Tabs - Modern Button Design
+   ========================================== */
+
+.spec-filter-tabs {
+    display: flex;
+    gap: var(--spec-spacing-sm);
+    margin-bottom: var(--spec-spacing-lg);
+    padding: var(--spec-spacing-xs);
+    background-color: var(--spec-bg-tertiary);
+    border-radius: var(--spec-radius-lg);
+    border: 1px solid var(--spec-border-primary);
+    flex-direction: row;
+}
+
+.spec-filter-tab {
+    flex: 1;
+    padding: var(--spec-spacing-sm) var(--spec-spacing-md);
+    border: none;
+    background-color: transparent;
+    color: var(--spec-text-secondary);
+    border-radius: var(--spec-radius-md);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all var(--spec-transition-normal);
+    position: relative;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.spec-filter-tab::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--spec-bg-hover);
+    opacity: 0;
+    transition: opacity var(--spec-transition-fast);
+    border-radius: var(--spec-radius-md);
+}
+
+.spec-filter-tab:hover::before {
+    opacity: 0.5;
+}
+
+.spec-filter-tab:hover {
+    color: var(--spec-text-primary);
+    transform: translateY(-1px);
+}
+
+.spec-filter-tab.active {
+    background-color: var(--spec-btn-primary-bg);
+    color: var(--spec-btn-primary-fg);
+    box-shadow: var(--spec-shadow-md);
+    transform: translateY(-1px);
+}
+
+.spec-filter-tab.active::before {
+    display: none;
+}
+
+.spec-filter-tab:active {
+    transform: translateY(0);
+}
+
+/* ==========================================
+   Spec Cards - Enhanced Visual Separation
+   ========================================== */
+
+.spec-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spec-spacing-lg);
+}
+
+.spec-card {
+    background-color: var(--spec-bg-secondary);
+    border: 1px solid var(--spec-border-primary);
+    border-radius: var(--spec-radius-lg);
+    padding: var(--spec-spacing-lg);
+    box-shadow: var(--spec-shadow-sm);
+    transition: all var(--spec-transition-normal);
+    position: relative;
+    overflow: hidden;
+}
+
+.spec-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--spec-border-accent), var(--spec-btn-primary-bg));
+    opacity: 0;
+    transition: opacity var(--spec-transition-normal);
+}
+
+.spec-card:hover {
+    border-color: var(--spec-border-accent);
+    box-shadow: var(--spec-shadow-md);
+    transform: translateY(-2px);
+}
+
+.spec-card:hover::before {
+    opacity: 1;
+}
+
+.spec-card.expanded {
+    border-color: var(--spec-border-accent);
+    box-shadow: var(--spec-shadow-lg);
+}
+
+.spec-card.expanded::before {
+    opacity: 1;
+}
+
+/* Spec Card Header Content */
+.spec-header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--spec-spacing-md);
+}
+
+.spec-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--spec-text-primary);
+    margin: 0;
+    flex: 1;
+    letter-spacing: -0.01em;
+}
+
+.spec-status {
+    display: inline-flex;
+    align-items: center;
+    padding: var(--spec-spacing-xs) var(--spec-spacing-md);
+    border-radius: var(--spec-radius-md);
+    font-size: 12px;
+    font-weight: 600;
+    margin-left: var(--spec-spacing-md);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.spec-status.completed {
+    background-color: var(--spec-status-success-bg);
+    color: var(--spec-status-success);
+    border: 1px solid var(--spec-status-success);
+}
+
+.spec-status.pending {
+    background-color: var(--spec-status-warning-bg);
+    color: var(--spec-status-warning);
+    border: 1px solid var(--spec-status-warning);
+}
+
+/* ==========================================
+   Action Buttons - Modern Design
+   ========================================== */
+
+.spec-actions {
+    display: flex;
+    gap: var(--spec-spacing-sm);
+    flex-wrap: wrap;
+}
+
+.spec-btn {
+    padding: var(--spec-spacing-sm) var(--spec-spacing-lg);
+    border: 1px solid var(--spec-btn-primary-bg);
+    background-color: var(--spec-btn-primary-bg);
+    color: var(--spec-btn-primary-fg);
+    border-radius: var(--spec-radius-md);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    font-family: inherit;
+    transition: all var(--spec-transition-normal);
+    position: relative;
+    overflow: hidden;
+    text-transform: none;
+    letter-spacing: 0.01em;
+}
+
+.spec-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    transition: left var(--spec-transition-slow);
+}
+
+.spec-btn:hover {
+    background-color: var(--spec-btn-primary-hover);
+    border-color: var(--spec-btn-primary-hover);
+    transform: translateY(-1px);
+    box-shadow: var(--spec-shadow-md);
+}
+
+.spec-btn:hover::before {
+    left: 100%;
+}
+
+.spec-btn:active {
+    transform: translateY(0);
+    box-shadow: var(--spec-shadow-sm);
+}
+
+/* Secondary Button Variant */
+.spec-btn.secondary {
+    background-color: var(--spec-bg-tertiary);
+    color: var(--spec-text-primary);
+    border-color: var(--spec-border-secondary);
+}
+
+.spec-btn.secondary:hover {
+    background-color: var(--spec-btn-secondary-bg);
+    color: var(--spec-btn-secondary-fg);
+    border-color: var(--spec-btn-secondary-bg);
+}
+
+/* Success Button Variant */
+.spec-btn.success {
+    background-color: var(--spec-status-success);
+    border-color: var(--spec-status-success);
+    color: #ffffff;
+}
+
+.spec-btn.success:hover {
+    background-color: #22c55e;
+    border-color: #22c55e;
+    box-shadow: 0 4px 12px rgba(74, 222, 128, 0.3);
+}
+
+/* Code Review Button Variant */
+.spec-btn.code-review-btn {
+    background-color: var(--spec-btn-secondary-bg);
+    border-color: var(--spec-btn-secondary-bg);
+    color: var(--spec-btn-secondary-fg);
+}
+
+.spec-btn.code-review-btn:hover {
+    background-color: var(--spec-btn-secondary-hover);
+    border-color: var(--spec-btn-secondary-hover);
+}
+
+/* ==========================================
+   Spec Detail - Smooth Animations
+   ========================================== */
+
+.spec-detail {
+    margin-top: var(--spec-spacing-md);
+    padding-top: var(--spec-spacing-md);
+    border-top: 1px solid var(--spec-border-primary);
+    max-height: 0;
+    overflow: hidden;
+    opacity: 0;
+    transition: all var(--spec-transition-slow);
+}
+
+.spec-detail.expanded {
+    max-height: 1000px;
+    opacity: 1;
+}
+
+/* Spec Textarea - Integrated Design */
+.spec-spec {
+    width: 100%;
+    min-height: 120px;
+    padding: var(--spec-spacing-md);
+    border: 1px solid var(--spec-border-secondary);
+    border-radius: var(--spec-radius-md);
+    font-family: var(--vscode-editor-font-family, 'Consolas', 'Monaco', 'Courier New', monospace);
+    font-size: 13px;
+    line-height: 1.5;
+    resize: vertical;
+    background-color: var(--spec-bg-tertiary);
+    color: var(--spec-text-primary);
+    transition: all var(--spec-transition-normal);
+    box-sizing: border-box;
+}
+
+.spec-spec:focus {
+    outline: none;
+    border-color: var(--spec-border-focus);
+    box-shadow: var(--spec-shadow-focus);
+    background-color: var(--spec-bg-secondary);
+}
+
+.spec-spec::placeholder {
+    color: var(--spec-text-muted);
+    font-style: italic;
+}
+
+/* Custom scrollbar for textarea */
+.spec-spec::-webkit-scrollbar {
+    width: 8px;
+}
+
+.spec-spec::-webkit-scrollbar-track {
+    background: var(--spec-bg-primary);
+    border-radius: var(--spec-radius-sm);
+}
+
+.spec-spec::-webkit-scrollbar-thumb {
+    background: var(--spec-border-secondary);
+    border-radius: var(--spec-radius-sm);
+}
+
+.spec-spec::-webkit-scrollbar-thumb:hover {
+    background: var(--spec-text-secondary);
+}
+
+/* Spec Detail Actions */
+.spec-detail-actions {
+    display: flex;
+    gap: var(--spec-spacing-sm);
+    margin-top: var(--spec-spacing-md);
+    flex-wrap: wrap;
+}
+
+/* ==========================================
+   Subspec Cards - Hierarchical Design
+   ========================================== */
+
+.subspec-container {
+    margin-top: var(--spec-spacing-lg);
+    padding-left: var(--spec-spacing-2xl);
+    border-left: 2px solid var(--spec-border-primary);
+    position: relative;
+}
+
+.subspec-container::before {
+    content: '';
+    position: absolute;
+    left: -1px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: linear-gradient(180deg, var(--spec-border-accent), var(--spec-border-primary));
+}
+
+.subspec-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spec-spacing-md);
+}
+
+.subspec-card {
+    background-color: var(--spec-bg-tertiary);
+    border: 1px solid var(--spec-border-primary);
+    border-radius: var(--spec-radius-md);
+    padding: var(--spec-spacing-md);
+    margin-left: 0;
+    box-shadow: var(--spec-shadow-sm);
+    transition: all var(--spec-transition-normal);
+}
+
+.subspec-card:hover {
+    border-color: var(--spec-border-accent);
+    box-shadow: var(--spec-shadow-md);
+    transform: translateX(4px);
+}
+
+.subspec-card .spec-title {
+    font-size: 15px;
+    font-weight: 500;
+}
+
+.subspec-card .spec-actions {
+    margin-top: var(--spec-spacing-sm);
+}
+
+.subspec-card .spec-btn {
+    font-size: 12px;
+    padding: var(--spec-spacing-xs) var(--spec-spacing-md);
+}
+
+/* ==========================================
+   Loading States - Modern Design
+   ========================================== */
+
 .spec-loading {
     display: flex;
     justify-content: center;
     align-items: center;
-    padding: 40px;
+    padding: var(--spec-spacing-2xl);
 }
 
 .loading-spinner {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 12px;
+    gap: var(--spec-spacing-md);
 }
 
 .spinner {
     width: 32px;
     height: 32px;
-    border: 3px solid #e0e0e0;
-    border-top: 3px solid #007acc;
+    border: 3px solid var(--spec-border-primary);
+    border-top: 3px solid var(--spec-border-accent);
     border-radius: 50%;
     animation: spin 1s linear infinite;
 }
 
 .loading-text {
-    color: #666;
+    color: var(--spec-text-secondary);
     font-size: 14px;
+    font-weight: 500;
 }
 
 @keyframes spin {
@@ -39,328 +538,132 @@
     100% { transform: rotate(360deg); }
 }
 
+/* Global Loading Overlay */
 .global-loading-overlay {
     position: absolute;
     top: 0;
     left: 0;
     right: 0;
     bottom: 0;
-    background-color: rgba(255, 255, 255, 0.9);
+    background-color: rgba(0, 0, 0, 0.8);
     display: flex;
     justify-content: center;
     align-items: center;
     z-index: 1000;
+    backdrop-filter: blur(2px);
 }
+
+/* ==========================================
+   Error Messages - Modern Styling
+   ========================================== */
 
 .spec-error-message {
-    color: #dc3545;
-    background-color: #f8d7da;
-    border: 1px solid #f5c6cb;
-    padding: 10px;
-    margin: 10px 0;
-    border-radius: 4px;
-    font-size: 14px;
-}
-
-.loading-indicator {
-    color: #007acc;
-    font-size: 14px;
-    font-style: italic;
-}
-
-.spec-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20px;
-    padding-bottom: 10px;
-    border-bottom: 1px solid #e0e0e0;
-}
-
-.spec-filter-tabs {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 16px;
-}
-
-.spec-filter-tab {
-    padding: 8px 16px;
-    border: 1px solid #007acc;
-    background-color: transparent;
-    color: #007acc;
-    border-radius: 4px;
-    cursor: pointer;
+    color: var(--spec-status-error);
+    background-color: var(--spec-status-error-bg);
+    border: 1px solid var(--spec-status-error);
+    padding: var(--spec-spacing-md);
+    margin: var(--spec-spacing-md) 0;
+    border-radius: var(--spec-radius-md);
     font-size: 14px;
     font-weight: 500;
-    transition: all 0.2s ease;
+    box-shadow: var(--spec-shadow-sm);
+    animation: slideIn var(--spec-transition-normal);
 }
 
-.spec-filter-tab:hover {
-    background-color: #007acc;
-    color: white;
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
-.spec-filter-tab.active {
-    background-color: #007acc;
-    color: white;
-}
-
-.spec-header h3 {
-    margin: 0;
-    color: #ffffff;
-    font-size: 18px;
-    font-weight: 600;
-}
-
-.spec-list {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-}
-
-.spec-card {
-    background: #fff;
-    border: 1px solid #e0e0e0;
-    border-radius: 8px;
-    padding: 16px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    transition: all 0.2s ease;
-}
-
-.spec-card:hover {
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
-    border-color: #007acc;
-}
-
-.spec-card.expanded {
-    border-color: #007acc;
-    box-shadow: 0 4px 12px rgba(0, 122, 204, 0.2);
-}
-
-.spec-header-content {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 12px;
-}
-
-.spec-title {
-    font-size: 16px;
-    font-weight: 600;
-    color: #333;
-    margin: 0;
-    flex: 1;
-}
-
-.spec-status {
-    display: inline-block;
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 12px;
-    font-weight: 500;
-    margin-left: 8px;
-}
-
-.spec-status.completed {
-    background-color: #d4edda;
-    color: #155724;
-}
-
-.spec-status.pending {
-    background-color: #fff3cd;
-    color: #856404;
-}
-
-.spec-actions {
-    display: flex;
-    gap: 8px;
-}
-
-.spec-btn {
-    padding: 6px 12px;
-    border: 1px solid #007acc;
-    background-color: #007acc;
-    color: white;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 12px;
-    font-weight: 500;
-    transition: all 0.2s ease;
-}
-
-.spec-btn:hover {
-    background-color: #005a9e;
-    border-color: #005a9e;
-}
-
-.spec-btn.secondary {
-    background-color: transparent;
-    color: #007acc;
-}
-
-.spec-btn.secondary:hover {
-    background-color: #007acc;
-    color: white;
-}
-
-.spec-btn.success {
-    background-color: #28a745;
-    border-color: #28a745;
-}
-
-.spec-btn.success:hover {
-    background-color: #218838;
-    border-color: #1e7e34;
-}
-
-.spec-detail {
-    margin-top: 12px;
-    padding-top: 12px;
-    border-top: 1px solid #f0f0f0;
-    display: none;
-}
-
-.spec-detail.expanded {
-    display: block;
-}
-
-.spec-spec {
-    width: 100%;
-    min-height: 120px;
-    padding: 12px;
-    border: 1px solid #e0e0e0;
-    border-radius: 4px;
-    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-    font-size: 13px;
-    line-height: 1.4;
-    resize: vertical;
-    background-color: #f8f9fa;
-}
-
-.spec-spec:focus {
-    outline: none;
-    border-color: #007acc;
-    box-shadow: 0 0 0 2px rgba(0, 122, 204, 0.2);
-}
-
-.spec-detail-actions {
-    display: flex;
-    gap: 8px;
-    margin-top: 12px;
-}
-
-.subspec-container {
-    margin-top: 16px;
-    padding-left: 24px;
-    border-left: 2px solid #e0e0e0;
-}
-
-.subspec-list {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.subspec-card {
-    background: #f8f9fa;
-    border: 1px solid #e0e0e0;
-    border-radius: 6px;
-    padding: 12px;
-    margin-left: 0;
-}
-
-.subspec-card .spec-title {
-    font-size: 14px;
-    font-weight: 500;
-}
-
-.subspec-card .spec-actions {
-    margin-top: 8px;
-}
-
-.subspec-card .spec-btn {
-    font-size: 11px;
-    padding: 4px 8px;
-}
-
-/* Loading and empty states */
-.spec-loading {
-    text-align: center;
-    padding: 40px;
-    color: #666;
-}
+/* ==========================================
+   Empty States
+   ========================================== */
 
 .spec-empty {
     text-align: center;
-    padding: 40px;
-    color: #999;
+    padding: var(--spec-spacing-2xl);
+    color: var(--spec-text-muted);
 }
 
 .spec-empty h4 {
-    margin: 0 0 8px 0;
-    color: #666;
+    margin: 0 0 var(--spec-spacing-md) 0;
+    color: var(--spec-text-secondary);
+    font-size: 16px;
+    font-weight: 500;
 }
 
-/* Code Review Button Styling */
-.spec-btn.code-review-btn {
-    background-color: var(--vscode-button-secondaryBackground, #5f6a79);
-    border-color: var(--vscode-button-secondaryBackground, #5f6a79);
-    color: var(--vscode-button-secondaryForeground, #ffffff);
+.spec-empty p {
+    margin: 0;
+    font-size: 14px;
 }
 
-.spec-btn.code-review-btn:hover {
-    background-color: var(--vscode-button-secondaryHoverBackground, #4a5362);
-    border-color: var(--vscode-button-secondaryHoverBackground, #4a5362);
-}
+/* ==========================================
+   Code Review Modal - Modern Design
+   ========================================== */
 
-.spec-btn.code-review-confirm-btn {
-    background-color: var(--vscode-button-background, #007acc);
-    border-color: var(--vscode-button-background, #007acc);
-    color: var(--vscode-button-foreground, #ffffff);
-}
-
-.spec-btn.code-review-confirm-btn:hover {
-    background-color: var(--vscode-button-hoverBackground, #005a9e);
-    border-color: var(--vscode-button-hoverBackground, #005a9e);
-}
-
-/* Modal Styling */
 .modal-overlay {
     position: fixed;
     top: 0;
     left: 0;
     right: 0;
     bottom: 0;
-    background-color: rgba(0, 0, 0, 0.5);
+    background-color: rgba(0, 0, 0, 0.6);
     display: flex;
     justify-content: center;
     align-items: center;
     z-index: 9999;
+    backdrop-filter: blur(4px);
+    animation: fadeIn var(--spec-transition-normal);
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
 }
 
 .modal-content {
-    background-color: var(--vscode-editor-background, #1e1e1e);
-    border: 1px solid var(--vscode-editorGroup-border, #444);
-    border-radius: 6px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    background-color: var(--spec-bg-card);
+    border: 1px solid var(--spec-border-primary);
+    border-radius: var(--spec-radius-lg);
+    box-shadow: var(--spec-shadow-lg);
     width: 90%;
     max-width: 600px;
     max-height: 80vh;
     display: flex;
     flex-direction: column;
+    animation: slideUp var(--spec-transition-normal);
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px) scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
 }
 
 .modal-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 16px 20px;
-    border-bottom: 1px solid var(--vscode-editorGroup-border, #444);
+    padding: var(--spec-spacing-lg) var(--spec-spacing-xl);
+    border-bottom: 1px solid var(--spec-border-primary);
+    background-color: var(--spec-bg-secondary);
+    border-radius: var(--spec-radius-lg) var(--spec-radius-lg) 0 0;
 }
 
 .modal-header h3 {
     margin: 0;
-    color: var(--vscode-foreground, #cccccc);
+    color: var(--spec-text-primary);
     font-size: 18px;
     font-weight: 600;
 }
@@ -368,81 +671,111 @@
 .modal-close {
     background: transparent;
     border: none;
-    color: var(--vscode-foreground, #cccccc);
+    color: var(--spec-text-secondary);
     font-size: 24px;
     cursor: pointer;
-    padding: 0;
-    width: 28px;
-    height: 28px;
+    padding: var(--spec-spacing-xs);
+    width: 32px;
+    height: 32px;
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 4px;
-    transition: background-color 0.2s ease;
+    border-radius: var(--spec-radius-sm);
+    transition: all var(--spec-transition-fast);
 }
 
 .modal-close:hover {
-    background-color: var(--vscode-toolbar-hoverBackground, #2a2d2e);
+    background-color: var(--spec-bg-hover);
+    color: var(--spec-text-primary);
 }
 
 .modal-body {
-    padding: 20px;
+    padding: var(--spec-spacing-xl);
     overflow-y: auto;
     flex: 1;
 }
 
 .modal-body p {
-    color: var(--vscode-descriptionForeground, #999);
-    margin: 0 0 12px 0;
-    line-height: 1.5;
+    color: var(--spec-text-secondary);
+    margin: 0 0 var(--spec-spacing-md) 0;
+    line-height: 1.6;
 }
 
 .spec-review-list {
     list-style: none;
     padding: 0;
-    margin: 12px 0;
-    background-color: var(--vscode-input-background, #3c3c3c);
-    border: 1px solid var(--vscode-input-border, #555);
-    border-radius: 4px;
+    margin: var(--spec-spacing-md) 0;
+    background-color: var(--spec-bg-tertiary);
+    border: 1px solid var(--spec-border-secondary);
+    border-radius: var(--spec-radius-md);
     max-height: 300px;
     overflow-y: auto;
 }
 
 .spec-review-list li {
-    padding: 8px 12px;
-    border-bottom: 1px solid var(--vscode-editorGroup-border, #444);
-    color: var(--vscode-foreground, #cccccc);
+    padding: var(--spec-spacing-md);
+    border-bottom: 1px solid var(--spec-border-primary);
+    color: var(--spec-text-primary);
+    font-size: 14px;
+    transition: background-color var(--spec-transition-fast);
 }
 
 .spec-review-list li:last-child {
     border-bottom: none;
 }
 
+.spec-review-list li:hover {
+    background-color: var(--spec-bg-hover);
+}
+
 .modal-note {
     font-size: 13px;
-    color: var(--vscode-descriptionForeground, #999);
+    color: var(--spec-text-muted);
     font-style: italic;
-    margin-top: 12px;
+    margin-top: var(--spec-spacing-md);
 }
 
 .modal-footer {
     display: flex;
     justify-content: flex-end;
-    gap: 8px;
-    padding: 16px 20px;
-    border-top: 1px solid var(--vscode-editorGroup-border, #444);
+    gap: var(--spec-spacing-sm);
+    padding: var(--spec-spacing-lg) var(--spec-spacing-xl);
+    border-top: 1px solid var(--spec-border-primary);
+    background-color: var(--spec-bg-secondary);
+    border-radius: 0 0 var(--spec-radius-lg) var(--spec-radius-lg);
 }
 
-/* Responsive design */
+/* Modal Button Variants */
+.spec-btn.code-review-confirm-btn {
+    background-color: var(--spec-btn-primary-bg);
+    border-color: var(--spec-btn-primary-bg);
+    color: var(--spec-btn-primary-fg);
+}
+
+.spec-btn.code-review-confirm-btn:hover {
+    background-color: var(--spec-btn-primary-hover);
+    border-color: var(--spec-btn-primary-hover);
+}
+
+/* ==========================================
+   Responsive Design
+   ========================================== */
+
 @media (max-width: 768px) {
     .spec-container {
-        padding: 12px;
+        padding: var(--spec-spacing-md);
+    }
+    
+    .spec-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--spec-spacing-md);
     }
     
     .spec-header-content {
         flex-direction: column;
         align-items: flex-start;
-        gap: 8px;
+        gap: var(--spec-spacing-sm);
     }
     
     .spec-actions {
@@ -450,12 +783,106 @@
         justify-content: flex-start;
     }
     
+    .spec-filter-tabs {
+        flex-direction: row;
+        gap: var(--spec-spacing-xs);
+    }
+    
+    .spec-filter-tab {
+        text-align: center;
+        padding: var(--spec-spacing-xs) var(--spec-spacing-sm);
+        font-size: 12px;
+    }
+    
     .subspec-container {
-        padding-left: 16px;
+        padding-left: var(--spec-spacing-lg);
     }
     
     .modal-content {
         width: 95%;
         max-height: 90vh;
+    }
+    
+    .modal-header,
+    .modal-body,
+    .modal-footer {
+        padding: var(--spec-spacing-md);
+    }
+}
+
+@media (max-width: 480px) {
+    .spec-container {
+        padding: var(--spec-spacing-sm);
+    }
+    
+    .spec-btn {
+        font-size: 12px;
+        padding: var(--spec-spacing-xs) var(--spec-spacing-md);
+    }
+    
+    .spec-detail-actions {
+        flex-direction: column;
+    }
+    
+    .spec-detail-actions .spec-btn {
+        width: 100%;
+    }
+}
+
+/* ==========================================
+   Loading Indicators
+   ========================================== */
+
+.loading-indicator {
+    color: var(--spec-border-accent);
+    font-size: 14px;
+    font-style: italic;
+    display: flex;
+    align-items: center;
+    gap: var(--spec-spacing-sm);
+}
+
+.loading-indicator::before {
+    content: '';
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--spec-border-primary);
+    border-top: 2px solid var(--spec-border-accent);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+/* ==========================================
+   Focus Management
+   ========================================== */
+
+.spec-btn:focus,
+.spec-filter-tab:focus,
+.spec-spec:focus,
+.modal-close:focus {
+    outline: 2px solid var(--spec-border-focus);
+    outline-offset: 2px;
+}
+
+/* ==========================================
+   Print Styles
+   ========================================== */
+
+@media print {
+    .spec-container {
+        background: white;
+        color: black;
+    }
+    
+    .spec-btn,
+    .spec-filter-tab,
+    .modal-overlay {
+        display: none;
+    }
+    
+    .spec-card {
+        break-inside: avoid;
+        box-shadow: none;
+        border: 1px solid #ccc;
     }
 }

@@ -519,12 +519,6 @@ function showSpecError(message) {
         errorDiv = document.createElement('div');
         errorDiv.id = 'spec-error-message';
         errorDiv.className = 'spec-error-message';
-        errorDiv.style.color = '#dc3545';
-        errorDiv.style.backgroundColor = '#f8d7da';
-        errorDiv.style.border = '1px solid #f5c6cb';
-        errorDiv.style.padding = '10px';
-        errorDiv.style.margin = '10px 0';
-        errorDiv.style.borderRadius = '4px';
         errorDiv.style.display = 'none';
         document.querySelector('.spec-container')?.appendChild(errorDiv);
     }
