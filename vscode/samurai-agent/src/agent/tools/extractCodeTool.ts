@@ -18,8 +18,7 @@ import { parseAndValidateLlmJson } from "../../common/utils/llmResponseParser";
 
 const DEFAULT_MAX_ITERATIONS = 2;
 const DEFAULT_MAX_FILES = 2000;
-const DEFAULT_MAX_RESULTS = 25;
-const DEFAULT_CONTEXT_TOKEN_LIMIT = 5000; // Per-file limit (deprecated)
+const DEFAULT_MAX_RESULTS = 50;
 const GLOBAL_CONTEXT_TOKEN_LIMIT = 200000; // Global limit for all files combined
 
 type NormalizedExtractCodeParameters = ExtractCodeParameters & {
@@ -638,13 +637,6 @@ export class ExtractCodeTool {
     }
   }
 
-  private truncateContent(content: string): string {
-    if (content.length <= DEFAULT_CONTEXT_TOKEN_LIMIT) {
-      return content;
-    }
-
-    return `${content.slice(0, DEFAULT_CONTEXT_TOKEN_LIMIT)}\n... (truncated)`;
-  }
 
   private async readFileSafe(filePath: string): Promise<string | undefined> {
     try {

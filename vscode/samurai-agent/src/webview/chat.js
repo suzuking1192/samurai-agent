@@ -790,6 +790,35 @@
                         };
                         displayMessage(userMsg);
                         
+                        // Save user message to persistence
+                        if (chatState.currentSessionId && chatState.projectSettings?.projectId) {
+                            try {
+                                await globalScope.WebviewApi.persistence.saveChatMessage({
+                                    sessionId: chatState.currentSessionId,
+                                    projectId: chatState.projectSettings.projectId,
+                                    type: userMsg.type,
+                                    content: userMsg.content,
+                                    role: userMsg.role,
+                                    metadata: userMsg.metadata
+                                });
+                                console.log('Chat: User message persisted successfully');
+                            } catch (saveError) {
+                                console.warn('Chat: Failed to save message to persistence:', saveError);
+                            }
+                        }
+                        
+                        // Add "Thinking..." indicator
+                        const chatMessagesElement = safeGetDocumentElement('chatMessages');
+                        const pendingIndicator = document.createElement('div');
+                        pendingIndicator.className = 'assistant-message pending';
+                        pendingIndicator.id = `pending-${Date.now()}`;
+                        pendingIndicator.textContent = 'Thinking...';
+                        
+                        if (chatMessagesElement) {
+                            chatMessagesElement.appendChild(pendingIndicator);
+                            chatMessagesElement.scrollTop = chatMessagesElement.scrollHeight;
+                        }
+                        
                         if (globalScope.WebviewApi?.agent?.execute) {
                             try {
                                 // Call agent.execute - backend will persist and broadcast the response
@@ -798,11 +827,18 @@
                                     session: chatState.currentSession,
                                     message: question.messageToSend
                                 });
+                                // Remove pending indicator on success (it will be replaced by actual response)
+                                if (pendingIndicator && pendingIndicator.parentNode) {
+                                    pendingIndicator.remove();
+                                }
                                 return;
                             } catch (error) {
                                 console.error('Chat: Failed to execute agent command', error);
-                                // sendMessage will display another user message, so don't call it
-                                // Instead, display the error directly
+                                // Remove pending indicator on error
+                                if (pendingIndicator && pendingIndicator.parentNode) {
+                                    pendingIndicator.remove();
+                                }
+                                // Display the error directly
                                 displayMessage({
                                     id: `error-${Date.now()}`,
                                     sessionId: chatState.currentSessionId,

@@ -530,7 +530,7 @@ export class CodeParserService {
 
     public async scanCodebase(
         rootPath?: string,
-        maxFiles = 1000
+        maxFiles = 10000
     ): Promise<Map<string, FileInfo>> {
         if (maxFiles <= 0) {
             return new Map();

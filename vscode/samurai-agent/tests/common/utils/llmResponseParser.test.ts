@@ -92,6 +92,156 @@ Second block:
       const result = extractJsonFromMarkdown(input);
       expect(result).toEqual({ score: 1 });
     });
+
+    // NEW TESTS: Handle nested code blocks within JSON content
+    it('should handle JSON containing nested code blocks with backticks', () => {
+      const input = `\`\`\`json
+{
+  "relevance_score": 10,
+  "context": "The code contains: \`\`\`typescript\\nfunction test() {}\\n\`\`\`",
+  "file_path": "test.ts",
+  "reasoning": "Found relevant code"
+}
+\`\`\``;
+      const result = extractJsonFromMarkdown(input);
+      expect(result).toBeTruthy();
+      expect(result?.relevance_score).toBe(10);
+      expect(result?.context).toContain('typescript');
+    });
+
+    it('should handle JSON with multiple nested code blocks', () => {
+      const input = `\`\`\`json
+{
+  "context": "Example 1: \`\`\`js\\nconst x = 1;\\n\`\`\` and Example 2: \`\`\`ts\\nconst y = 2;\\n\`\`\`",
+  "score": 5
+}
+\`\`\``;
+      const result = extractJsonFromMarkdown(input);
+      expect(result).toBeTruthy();
+      expect(result?.score).toBe(5);
+      expect(result?.context).toContain('Example 1');
+      expect(result?.context).toContain('Example 2');
+    });
+
+    it('should handle JSON with brackets in code examples', () => {
+      const input = `\`\`\`json
+{
+  "context": "Code with brackets: { function() { return {}; } }",
+  "relevance_score": 8
+}
+\`\`\``;
+      const result = extractJsonFromMarkdown(input);
+      expect(result).toBeTruthy();
+      expect(result?.relevance_score).toBe(8);
+      expect(result?.context).toContain('brackets');
+    });
+
+    it('should handle deeply nested JSON structures with code', () => {
+      const input = `\`\`\`json
+{
+  "level1": {
+    "level2": {
+      "level3": {
+        "value": "deep",
+        "code": "\`\`\`python\\ndef test():\\n    pass\\n\`\`\`"
+      }
+    }
+  }
+}
+\`\`\``;
+      const result = extractJsonFromMarkdown(input);
+      expect(result).toBeTruthy();
+      expect(result?.level1?.level2?.level3?.value).toBe('deep');
+    });
+
+    it('should prioritize balanced brace extraction for reliability', () => {
+      // This tests that balanced brace extraction works even when markdown parsing might fail
+      const input = `Some text before
+{
+  "data": "value with \`\`\` in it",
+  "nested": { "key": "value" }
+}
+\`\`\` (stray closing backticks)`;
+      const result = extractJsonFromMarkdown(input);
+      expect(result).toBeTruthy();
+      expect(result?.data).toContain('value');
+    });
+
+    it('should handle very long JSON responses', () => {
+      const longContext = 'a'.repeat(10000);
+      const input = `\`\`\`json
+{
+  "context": "${longContext}",
+  "score": 1
+}
+\`\`\``;
+      const result = extractJsonFromMarkdown(input);
+      expect(result).toBeTruthy();
+      expect(result?.context.length).toBe(10000);
+    });
+
+    // ARRAY EXTRACTION TESTS
+    it('should extract JSON arrays', () => {
+      const input = '[{"id": 1}, {"id": 2}]';
+      const result = extractJsonFromMarkdown(input);
+      expect(result).toBeTruthy();
+      expect(Array.isArray(result)).toBe(true);
+      expect(result?.length).toBe(2);
+    });
+
+    it('should extract JSON arrays from markdown code blocks', () => {
+      const input = `\`\`\`json
+[
+  {
+    "title": "First Item",
+    "description": "Test 1"
+  },
+  {
+    "title": "Second Item",
+    "description": "Test 2"
+  }
+]
+\`\`\``;
+      const result = extractJsonFromMarkdown(input);
+      expect(result).toBeTruthy();
+      expect(Array.isArray(result)).toBe(true);
+      expect(result?.length).toBe(2);
+      expect(result?.[0].title).toBe('First Item');
+    });
+
+    it('should handle arrays with nested code blocks', () => {
+      const input = `\`\`\`json
+[
+  {
+    "title": "Spec with code",
+    "description": "Contains: \`\`\`typescript\\nfunction test() {}\\n\`\`\`"
+  }
+]
+\`\`\``;
+      const result = extractJsonFromMarkdown(input);
+      expect(result).toBeTruthy();
+      expect(Array.isArray(result)).toBe(true);
+      expect(result?.[0].description).toContain('typescript');
+    });
+
+    it('should prioritize array over object when array comes first', () => {
+      const input = `Some text
+[{"type": "array"}]
+{"type": "object"}`;
+      const result = extractJsonFromMarkdown(input);
+      expect(result).toBeTruthy();
+      expect(Array.isArray(result)).toBe(true);
+      expect(result?.[0].type).toBe('array');
+    });
+
+    it('should handle nested arrays', () => {
+      const input = '[["nested", "array"], ["another", "one"]]';
+      const result = extractJsonFromMarkdown(input);
+      expect(result).toBeTruthy();
+      expect(Array.isArray(result)).toBe(true);
+      expect(result?.length).toBe(2);
+      expect(Array.isArray(result?.[0])).toBe(true);
+    });
   });
 
   describe('safeExtractJson', () => {

@@ -3,14 +3,23 @@
  * 
  * Provides robust parsing of JSON content from LLM responses that may be
  * wrapped in markdown code blocks or contain malformed JSON.
+ * 
+ * Key features:
+ * - Handles both JSON objects {...} and arrays [...]
+ * - Handles nested code blocks within JSON content (e.g., code examples in strings)
+ * - Uses balanced brace/bracket counting for reliable extraction
+ * - Multiple fallback strategies for various LLM output formats
+ * - Handles common JSON formatting issues (trailing commas, unquoted keys, etc.)
  */
 
 /**
  * Extracts and parses JSON content from LLM text responses.
  * Handles common LLM output formats including markdown code blocks.
+ * Uses balanced extraction for both objects and arrays to avoid issues
+ * with nested code blocks containing backticks or brackets.
  * 
  * @param text - The raw LLM response content
- * @returns Parsed JSON object or null if parsing fails
+ * @returns Parsed JSON object or array, or null if parsing fails
  * @throws Error if no valid JSON can be extracted after all attempts
  */
 export function extractJsonFromMarkdown(text: string): Record<string, any> | null {
@@ -23,7 +32,35 @@ export function extractJsonFromMarkdown(text: string): Record<string, any> | nul
         return null;
     }
 
-    // Strategy 1: Try to find JSON within markdown code blocks (greedy to get full content)
+    // Strategy 1: Try to extract balanced JSON first (most reliable for code-containing JSON)
+    // Check for both objects {...} and arrays [{...}]
+    const firstBrace = trimmedText.indexOf('{');
+    const firstBracket = trimmedText.indexOf('[');
+    
+    // Determine which comes first (or if only one exists)
+    let startChar = -1;
+    if (firstBrace !== -1 && firstBracket !== -1) {
+        startChar = Math.min(firstBrace, firstBracket);
+    } else if (firstBrace !== -1) {
+        startChar = firstBrace;
+    } else if (firstBracket !== -1) {
+        startChar = firstBracket;
+    }
+    
+    if (startChar !== -1) {
+        const isArray = trimmedText[startChar] === '[';
+        const extracted = isArray 
+            ? extractBalancedArray(trimmedText, startChar)
+            : extractBalancedJson(trimmedText, startChar);
+        if (extracted) {
+            const parsed = attemptJsonParse(extracted);
+            if (parsed) {
+                return parsed;
+            }
+        }
+    }
+
+    // Strategy 2: Try to find JSON within markdown code blocks
     const jsonBlockMatch = trimmedText.match(/```(?:json)?\s*\n?([\s\S]*?)```/);
     if (jsonBlockMatch) {
         const jsonContent = jsonBlockMatch[1].trim();
@@ -32,18 +69,6 @@ export function extractJsonFromMarkdown(text: string): Record<string, any> | nul
             return parsed;
         }
         console.warn('Found JSON code block but failed to parse content');
-    }
-
-    // Strategy 2: Try to extract balanced JSON object by counting braces
-    const firstBrace = trimmedText.indexOf('{');
-    if (firstBrace !== -1) {
-        const extracted = extractBalancedJson(trimmedText, firstBrace);
-        if (extracted) {
-            const parsed = attemptJsonParse(extracted);
-            if (parsed) {
-                return parsed;
-            }
-        }
     }
 
     // Strategy 3: Try to find JSON-like content between curly braces (original approach)
@@ -100,6 +125,50 @@ function extractBalancedJson(text: string, startIndex: number): string | null {
     }
     
     // No balanced JSON found
+    return null;
+}
+
+/**
+ * Extracts a balanced JSON array by counting brackets
+ * Handles nested arrays and ensures complete JSON
+ */
+function extractBalancedArray(text: string, startIndex: number): string | null {
+    let depth = 0;
+    let inString = false;
+    let escapeNext = false;
+    
+    for (let i = startIndex; i < text.length; i++) {
+        const char = text[i];
+        
+        if (escapeNext) {
+            escapeNext = false;
+            continue;
+        }
+        
+        if (char === '\\') {
+            escapeNext = true;
+            continue;
+        }
+        
+        if (char === '"' && !escapeNext) {
+            inString = !inString;
+            continue;
+        }
+        
+        if (!inString) {
+            if (char === '[') {
+                depth++;
+            } else if (char === ']') {
+                depth--;
+                if (depth === 0) {
+                    // Found complete balanced JSON array
+                    return text.substring(startIndex, i + 1);
+                }
+            }
+        }
+    }
+    
+    // No balanced JSON array found
     return null;
 }
 
