@@ -141,18 +141,59 @@
         console.log('[COST DEBUG] updateApiCostDisplay called with cost:', {
             cost: newCost,
             costType: typeof newCost,
-            currentMonthlyTotal: monthlyTotalCost
+            currentMonthlyTotal: monthlyTotalCost,
+            timestamp: new Date().toISOString()
         });
         
         // Query the backend for current monthly cost
         try {
-            if (globalScope.WebviewApi?.cost?.getStatistics) {
+            // Try to get monthly cost from backend API first (persistent across F5 resets)
+            if (globalScope.WebviewApi?.postCommand) {
+                try {
+                    const backendStats = await globalScope.WebviewApi.postCommand('samurai-agent.getBackendMonthlyCost');
+                    console.log('[COST DEBUG] Got backend monthly cost:', backendStats);
+                    
+                    if (backendStats && typeof backendStats.total_cost === 'number') {
+                        const previousCost = monthlyTotalCost;
+                        monthlyTotalCost = backendStats.total_cost;
+                        console.log('[COST DEBUG] Updated monthlyTotalCost from backend:', {
+                            previous: previousCost,
+                            current: monthlyTotalCost,
+                            difference: monthlyTotalCost - previousCost,
+                            backendTotalCost: backendStats.total_cost,
+                            backendCallCount: backendStats.call_count
+                        });
+                    }
+                } catch (backendError) {
+                    console.warn('[COST DEBUG] Backend monthly cost not available, falling back to extension storage:', backendError);
+                }
+            }
+            
+            // Fallback to VS Code extension storage if backend is not available
+            if (monthlyTotalCost === 0 && globalScope.WebviewApi?.cost?.getStatistics) {
                 const stats = await globalScope.WebviewApi.cost.getStatistics();
-                console.log('[COST DEBUG] Got cost statistics from backend:', stats);
+                console.log('[COST DEBUG] Got cost statistics from extension storage:', {
+                    stats,
+                    totalRecords: stats?.totalRecords,
+                    totalCost: stats?.totalCost,
+                    currentMonthCost: stats?.currentMonthCost,
+                    currentSessionCost: stats?.currentSessionCost,
+                    oldestRecord: stats?.oldestRecord,
+                    newestRecord: stats?.newestRecord
+                });
                 
                 if (stats && typeof stats.currentMonthCost === 'number') {
+                    const previousCost = monthlyTotalCost;
                     monthlyTotalCost = stats.currentMonthCost;
-                    console.log('[COST DEBUG] Updated monthlyTotalCost to:', monthlyTotalCost);
+                    console.log('[COST DEBUG] Updated monthlyTotalCost from extension storage:', {
+                        previous: previousCost,
+                        current: monthlyTotalCost,
+                        difference: monthlyTotalCost - previousCost,
+                        currentMonthCost: stats.currentMonthCost,
+                        totalCost: stats.totalCost
+                    });
+                } else {
+                    console.warn('[COST DEBUG] No valid currentMonthCost in extension stats:', stats);
                 }
             }
         } catch (error) {
@@ -169,7 +210,14 @@
             const formattedCost = monthlyTotalCost < 0.01 
                 ? `$${monthlyTotalCost.toFixed(4)}` 
                 : `$${monthlyTotalCost.toFixed(2)}`;
-            costDisplay.textContent = `API Cost: ${formattedCost} this month`;
+            
+            // Check if we're in development mode (cost is 0 but we expect some cost)
+            const isDevelopmentMode = monthlyTotalCost === 0 && newCost === 0;
+            const displayText = isDevelopmentMode 
+                ? `API Cost: ${formattedCost} this month (dev mode - costs reset on F5)`
+                : `API Cost: ${formattedCost} this month`;
+                
+            costDisplay.textContent = displayText;
             console.log('[COST DEBUG] Updated cost display to:', costDisplay.textContent);
         } else {
             console.warn('[COST DEBUG] Cost display element not found!');
@@ -1003,6 +1051,8 @@
                             mode: 'merge'
                         }).then(() => {
                             console.log('Chat: Successfully ingested project context');
+                            // Refresh cost display after project detail ingestion
+                            updateApiCostDisplay(0);
                         }).catch(error => {
                             console.error('Chat: Failed to merge project detail memory', error);
                         });
@@ -1223,6 +1273,16 @@
                 return;
             }
 
+            // Refresh cost display when cost-related operations complete
+            if (message.type === 'success' && message.requestId && 
+                (message.requestId.includes('projectDetail.ingest') || 
+                 message.requestId.includes('samurai-agent.execute'))) {
+                // Small delay to ensure cost records are saved
+                setTimeout(() => {
+                    updateApiCostDisplay(0);
+                }, 500);
+            }
+
             if (!message.requestId && message.type) {
                 await dispatchNotification(message.type, message.payload);
             }
@@ -1312,7 +1372,8 @@
             initializeMessageListener,
             displayMessage,
             MessageType,
-            getChatState: () => chatState
+            getChatState: () => chatState,
+            refreshCostDisplay: () => updateApiCostDisplay(0)
         };
     }
 })(typeof window !== 'undefined' ? window : undefined);
