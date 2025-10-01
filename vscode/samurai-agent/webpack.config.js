@@ -3,6 +3,7 @@
 'use strict';
 
 const path = require('path');
+const webpack = require('webpack');
 const CopyWebpackPlugin = require('copy-webpack-plugin');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 
@@ -50,6 +51,10 @@ const extensionConfig = {
     ]
   },
   plugins: [
+    new webpack.DefinePlugin({
+      'process.env.POSTHOG_API_KEY': JSON.stringify(process.env.POSTHOG_API_KEY || 'phc_SI6Y1k394rhcmxMWUxWNxKrkksMLmTPKIGNPirJnICn'),
+      'process.env.POSTHOG_HOST': JSON.stringify(process.env.POSTHOG_HOST || 'https://us.i.posthog.com')
+    }),
     new CopyWebpackPlugin({
       patterns: [
         {

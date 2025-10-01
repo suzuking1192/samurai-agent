@@ -22,6 +22,16 @@
         "category": "Samurai Agent"
       }
     ],
+    "configuration": {
+      "title": "Samurai Agent",
+      "properties": {
+        "samurai-agent.enableTelemetry": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable anonymous usage analytics to help improve Samurai Agent. No personal data is collected."
+        }
+      }
+    },
     "viewsContainers": {
       "activitybar": [
         {
@@ -80,6 +90,7 @@
     "@google/generative-ai": "^0.24.1",
     "dotenv": "^17.2.2",
     "openai": "^5.23.0",
+    "posthog-node": "^3.5.0",
     "web-tree-sitter": "^0.20.8",
     "zod": "^3.22.4"
   }

@@ -130,7 +130,7 @@ export class SamuraiAgentPanelWebviewViewProvider
   /**
    * Handles messages from the webview
    */
-  private handleWebviewMessage(webview: vscode.Webview, message: any) {
+  private async handleWebviewMessage(webview: vscode.Webview, message: any) {
     const { command } = message;
 
     try {
@@ -385,6 +385,49 @@ export class SamuraiAgentPanelWebviewViewProvider
               });
             }
           );
+        }
+        return;
+      }
+
+      // Handle settings operations
+      if (command?.startsWith("settings.")) {
+        const settingsCommand = command.replace("settings.", "");
+        if (settingsCommand === "getTelemetrySetting") {
+          const config = vscode.workspace.getConfiguration('samurai-agent');
+          const isEnabled = config.get<boolean>('enableTelemetry', true);
+          webview.postMessage({
+            type: "success",
+            requestId: message.requestId,
+            payload: isEnabled,
+          });
+        } else if (settingsCommand === "updateTelemetrySetting") {
+          const { enabled } = message.payload || {};
+          if (typeof enabled === 'boolean') {
+            try {
+              await vscode.workspace.getConfiguration('samurai-agent').update(
+                'enableTelemetry',
+                enabled,
+                vscode.ConfigurationTarget.Global
+              );
+              webview.postMessage({
+                type: "success",
+                requestId: message.requestId,
+                payload: enabled,
+              });
+            } catch (error: any) {
+              webview.postMessage({
+                type: "error",
+                requestId: message.requestId,
+                error: `Failed to update telemetry setting: ${error?.message || 'Unknown error'}`,
+              });
+            }
+          } else {
+            webview.postMessage({
+              type: "error",
+              requestId: message.requestId,
+              error: "Invalid telemetry setting value",
+            });
+          }
         }
         return;
       }
@@ -745,6 +788,10 @@ export class SamuraiAgentPanelWebviewViewProvider
         // Get available models
         const availableModels = this.getAvailableModels(globalSettings);
 
+        // Get telemetry setting
+        const config = vscode.workspace.getConfiguration('samurai-agent');
+        const telemetryEnabled = config.get<boolean>('enableTelemetry', true);
+
         // Send settings to webview
         webview.postMessage({
           type: "initialSettings",
@@ -756,6 +803,7 @@ export class SamuraiAgentPanelWebviewViewProvider
             },
             availableModels,
             llmModels: LLM_MODELS,
+            telemetryEnabled,
           },
           timestamp: new Date(),
         });

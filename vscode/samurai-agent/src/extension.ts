@@ -30,6 +30,7 @@ import { LLMCostStorage, LLMCostRecord } from "./storage/llmCostStorage";
 import { formatCost } from "./common/utils/llmCostCalculator";
 import { LLMResponse } from "./common/models/llm-models";
 import { ResponseType } from "./common/models/response-models";
+import { TelemetryService } from "./services/TelemetryService";
 
 /**
  * Extension activation function - main backend entry point
@@ -37,8 +38,9 @@ import { ResponseType } from "./common/models/response-models";
  */
 export function activate(context: vscode.ExtensionContext) {
   const globalDataStore = new GlobalDataStore();
+  const telemetryService = new TelemetryService(context, globalDataStore);
   const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-  const dataStore = workspaceRoot ? new DataStore(workspaceRoot) : undefined;
+  const dataStore = workspaceRoot ? new DataStore(workspaceRoot, telemetryService) : undefined;
 
   // Initialize LLM Cost Storage
   const llmCostStorage = new LLMCostStorage(context);
@@ -54,6 +56,9 @@ export function activate(context: vscode.ExtensionContext) {
   // Update status bar with initial cost
   updateCostStatusBar(costStatusBarItem, llmCostStorage);
   costStatusBarItem.show();
+
+  // Track extension activation
+  telemetryService.trackExtensionActivation();
 
   const llmProviderService = new LLMProviderService(globalDataStore, dataStore);
 
@@ -264,6 +269,22 @@ Click to see details in the Samurai Agent panel.
 
   // Note: samurai-agent.ui.sendAssistantMessageToChat is now handled as a webview message
   // in SamuraiAgentPanelWebviewViewProvider.handleSendAssistantMessageToChat()
+
+  // Listen for telemetry setting changes
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration('samurai-agent.enableTelemetry')) {
+        const config = vscode.workspace.getConfiguration('samurai-agent');
+        const isEnabled = config.get<boolean>('enableTelemetry', true);
+        telemetryService.trackTelemetrySettingChange(isEnabled);
+      }
+    })
+  );
+
+  // Clean up telemetry service on deactivation
+  context.subscriptions.push({
+    dispose: () => telemetryService.dispose()
+  });
 }
 
 /**

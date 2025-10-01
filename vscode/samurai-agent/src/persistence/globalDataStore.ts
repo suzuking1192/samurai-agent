@@ -6,6 +6,7 @@
 import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
+import { randomUUID } from 'crypto';
 import { GlobalSettings } from '../common/models/settings-models';
 import { ApiResponse, ResponseType } from '../common/models/response-models';
 
@@ -87,7 +88,7 @@ export class GlobalDataStore {
                 // Return default global settings if file doesn't exist
                 const defaultSettings: GlobalSettings = {
                     id: 'global-settings',
-                    userId: 'default-user',
+                    userId: randomUUID(), // Generate anonymized user ID
                     openaiApiKey: '',
                     geminiApiKey: '',
                     claudeApiKey: '',
@@ -117,7 +118,7 @@ export class GlobalDataStore {
             // Ensure required fields exist with defaults
             const settings: GlobalSettings = {
                 id: cleanSettings.id || 'global-settings',
-                userId: cleanSettings.userId || 'default-user',
+                userId: cleanSettings.userId || randomUUID(), // Generate anonymized user ID if missing
                 openaiApiKey: cleanSettings.openaiApiKey || '',
                 geminiApiKey: cleanSettings.geminiApiKey || '',
                 claudeApiKey: cleanSettings.claudeApiKey || '',

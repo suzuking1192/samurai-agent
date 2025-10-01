@@ -296,6 +296,11 @@ const uiFeedback = {
         getStatistics: () => postCommand('samurai-agent.getCostStatistics')
     };
 
+    const settingsApi = {
+        getTelemetrySetting: () => postCommand('settings.getTelemetrySetting'),
+        updateTelemetrySetting: (enabled) => postCommand('settings.updateTelemetrySetting', { enabled })
+    };
+
     window.WebviewApi = {
         postCommand,
         subscribe,
@@ -304,6 +309,7 @@ const uiFeedback = {
         projectDetail: projectDetailApi,
         ui: uiFeedback,
         cost: costApi,
+        settings: settingsApi,
         chat: {
             loadChatHistoryForCurrentSession: (sessionId) =>
                 postCommand('chat.loadHistoryForCurrentSession', { sessionId })

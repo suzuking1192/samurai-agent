@@ -18,8 +18,8 @@ import { parseAndValidateLlmJson } from "../../common/utils/llmResponseParser";
 
 const DEFAULT_MAX_ITERATIONS = 2;
 const DEFAULT_MAX_FILES = 2000;
-const DEFAULT_MAX_RESULTS = 50;
-const GLOBAL_CONTEXT_TOKEN_LIMIT = 200000; // Global limit for all files combined
+const DEFAULT_MAX_RESULTS = 100;
+const GLOBAL_CONTEXT_TOKEN_LIMIT = 300000; // Global limit for all files combined
 
 type NormalizedExtractCodeParameters = ExtractCodeParameters & {
   query: string;
@@ -378,13 +378,18 @@ export class ExtractCodeTool {
           continue;
         }
 
+        const fileInfo = fileInfos.get(filePath);
+        console.log(`Processing file ${filePath} with elements:`, elements);
+        console.log(`Available elements in file:`, fileInfo?.elements.map(el => `${el.name} (${el.type})`).join(', '));
+
         const elementSelections = elements.map((elementName) => {
-          const fileInfo = fileInfos.get(filePath);
           const element = fileInfo?.elements.find((el) => el.name === elementName);
-          return {
+          const result = {
             name: elementName,
             type: element?.type || "unknown",
           };
+          console.log(`Element ${elementName} -> ${result.type} (found: ${!!element})`);
+          return result;
         });
 
         result.set(filePath, elementSelections);
@@ -477,18 +482,47 @@ export class ExtractCodeTool {
       // Find matching elements from the file info
       const selectedElements: CodeElement[] = [];
       for (const relevantElement of relevantElements) {
-        const matchingElement = fileInfo.elements.find(
+        // First try exact match (name and type)
+        let matchingElement = fileInfo.elements.find(
           element => element.name === relevantElement.name && element.type === relevantElement.type
         );
+        
+        // If exact match fails, try name-only match (LLM might return "unknown" type)
+        if (!matchingElement) {
+          matchingElement = fileInfo.elements.find(
+            element => element.name === relevantElement.name
+          );
+        }
+        
+        // If still no match, try fuzzy matching for common variations
+        if (!matchingElement) {
+          const normalizedName = relevantElement.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+          matchingElement = fileInfo.elements.find(
+            element => {
+              const elementNormalizedName = element.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+              return elementNormalizedName === normalizedName;
+            }
+          );
+        }
+        
         if (matchingElement) {
           selectedElements.push(matchingElement);
+          console.log(`Found element: ${matchingElement.name} (${matchingElement.type}) for query: ${relevantElement.name} (${relevantElement.type})`);
         } else {
-          console.warn(`Element ${relevantElement.name} (${relevantElement.type}) not found in file ${filePath}`);
+          console.warn(`Element ${relevantElement.name} (${relevantElement.type}) not found in file ${filePath}. Available elements:`, 
+            fileInfo.elements.map(el => `${el.name} (${el.type})`).join(', '));
         }
       }
 
       if (selectedElements.length === 0) {
-        continue;
+        // If no specific elements were found, include all elements from the file as fallback
+        console.log(`No specific elements found for ${filePath}, including all elements as fallback`);
+        const allElements = fileInfo.elements.slice(0, 5); // Limit to first 10 elements to avoid overwhelming
+        if (allElements.length > 0) {
+          selectedElements.push(...allElements);
+        } else {
+          continue;
+        }
       }
 
       // Build the snippet for this file
@@ -663,6 +697,8 @@ export class ExtractCodeTool {
     const result = new Map<string, Array<{ name: string; type: string; }>>();
     const filePaths = Array.from(fileInfos.keys()).slice(0, DEFAULT_MAX_RESULTS);
     
+    console.log(`Using fallback ranking for query: ${query}`);
+    
     for (const filePath of filePaths) {
       const fileInfo = fileInfos.get(filePath);
       if (fileInfo && fileInfo.elements.length > 0) {
@@ -671,9 +707,11 @@ export class ExtractCodeTool {
           type: element.type
         }));
         result.set(filePath, elements);
+        console.log(`Fallback: Added ${elements.length} elements from ${filePath}`);
       }
     }
     
+    console.log(`Fallback ranking complete: ${result.size} files selected`);
     return result;
   }
 

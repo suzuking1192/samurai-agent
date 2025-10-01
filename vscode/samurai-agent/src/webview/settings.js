@@ -51,6 +51,7 @@ let settingsState = {
         digestedProjectDetailContent: '',
         primaryLLMModel: null
     },
+    telemetryEnabled: true,
     isLoading: false
 };
 
@@ -116,6 +117,9 @@ function renderSettings() {
                 <button class="settings-save-all-btn" id="save-all-settings">Save All Settings</button>
             </div>
             
+            <!-- Telemetry Section -->
+            ${renderTelemetrySection()}
+            
             <!-- LLM Provider Sections -->
             ${renderLLMProviderSection('OpenAI', LLM_MODELS.openai, 'openai')}
             ${renderLLMProviderSection('Gemini', LLM_MODELS.google, 'gemini')}
@@ -129,6 +133,34 @@ function renderSettings() {
     // Attach event listeners
     console.log('Settings: About to attach event listeners');
     attachSettingsEventListeners();
+}
+
+function renderTelemetrySection() {
+    const isEnabled = settingsState.telemetryEnabled;
+    
+    return `
+        <div class="telemetry-section">
+            <fieldset>
+                <legend>Privacy & Analytics</legend>
+                
+                <div class="settings-form-group">
+                    <label class="telemetry-toggle-label">
+                        <input type="checkbox" 
+                               id="telemetry-toggle" 
+                               ${isEnabled ? 'checked' : ''}
+                               class="telemetry-toggle">
+                        <span class="telemetry-toggle-text">
+                            Enable anonymous usage analytics
+                        </span>
+                    </label>
+                    <p class="telemetry-description">
+                        Help improve Samurai Agent by sharing anonymous usage data. 
+                        No personal information or code content is collected.
+                    </p>
+                </div>
+            </fieldset>
+        </div>
+    `;
 }
 
 function renderLLMProviderSection(providerName, modelsArray, providerKey) {
@@ -203,6 +235,27 @@ function renderProjectDetailSection() {
 
 function attachSettingsEventListeners() {
     console.log('Settings: attachSettingsEventListeners called');
+    
+    // Telemetry toggle
+    const telemetryToggle = document.getElementById('telemetry-toggle');
+    if (telemetryToggle) {
+        telemetryToggle.addEventListener('change', async function() {
+            const isEnabled = this.checked;
+            settingsState.telemetryEnabled = isEnabled;
+            
+            try {
+                // Update VS Code setting
+                await window.WebviewApi.settings.updateTelemetrySetting(isEnabled);
+                showSaveSuccess(`Telemetry ${isEnabled ? 'enabled' : 'disabled'} successfully!`);
+            } catch (error) {
+                console.error('Error updating telemetry setting:', error);
+                showSaveError(`Failed to update telemetry setting: ${error.message}`);
+                // Revert the toggle state
+                this.checked = !isEnabled;
+                settingsState.telemetryEnabled = !isEnabled;
+            }
+        });
+    }
     
     // API Key inputs - save on blur with loading feedback
     const textInputs = document.querySelectorAll('input[type="text"]');
@@ -371,6 +424,10 @@ async function loadSettingsFromPersistence() {
         if (projectSettings) {
             settingsState.projectSettings = { ...settingsState.projectSettings, ...projectSettings };
         }
+        
+        // Load telemetry setting
+        const telemetryEnabled = await window.WebviewApi.settings.getTelemetrySetting();
+        settingsState.telemetryEnabled = telemetryEnabled;
         
         console.log('Settings loaded from persistence:', settingsState);
     } catch (error) {

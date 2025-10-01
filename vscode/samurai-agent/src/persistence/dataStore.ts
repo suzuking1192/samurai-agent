@@ -21,6 +21,7 @@ import {
 } from '../common/models/chat-models';
 import { ExtractCodeToolResultPayload } from '../common/models/tool-models';
 import { randomUUID } from 'crypto';
+import { TelemetryService } from '../services/TelemetryService';
 
 type StoredSession = Omit<Session, 'createdAt' | 'updatedAt' | 'lastMessageAt'> & {
     createdAt: string;
@@ -36,10 +37,12 @@ type StoredChatMessage = Omit<ChatMessage, 'createdAt' | 'updatedAt'> & {
 export class DataStore {
     private workspaceRoot: string;
     private dataDir: string;
+    private telemetryService?: TelemetryService;
     
-    constructor(workspaceRoot: string) {
+    constructor(workspaceRoot: string, telemetryService?: TelemetryService) {
         this.workspaceRoot = workspaceRoot;
         this.dataDir = path.join(workspaceRoot, '.vscode', 'samurai-agent');
+        this.telemetryService = telemetryService;
         this.ensureDataDirectory();
     }
     
@@ -305,6 +308,15 @@ export class DataStore {
             totalCost: session.totalCost + costDelta,
             lastMessageAt: chatMessage.createdAt
         });
+
+        // Track telemetry event for chat message
+        if (this.telemetryService) {
+            if (chatMessage.type === MessageType.USER) {
+                this.telemetryService.trackChatMessage('user_message');
+            } else if (chatMessage.type === MessageType.ASSISTANT) {
+                this.telemetryService.trackChatMessage('agent_response');
+            }
+        }
 
         return chatMessage;
     }
