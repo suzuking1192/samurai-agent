@@ -2,14 +2,41 @@
   "name": "samurai-agent",
   "displayName": "Samurai Agent",
   "description": "AI tool for spec-driven development: debugs requirements to prevent messy AI-generated code",
-  "version": "0.0.1",
-  "publisher": "samurai-agent",
+  "version": "0.0.6",
+  "publisher": "SamuraiAgent",
   "engines": {
     "vscode": "^1.104.0"
   },
   "categories": [
     "Other"
   ],
+  "keywords": [
+    "ai",
+    "spec",
+    "development",
+    "code-review",
+    "requirements",
+    "debugging",
+    "llm",
+    "assistant",
+    "samurai",
+    "cursor",
+    "specification",
+    "code-analysis"
+  ],
+  "galleryBanner": {
+    "color": "#1e1e1e",
+    "theme": "dark"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yutosuzuki/samurai-agent"
+  },
+  "homepage": "https://github.com/yutosuzuki/samurai-agent",
+  "bugs": {
+    "url": "https://github.com/yutosuzuki/samurai-agent/issues"
+  },
+  "icon": "icon.png",
   "activationEvents": [
     "onCommand:samurai-agent.helloWorld"
   ],
@@ -53,9 +80,9 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run package",
-    "compile": "webpack",
-    "watch": "webpack --watch",
-    "package": "webpack --mode production --devtool hidden-source-map",
+    "compile": "node scripts/build-with-env.js webpack",
+    "watch": "node scripts/build-with-env.js webpack --watch",
+    "package": "node scripts/build-with-env.js webpack --mode production --devtool hidden-source-map",
     "compile-tests": "tsc -p . --outDir out",
     "watch-tests": "tsc -p . -w --outDir out",
     "test": "jest",
@@ -75,6 +102,7 @@
     "@vscode/test-cli": "^0.0.11",
     "@vscode/test-electron": "^2.5.2",
     "copy-webpack-plugin": "^12.0.2",
+    "dotenv-cli": "^10.0.0",
     "eslint": "^9.34.0",
     "html-webpack-plugin": "^5.6.4",
     "jest": "^29.5.0",

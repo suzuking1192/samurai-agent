@@ -12,6 +12,13 @@
  * and integration with the broader agent ecosystem.
  */
 
+// Load environment variables from .env file for development
+import * as dotenv from 'dotenv';
+import * as path from 'path';
+
+// Load .env file from the extension root directory
+dotenv.config({ path: path.resolve(__dirname, '..', '.env') });
+
 import * as vscode from "vscode";
 import { SamuraiAgentPanelWebviewViewProvider } from "./webview/SamuraiAgentPanelWebviewViewProvider";
 import { GlobalDataStore } from "./persistence/globalDataStore";

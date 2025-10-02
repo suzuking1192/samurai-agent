@@ -455,8 +455,8 @@ export class CodeParserService {
 
     constructor(extensionRoot?: string) {
         this.extensionRoot = extensionRoot;
-        this.workspaceRoot =
-            extensionRoot ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? null;
+        // Always use workspace root for code scanning, not extension root
+        this.workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? null;
         this.ignorePatterns = this.ignorePatternSources.map(
             (pattern) => new RegExp(pattern, "i")
         );
@@ -716,6 +716,21 @@ export class CodeParserService {
 
     private getPromptCandidates(relativePath: string): string[] {
         const candidates: string[] = [];
+        
+        // In packaged extensions, __dirname points to the dist directory
+        // Check the extension's dist/prompts directory first (for packaged extensions)
+        const extensionDistPrompts = path.join(__dirname, "..", "..", "dist", "prompts", relativePath);
+        candidates.push(extensionDistPrompts);
+        
+        // Check extension's out/prompts directory (for development)
+        const extensionOutPrompts = path.join(__dirname, "..", "..", "out", "prompts", relativePath);
+        candidates.push(extensionOutPrompts);
+        
+        // Check extension's src/agent/prompts directory (for development)
+        const extensionSrcPrompts = path.join(__dirname, "..", "..", "src", "agent", "prompts", relativePath);
+        candidates.push(extensionSrcPrompts);
+        
+        // Check workspace root directories (for development)
         const workspaceRootFolder = vscode.workspace.workspaceFolders?.[0]?.uri;
         if (workspaceRootFolder) {
             const basePath = workspaceRootFolder.fsPath;
@@ -723,6 +738,7 @@ export class CodeParserService {
             candidates.push(path.join(basePath, "src", "agent", "prompts", relativePath));
         }
 
+        // Check extension root if provided
         if (this.extensionRoot) {
             candidates.push(path.join(this.extensionRoot, "dist", "prompts", relativePath));
             candidates.push(path.join(this.extensionRoot, "out", "prompts", relativePath));
@@ -730,6 +746,7 @@ export class CodeParserService {
             candidates.push(path.join(this.extensionRoot, "src", "agent", "prompts", relativePath));
         }
 
+        // Legacy fallback paths
         candidates.push(path.join(__dirname, "..", "prompts", relativePath));
         candidates.push(path.join(__dirname, "..", "..", "prompts", relativePath));
 

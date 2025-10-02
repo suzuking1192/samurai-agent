@@ -18,11 +18,18 @@ const assetUri = (
   extUri: vscode.Uri,
   filename: string,
 ): vscode.Uri => {
+  // Check in order: dist (production), out (development), src (fallback)
+  const dist = vscode.Uri.joinPath(extUri, "dist", "webview", filename);
   const out = vscode.Uri.joinPath(extUri, "out", "webview", filename);
   const src = vscode.Uri.joinPath(extUri, "src", "webview", filename);
-  return fs.existsSync(out.fsPath)
-    ? webview.asWebviewUri(out)
-    : webview.asWebviewUri(src);
+  
+  if (fs.existsSync(dist.fsPath)) {
+    return webview.asWebviewUri(dist);
+  } else if (fs.existsSync(out.fsPath)) {
+    return webview.asWebviewUri(out);
+  } else {
+    return webview.asWebviewUri(src);
+  }
 };
 
 export interface SamuraiAgentPanelDependencies {
@@ -73,11 +80,13 @@ export class SamuraiAgentPanelWebviewViewProvider
     console.log("Webview Provider: resolveWebviewView called");
     console.log("Webview Provider: webviewView visible:", webviewView.visible);
 
-    // Allow both src and out roots for maximum compatibility
+    // Allow dist, out, and src roots for maximum compatibility
+    const distRoot = vscode.Uri.joinPath(this._extensionUri, "dist", "webview");
     const srcRoot = vscode.Uri.joinPath(this._extensionUri, "src", "webview");
     const outRoot = vscode.Uri.joinPath(this._extensionUri, "out", "webview");
 
-    console.log("Webview Provider: Allowing both roots:", {
+    console.log("Webview Provider: Allowing all roots:", {
+      dist: distRoot.toString(),
       src: srcRoot.toString(),
       out: outRoot.toString(),
     });
@@ -85,7 +94,7 @@ export class SamuraiAgentPanelWebviewViewProvider
     webviewView.webview.options = {
       enableScripts: true,
       enableCommandUris: true,
-      localResourceRoots: [srcRoot, outRoot], // include BOTH
+      localResourceRoots: [distRoot, srcRoot, outRoot], // include ALL
     };
 
     webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
@@ -114,7 +123,7 @@ export class SamuraiAgentPanelWebviewViewProvider
     console.log("Webview Provider: Setting up webview with options:", {
       enableScripts: true,
       enableCommandUris: true,
-      localResourceRoots: [srcRoot.toString(), outRoot.toString()],
+      localResourceRoots: [distRoot.toString(), srcRoot.toString(), outRoot.toString()],
     });
   }
 

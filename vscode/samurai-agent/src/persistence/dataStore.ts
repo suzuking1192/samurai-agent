@@ -215,7 +215,9 @@ export class DataStore {
                 projectId: request.projectId,
                 ...(request.model ? { model: request.model } : {}),
                 ...(request.mode ? { mode: request.mode } : {}),
-                ...(request.metadata ?? {})
+                ...(request.metadata ?? {}),
+                // Add workspace path for code extraction
+                connectedCodebasePath: this.getWorkspaceRoot()
             },
             codeContextIds: [],
             previous_session_intent: UserIntentEnum.PURE_DISCUSSION,
@@ -838,6 +840,14 @@ export class DataStore {
             console.error(`Error loading code contexts for session ${sessionId}:`, error);
             return [];
         }
+    }
+
+    /**
+     * Get the workspace root path
+     * @returns The workspace root path
+     */
+    private getWorkspaceRoot(): string {
+        return this.workspaceRoot;
     }
     
 }
