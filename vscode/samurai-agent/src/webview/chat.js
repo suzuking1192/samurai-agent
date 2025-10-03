@@ -214,7 +214,7 @@
             // Check if we're in development mode (cost is 0 but we expect some cost)
             const isDevelopmentMode = monthlyTotalCost === 0 && newCost === 0;
             const displayText = isDevelopmentMode 
-                ? `API Cost: ${formattedCost} this month (dev mode - costs reset on F5)`
+                ? `API Cost: ${formattedCost} this month`
                 : `API Cost: ${formattedCost} this month`;
                 
             costDisplay.textContent = displayText;
@@ -356,19 +356,20 @@
             (Array.isArray(message.interactiveConfirmationQuestions) && message.interactiveConfirmationQuestions.length > 0);
 
         // Deduplicate consecutive identical assistant messages without special content
-        if (chatMessages.lastElementChild) {
+        // CRITICAL: Never skip messages with rich content (spec scores, interactive buttons, etc.)
+        if (chatMessages.lastElementChild && !hasRichAssistantContent) {
             const lastElement = chatMessages.lastElementChild;
             if (
                 message.role === 'assistant' &&
                 lastElement.dataset?.role === 'assistant' &&
-                lastElement.dataset?.content === (message.content || '') &&
-                !hasRichAssistantContent
+                lastElement.dataset?.content === (message.content || '')
             ) {
                 console.log('Chat: Skipping duplicate assistant message');
                 return;
             }
         }
 
+        // Additional deduplication check for messages without rich content
         if (message.role === 'assistant' && !hasRichAssistantContent) {
             const now = Date.now();
             if (

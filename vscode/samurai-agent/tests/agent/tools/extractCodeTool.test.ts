@@ -102,9 +102,7 @@ describe('ExtractCodeTool', () => {
       // Mock LLM response
       const mockLlmResponse: LLMResponse = {
         content: JSON.stringify({
-          relevance_score: 8,
-          context: 'Test function analysis',
-          file_path: '/test/file.ts',
+          analysis: 'Test function analysis'
         }),
         role: 'assistant',
         metadata: {},
@@ -143,9 +141,7 @@ describe('ExtractCodeTool', () => {
       expect(payload.files).toBeDefined();
       
       // Check analysis properties
-      expect(payload.analysis.relevance_score).toBe(8);
-      expect(payload.analysis.context).toBe('Test function analysis');
-      expect(payload.analysis.file_path).toBe('/test/file.ts');
+      expect(payload.analysis).toBe('Test function analysis');
       
       // Check elements
       expect(result.elements).toHaveLength(1);

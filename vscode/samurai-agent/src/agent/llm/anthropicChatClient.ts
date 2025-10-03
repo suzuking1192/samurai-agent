@@ -58,7 +58,7 @@ export class AnthropicChatClient implements ChatClient {
         return this.removeUndefined({
             model: request.model,
             temperature: request.temperature,
-            max_tokens: maxTokens ?? 1024,
+            max_tokens: maxTokens ?? 4096,
             messages: this.transformMessages(request.messages)
         });
     }

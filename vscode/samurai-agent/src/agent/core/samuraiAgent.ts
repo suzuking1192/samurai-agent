@@ -8,7 +8,7 @@ import { ChatMessage, Session, UserIntentEnum, ISpecClarificationOutput, Confirm
 import { AgentExecutionResult } from "../models/agent-models";
 import { LLMMessage } from "../../common/models/llm-models";
 import { ExtractCodeToolResultPayload } from "../../common/models/tool-models";
-import { parseAndValidateLlmJson } from "../../common/utils/llmResponseParser";
+import { extractJsonFromLLMResponse } from "../../common/utils/llmResponseParser";
 import { ExtractCodeTool } from "../tools/extractCodeTool";
 import { CreateSpecTool } from "../tools/createSpecTool";
 import { ConfirmationQuestionService } from "../../extension/services/confirmationQuestionService";
@@ -72,7 +72,7 @@ export class SamuraiAgent {
       }
       
       // Analyze user intent with loaded context
-      const userIntent = await this.analyzeUserIntent(chatHistory, userMessage, projectDetails);
+      const userIntent = await this.analyzeUserIntent(chatHistory, userMessage, projectDetails, session);
       
       // Analyze code extraction needs after intent analysis
       const codeExtractionAnalysisResult = await this.analyzeCodeExtractionNeeds(
@@ -92,12 +92,20 @@ export class SamuraiAgent {
           data: { query: codeExtractionAnalysisResult.extraction_query },
         });
         try {
+          // Log the extraction query before passing it to ExtractCodeTool
+          console.log('SamuraiAgent - About to call ExtractCodeTool with query:', {
+            queryLength: codeExtractionAnalysisResult.extraction_query?.length,
+            queryPreview: codeExtractionAnalysisResult.extraction_query?.substring(0, 100) + (codeExtractionAnalysisResult.extraction_query && codeExtractionAnalysisResult.extraction_query.length > 100 ? '...' : ''),
+            fullQuery: codeExtractionAnalysisResult.extraction_query
+          });
+          
           const extractionResult = await this.extractCodeTool.execute({
             query: codeExtractionAnalysisResult.extraction_query,
             filePathPattern: undefined, // Could be added to analysis result in the future
             projectId: session.metadata.projectId,
             sessionId: session.id,
             connectedCodebasePath: session.metadata.connectedCodebasePath,
+            model: session.metadata.model,
           });
 
           if (extractionResult.success && extractionResult.result) {
@@ -145,7 +153,6 @@ export class SamuraiAgent {
       if (session.codeContextIds && session.codeContextIds.length > 0) {
         codeContexts = await this.dataStore.loadAllCodeContextForSession(session.id, session.metadata.projectId);
       }
-      
       // Dispatch to appropriate handler based on user intent
       let agentResponse: string;
       let specClarificationData: ISpecClarificationOutput | undefined;
@@ -153,15 +160,15 @@ export class SamuraiAgent {
       
       switch (userIntent) {
         case UserIntentEnum.PURE_DISCUSSION:
-          agentResponse = await this.handlePureDiscussion(userMessage, chatHistory, projectDetails, codeContexts);
+          agentResponse = await this.handlePureDiscussion(userMessage, chatHistory, projectDetails, codeContexts, session);
           break;
           
         case UserIntentEnum.FEATURE_EXPLORATION:
-          agentResponse = await this.handleFeatureExploration(userMessage, chatHistory, projectDetails, codeContexts);
+          agentResponse = await this.handleFeatureExploration(userMessage, chatHistory, projectDetails, codeContexts, session);
           break;
           
         case UserIntentEnum.SPEC_CLARIFICATION:
-          const clarificationResult = await this.handleSpecClarification(userMessage, chatHistory, projectDetails, codeContexts);
+          const clarificationResult = await this.handleSpecClarification(userMessage, chatHistory, projectDetails, codeContexts, session);
           agentResponse = clarificationResult.clarification_text;
           specClarificationData = clarificationResult;
           
@@ -174,7 +181,7 @@ export class SamuraiAgent {
           break;
           
         case UserIntentEnum.SPEC_GENERATION:
-          const specGenerationResult = await this.handleGeneratingSpecs(userMessage, codeContexts, chatHistory, projectDetails);
+          const specGenerationResult = await this.handleGeneratingSpecs(userMessage, codeContexts, chatHistory, projectDetails, session);
           agentResponse = specGenerationResult.message;
           break;
           
@@ -225,7 +232,8 @@ export class SamuraiAgent {
   public async analyzeUserIntent(
     chatHistory: LLMMessage[], 
     currentUserMessage: ChatMessage, 
-    projectDetails: string
+    projectDetails: string,
+    session: Session
   ): Promise<UserIntentEnum> {
     this.logInvocation("analyzeUserIntent", currentUserMessage.content);
     
@@ -255,7 +263,7 @@ export class SamuraiAgent {
     }
     
     // Step 2: If no keyword match, proceed to LLM analysis
-    return await this.performLLMIntentAnalysis(chatHistory, currentUserMessage, projectDetails);
+    return await this.performLLMIntentAnalysis(chatHistory, currentUserMessage, projectDetails, session);
   }
 
   /**
@@ -317,7 +325,7 @@ export class SamuraiAgent {
       const response = await this.llmProviderService.chat({
         id: `code-extraction-analysis-${Date.now()}`,
         provider: "auto",
-        model: "",
+        model: session.metadata.model || "",
         messages: [
           { role: "system", content: populatedPrompt }
         ],
@@ -342,18 +350,29 @@ export class SamuraiAgent {
       this.trackLLMCost(llmResponse, 'analyzeCodeExtractionNeeds');
       
       const responseContent = llmResponse.content?.trim() || "";
-      const parsedResult = parseAndValidateLlmJson<{
-        new_code_context_necessary: boolean;
-        extraction_query: string | null;
-        reasoning: string;
-      }>(responseContent, ['new_code_context_necessary', 'extraction_query', 'reasoning']);
+      const parsedResult = extractJsonFromLLMResponse(responseContent);
+      
+      // Check if JSON parsing was successful
+      if (!parsedResult || typeof parsedResult !== 'object') {
+        throw new Error(`Failed to parse JSON from LLM response. Content: ${responseContent.substring(0, 200)}${responseContent.length > 200 ? '...' : ''}`);
+      }
       
       // Step 9: Return the parsed result
-      return {
+      const result = {
         new_code_context_necessary: parsedResult.new_code_context_necessary,
         extraction_query: parsedResult.extraction_query,
         reasoning: parsedResult.reasoning
       };
+      
+      // Log the extraction query details for debugging
+      console.log('analyzeCodeExtractionNeeds - extraction_query details:', {
+        hasQuery: !!result.extraction_query,
+        queryLength: result.extraction_query?.length,
+        queryPreview: result.extraction_query?.substring(0, 100) + (result.extraction_query && result.extraction_query.length > 100 ? '...' : ''),
+        fullQuery: result.extraction_query
+      });
+      
+      return result;
       
     } catch (error) {
       console.error('Error in analyzeCodeExtractionNeeds:', error);
@@ -389,14 +408,14 @@ export class SamuraiAgent {
     userMessage: ChatMessage, 
     chatHistory: LLMMessage[], 
     projectDetails: string, 
-    codeContexts: ExtractCodeToolResultPayload[]
+    codeContexts: ExtractCodeToolResultPayload[],
+    session: Session
   ): Promise<string> {
     this.logInvocation("handlePureDiscussion", userMessage.content);
     
     try {
       // Format code contexts for prompt injection
       const formattedCodeContexts = this._formatCodeContextsForPrompt(codeContexts);
-      
       console.log('[DEBUG handlePureDiscussion] codeContexts received:', codeContexts.length);
       console.log('[DEBUG handlePureDiscussion] formattedCodeContexts length:', formattedCodeContexts.length);
       console.log('[DEBUG handlePureDiscussion] formattedCodeContexts preview:', formattedCodeContexts.slice(0, 500));
@@ -435,7 +454,7 @@ export class SamuraiAgent {
       const response = await this.llmProviderService.chat({
         id: `pure-discussion-${Date.now()}`,
         provider: "auto",
-        model: "",
+        model: session.metadata.model || "",
         messages,
         metadata: {
           type: "pure_discussion"
@@ -469,14 +488,15 @@ export class SamuraiAgent {
     userMessage: ChatMessage, 
     chatHistory: LLMMessage[], 
     projectDetails: string, 
-    codeContexts: ExtractCodeToolResultPayload[]
+    codeContexts: ExtractCodeToolResultPayload[],
+    session: Session
   ): Promise<string> {
     this.logInvocation("handleFeatureExploration", userMessage.content);
     
     try {
       // Format code contexts for prompt injection
       const formattedCodeContexts = this._formatCodeContextsForPrompt(codeContexts);
-      
+
       // Build conversation summary
       const conversationSummary = this._buildConversationSummary(chatHistory) + `\n\nLatest user request: ${userMessage.content}`;
       
@@ -503,7 +523,7 @@ export class SamuraiAgent {
       const response = await this.llmProviderService.chat({
         id: `feature-exploration-${Date.now()}`,
         provider: "auto",
-        model: "",
+        model: session.metadata.model || "",
         messages,
         metadata: {
           type: "feature_exploration"
@@ -537,7 +557,8 @@ export class SamuraiAgent {
     userMessage: ChatMessage, 
     chatHistory: LLMMessage[], 
     projectDetails: string, 
-    codeContexts: ExtractCodeToolResultPayload[]
+    codeContexts: ExtractCodeToolResultPayload[],
+    session: Session
   ): Promise<ISpecClarificationOutput> {
     this.logInvocation("handleSpecClarification", userMessage.content);
     
@@ -545,7 +566,6 @@ export class SamuraiAgent {
       // Format code contexts for prompt injection
       const formattedCodeContexts = this._formatCodeContextsForPrompt(codeContexts);
       const conversationSummary = this._buildConversationSummary(chatHistory) + `\n\nLatest user request: ${userMessage.content}`;
-
       const basePrompt = await this._loadAndFormatSystemPrompt(
         'specClarification/system_prompt.md',
         {
@@ -570,7 +590,7 @@ export class SamuraiAgent {
       const response = await this.llmProviderService.chat({
         id: `spec-clarification-${Date.now()}`,
         provider: "auto",
-        model: "",
+        model: session.metadata.model || "",
         messages,
         metadata: {
           type: "spec_clarification"
@@ -596,10 +616,14 @@ export class SamuraiAgent {
       
       // Parse and validate the JSON response
       try {
-        const parsedResult = parseAndValidateLlmJson<ISpecClarificationOutput>(
-          responseContent, 
-          ['clarification_text', 'score']
+        const parsedResult = extractJsonFromLLMResponse(
+          responseContent
         );
+        
+        // Check if parsing was successful
+        if (!parsedResult) {
+          throw new Error('Failed to parse JSON from LLM response');
+        }
         
         // Validate score is in range 0-100
         if (typeof parsedResult.score !== 'number' || parsedResult.score < 0 || parsedResult.score > 100) {
@@ -612,7 +636,7 @@ export class SamuraiAgent {
         console.error('Error parsing spec clarification JSON:', {
           error: parseError,
           responseContentLength: responseContent.length,
-          responsePreview: responseContent.substring(0, 500),
+          responsePreview: responseContent,
           responseSuffix: responseContent.substring(Math.max(0, responseContent.length - 200))
         });
         throw parseError;
@@ -632,7 +656,8 @@ export class SamuraiAgent {
     userMessage: ChatMessage, 
     codeContexts: ExtractCodeToolResultPayload[], 
     chatHistory: LLMMessage[], 
-    projectDetails: string
+    projectDetails: string,
+    session: Session
   ): Promise<AgentExecutionResult> {
     this.logInvocation("handleGeneratingSpecs", userMessage.content);
     
@@ -667,7 +692,7 @@ export class SamuraiAgent {
       const response = await this.llmProviderService.chat({
         id: `spec-generation-${Date.now()}`,
         provider: "auto",
-        model: "",
+        model: session.metadata.model || "",
         messages,
         metadata: {
           type: "spec_generation"
@@ -691,6 +716,24 @@ export class SamuraiAgent {
       
       const responseContent = llmResponse.content?.trim() || "";
       
+      // Log LLM response details for debugging
+      console.log('LLM response details:', {
+        hasContent: !!llmResponse.content,
+        contentLength: llmResponse.content?.length || 0,
+        contentPreview: responseContent.substring(0, 200),
+        provider: (llmResponse as any).provider || 'unknown',
+        model: (llmResponse as any).model || 'unknown'
+      });
+      
+      // Check for empty response
+      if (!responseContent) {
+        throw new Error("LLM returned an empty response. This could be due to:\n" +
+          "1. LLM service timeout or rate limiting\n" +
+          "2. Invalid or overly complex prompt\n" +
+          "3. LLM provider issues\n" +
+          "Please try again or simplify your request.");
+      }
+      
       // Parse the JSON response containing specs
       let parsedSpecs: Array<{
         title: string;
@@ -699,7 +742,7 @@ export class SamuraiAgent {
       }>;
       
       try {
-        const parsedResponse = parseAndValidateLlmJson<any>(responseContent, []);
+        const parsedResponse = extractJsonFromLLMResponse(responseContent);
         
         // Handle different response formats
         if (Array.isArray(parsedResponse)) {
@@ -729,13 +772,25 @@ export class SamuraiAgent {
           throw new Error("LLM response is not an array of specs");
         }
       } catch (error) {
-        const fallbackMessage = responseContent.substring(0, 1000) || 'No content received from LLM.';
+        const fallbackMessage = responseContent || 'No content received from LLM.';
         console.error('Error parsing spec generation response:', {
           error,
           responseLength: responseContent.length,
           responsePreview: fallbackMessage
         });
-        throw new Error(`Failed to parse JSON response: ${error instanceof Error ? error.message : 'Unknown error'}\nLLM output preview:\n${fallbackMessage}`);
+        
+        // Provide more specific error messages based on the type of error
+        let errorMessage = `Failed to parse JSON response: ${error instanceof Error ? error.message : 'Unknown error'}`;
+        
+        if (responseContent.length === 0) {
+          errorMessage = "LLM returned an empty response. This could be due to LLM service issues, timeouts, or rate limiting. Please try again.";
+        } else if (responseContent.length < 10) {
+          errorMessage = `LLM returned a very short response: "${responseContent}". This might indicate an error or incomplete response. Please try again.`;
+        } else if (!responseContent.includes('{') && !responseContent.includes('[')) {
+          errorMessage = `LLM response doesn't contain JSON format. Response: "${fallbackMessage}". Please ensure the LLM is configured to return JSON.`;
+        }
+        
+        throw new Error(`${errorMessage}\nLLM output preview:\n${fallbackMessage}`);
       }
       
       if (!Array.isArray(parsedSpecs)) {
@@ -900,7 +955,8 @@ export class SamuraiAgent {
   private async performLLMIntentAnalysis(
     chatHistory: LLMMessage[], 
     currentUserMessage: ChatMessage, 
-    projectDetails: string
+    projectDetails: string,
+    session: Session
   ): Promise<UserIntentEnum> {
     try {
       // Build the intent analysis prompt based on the backend implementation
@@ -918,7 +974,7 @@ export class SamuraiAgent {
       const response = await this.llmProviderService.chat({
         id: `intent-analysis-${Date.now()}`,
         provider: "auto",
-        model: "",
+        model: session.metadata.model || "",
         messages,
         metadata: {
           type: "intent_analysis"

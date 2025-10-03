@@ -14,17 +14,18 @@ import { CodeElement, FileInfo } from "../../common/models/context-models";
 import { ResponseType } from "../../common/models/response-models";
 import { TextDecoder } from "util";
 import * as vscode from "vscode";
-import { parseAndValidateLlmJson } from "../../common/utils/llmResponseParser";
+import { extractJsonFromLLMResponse } from "../../common/utils/llmResponseParser";
 
 const DEFAULT_MAX_ITERATIONS = 2;
-const DEFAULT_MAX_FILES = 2000;
-const DEFAULT_MAX_RESULTS = 100;
+const DEFAULT_MAX_FILES = 5000;
+const DEFAULT_MAX_RESULTS = 300;
 const GLOBAL_CONTEXT_TOKEN_LIMIT = 300000; // Global limit for all files combined
 
 type NormalizedExtractCodeParameters = ExtractCodeParameters & {
   query: string;
   projectId: string;
   maxIterations: number;
+  model: string;
 };
 
 export interface ExtractCodeToolResultPayload {
@@ -33,11 +34,6 @@ export interface ExtractCodeToolResultPayload {
     elements: CodeElement[];
     snippet: string;
   }>;
-  analysis: {
-    relevance_score: number;
-    context: string;
-    file_path: string;
-  };
   files: Array<{
     path: string;
     snippet: string;
@@ -51,6 +47,7 @@ export interface ExtractCodeParameters {
   connectedCodebasePath?: string;
   sessionId?: string;
   maxIterations?: number;
+  model?: string; // User's selected model
 }
 
 export class ExtractCodeTool {
@@ -89,6 +86,10 @@ export class ExtractCodeTool {
             description: "Maximum number of iterative refinement passes to run.",
             default: DEFAULT_MAX_ITERATIONS,
           },
+          model: {
+            type: "string",
+            description: "User's selected LLM model for code extraction.",
+          },
       },
       required: ["query", "projectId"],
       additionalProperties: false,
@@ -123,10 +124,11 @@ export class ExtractCodeTool {
         throw new Error("No code files found that match the provided parameters.");
       }
 
-      const relevantElementSelections = await this.rankRelevantFiles(
+      const relevantElementSelections = await this.rankRelevantFileswithLLM(
         filteredFileInfos,
         normalizedParams.query,
         normalizedParams.projectId,
+        normalizedParams.model,
       );
 
       let structuredContext = await this.buildStructuredCodeContextSnippets(
@@ -160,9 +162,16 @@ export class ExtractCodeTool {
         snippetPreview: ctx.snippet.slice(0, 120),
       })));
 
-      const llmAnalysis = await this.identifyRelevantCodeElementsWithLLM(
+      const relevantElementSelections_after_step2 = await this.identifyRelevantCodeElementsWithLLM(
+        filteredFileInfos,
         structuredContext,
         normalizedParams,
+      );
+
+      let structuredContext_after_step2 = await this.buildStructuredCodeContextSnippets(
+        filteredFileInfos,
+        relevantElementSelections_after_step2,
+        GLOBAL_CONTEXT_TOKEN_LIMIT,
       );
 
       const executionTime = Date.now() - startTime;
@@ -176,7 +185,7 @@ export class ExtractCodeTool {
         signature?: string;
       }> = [];
       
-      for (const context of structuredContext) {
+      for (const context of structuredContext_after_step2) {
         for (const element of context.elements) {
           identifiedElements.push({
             name: element.name,
@@ -191,17 +200,13 @@ export class ExtractCodeTool {
       return {
         success: true,
         result: {
-          relevantCodeElements: structuredContext,
-          analysis: llmAnalysis,
-          files: structuredContext.map(context => ({ path: context.path, snippet: context.snippet })),
+          relevantCodeElements: structuredContext_after_step2,
+          files: structuredContext_after_step2.map(context => ({ path: context.path, snippet: context.snippet })),
         } as ExtractCodeToolResultPayload,
         executionTime,
         metadata: {
           projectId: normalizedParams.projectId,
         },
-        relevance_score: llmAnalysis?.relevance_score,
-        context: llmAnalysis?.context,
-        file_path: llmAnalysis?.file_path,
         elements: identifiedElements,
       };
     } catch (error) {
@@ -216,7 +221,15 @@ export class ExtractCodeTool {
   }
 
   private logInvocation(params: ExtractCodeParameters): void {
-    console.log("ExtractCodeTool invoked with parameters:", params);
+    console.log("ExtractCodeTool invoked with parameters:", {
+      query: params.query,
+      queryLength: params.query?.length,
+      filePathPattern: params.filePathPattern,
+      projectId: params.projectId,
+      sessionId: params.sessionId,
+      connectedCodebasePath: params.connectedCodebasePath,
+      maxIterations: params.maxIterations
+    });
   }
 
   private normalizeParams(params: ExtractCodeParameters): NormalizedExtractCodeParameters {
@@ -234,12 +247,14 @@ export class ExtractCodeTool {
       1,
       params.maxIterations ?? DEFAULT_MAX_ITERATIONS,
     );
+    const model = params.model || "";
 
     return {
       ...params,
       query,
       projectId,
       maxIterations,
+      model,
     };
   }
 
@@ -309,10 +324,11 @@ export class ExtractCodeTool {
     }
   }
 
-  private async rankRelevantFiles(
+  private async rankRelevantFileswithLLM(
     fileInfos: Map<string, FileInfo>,
     query: string,
     projectId: string,
+    model: string,
   ): Promise<Map<string, Array<{ name: string; type: string; }>>> {
     // Build a summary of all files with their elements for LLM analysis
     const fileElementsSummary = Array.from(fileInfos.entries())
@@ -346,7 +362,7 @@ export class ExtractCodeTool {
     const request: LLMRequest = {
       id: `rank-files-${Date.now()}`,
       provider: "auto",
-      model: "",
+      model: model || "",
       messages,
       metadata: {
         projectId,
@@ -354,20 +370,139 @@ export class ExtractCodeTool {
       },
       createdAt: new Date(),
       updatedAt: new Date(),
+      maxTokens: 4096,
     };
 
     try {
+      console.log("=== LLM RANKING DEBUG START ===");
+      console.log("Request details:", {
+        requestId: request.id,
+        provider: request.provider,
+        model: request.model,
+        messageCount: request.messages.length,
+        messageLengths: request.messages.map(m => m.content.length),
+        metadata: request.metadata
+      });
+
+      // Log the prompt content for debugging (especially important for Gemini safety issues)
+      console.log("=== PROMPT CONTENT DEBUG ===");
+      request.messages.forEach((message, index) => {
+        console.log(`Message ${index} (${message.role}):`, {
+          contentLength: message.content.length,
+          contentPreview: message.content.substring(0, 200) + (message.content.length > 200 ? '...' : ''),
+          fullContent: message.content
+        });
+      });
+      console.log("=== END PROMPT CONTENT DEBUG ===");
+
       const response = await this.llmProvider.chat(request);
+      
+      console.log("Raw LLM response:", {
+        responseType: response.type,
+        hasPayload: !!response.payload,
+        error: response.error || 'none',
+        responseKeys: Object.keys(response)
+      });
+
       if (response.type !== ResponseType.SUCCESS || !response.payload) {
-        console.warn("LLM ranking failed, falling back to file-level ranking");
+        console.warn("LLM ranking failed, falling back to file-level ranking. Response details:", {
+          type: response.type,
+          error: response.error,
+          hasPayload: !!response.payload,
+          payload: response.payload
+        });
+        console.log("=== LLM RANKING DEBUG END (FAILED) ===");
         return this.fallbackToFileRanking(fileInfos, query);
       }
 
       const payload = response.payload as LLMResponse;
-      const json = parseAndValidateLlmJson<{ files: Record<string, string[]>; reasoning: string }>(
+      console.log("LLM payload details:", {
+        payloadKeys: Object.keys(payload),
+        contentType: typeof payload.content,
+        contentLength: payload.content?.length || 0,
+        contentPreview: payload.content?.substring(0, 100) + (payload.content && payload.content.length > 100 ? '...' : ''),
+        fullContent: payload.content,
+        hasUsage: !!payload.usage,
+        usage: payload.usage,
+        provider: payload.provider,
+        model: payload.model,
+        hasMetadata: !!payload.metadata,
+        metadataKeys: payload.metadata ? Object.keys(payload.metadata) : [],
+        rawResponse: payload.metadata?.rawResponse
+      });
+
+      // Additional Gemini-specific debugging
+      if (payload.provider === 'google' && payload.metadata?.rawResponse) {
+        const rawResponse = payload.metadata.rawResponse;
+        console.log("=== GEMINI RAW RESPONSE DEBUG ===");
+        console.log("Raw response structure:", {
+          hasResponse: !!rawResponse.response,
+          responseKeys: rawResponse.response ? Object.keys(rawResponse.response) : [],
+          hasCandidates: !!rawResponse.response?.candidates,
+          candidatesLength: rawResponse.response?.candidates?.length || 0,
+          hasPromptFeedback: !!rawResponse.response?.promptFeedback,
+          hasUsageMetadata: !!rawResponse.response?.usageMetadata
+        });
+
+        // Check for safety-related information
+        if (rawResponse.response?.promptFeedback) {
+          console.log("Gemini prompt feedback:", rawResponse.response.promptFeedback);
+        }
+
+        if (rawResponse.response?.candidates) {
+          rawResponse.response.candidates.forEach((candidate: any, index: number) => {
+            console.log(`Candidate ${index}:`, {
+              hasContent: !!candidate.content,
+              hasFinishReason: !!candidate.finishReason,
+              finishReason: candidate.finishReason,
+              hasSafetyRatings: !!candidate.safetyRatings,
+              safetyRatings: candidate.safetyRatings,
+              hasCitationMetadata: !!candidate.citationMetadata,
+              citationMetadata: candidate.citationMetadata
+            });
+
+            if (candidate.safetyRatings) {
+              console.log(`Candidate ${index} safety ratings:`, candidate.safetyRatings.map((rating: any) => ({
+                category: rating.category,
+                probability: rating.probability,
+                blocked: rating.blocked
+              })));
+            }
+
+            if (candidate.finishReason) {
+              console.log(`Candidate ${index} finish reason:`, candidate.finishReason);
+            }
+          });
+        }
+
+        console.log("=== END GEMINI RAW RESPONSE DEBUG ===");
+      }
+
+      const json = extractJsonFromLLMResponse(
         payload.content,
-        ["files", "reasoning"],
       );
+
+      console.log("JSON extraction result:", {
+        jsonType: typeof json,
+        jsonIsNull: json === null,
+        jsonKeys: json && typeof json === 'object' ? Object.keys(json) : 'not an object',
+        jsonPreview: JSON.stringify(json)?.substring(0, 200) + (JSON.stringify(json) && JSON.stringify(json).length > 200 ? '...' : '')
+      });
+
+      // Check if JSON parsing was successful
+      if (!json || typeof json !== 'object') {
+        console.warn("LLM response parsing failed or returned invalid JSON:", {
+          json: json,
+          jsonType: typeof json,
+          payloadContent: payload.content,
+          payloadContentLength: payload.content?.length || 0,
+          payloadContentType: typeof payload.content,
+          responseType: response.type,
+          responseError: response.error
+        });
+        console.log("=== LLM RANKING DEBUG END (PARSE FAILED) ===");
+        return this.fallbackToFileRanking(fileInfos, query);
+      }
 
       const filesObject = json.files || {};
 
@@ -395,14 +530,17 @@ export class ExtractCodeTool {
         result.set(filePath, elementSelections);
       }
 
+      console.log("=== LLM RANKING DEBUG END (SUCCESS) ===");
       return result;
     } catch (error) {
       console.warn("Error in LLM ranking:", error);
+      console.log("=== LLM RANKING DEBUG END (EXCEPTION) ===");
       return this.fallbackToFileRanking(fileInfos, query);
     }
   }
 
   private async identifyRelevantCodeElementsWithLLM(
+    fileInfos: Map<string, FileInfo>,
     structuredContext: Array<{ path: string; elements: CodeElement[]; snippet: string; }>,
     params: NormalizedExtractCodeParameters,
   ): Promise<any> {
@@ -429,7 +567,7 @@ export class ExtractCodeTool {
     const request: LLMRequest = {
       id: `extract-code-${Date.now()}`,
       provider: "auto",
-      model: "",
+      model: params.model || "",
       messages,
       metadata: {
         projectId: params.projectId,
@@ -437,23 +575,166 @@ export class ExtractCodeTool {
       },
       createdAt: new Date(),
       updatedAt: new Date(),
+      maxTokens: 4096,
     };
 
+    console.log("=== LLM CODE ELEMENT IDENTIFICATION DEBUG START ===");
+    console.log("Request details:", {
+      requestId: request.id,
+      provider: request.provider,
+      model: request.model,
+      messageCount: request.messages.length,
+      messageLengths: request.messages.map(m => m.content.length),
+      metadata: request.metadata
+    });
+
+    // Log the prompt content for debugging (especially important for Gemini safety issues)
+    console.log("=== CODE ELEMENT IDENTIFICATION PROMPT CONTENT DEBUG ===");
+    request.messages.forEach((message, index) => {
+      console.log(`Message ${index} (${message.role}):`, {
+        contentLength: message.content.length,
+        contentPreview: message.content.substring(0, 200) + (message.content.length > 200 ? '...' : ''),
+        fullContent: message.content
+      });
+    });
+    console.log("=== END CODE ELEMENT IDENTIFICATION PROMPT CONTENT DEBUG ===");
+
     const response = await this.llmProvider.chat(request);
+    
+    console.log("Raw LLM response:", {
+      responseType: response.type,
+      hasPayload: !!response.payload,
+      error: response.error || 'none',
+      responseKeys: Object.keys(response)
+    });
+
     if (response.type !== ResponseType.SUCCESS || !response.payload) {
+      console.warn("LLM extraction failed. Response details:", {
+        type: response.type,
+        error: response.error,
+        hasPayload: !!response.payload,
+        payload: response.payload
+      });
+      console.log("=== LLM CODE ELEMENT IDENTIFICATION DEBUG END (FAILED) ===");
       throw new Error("LLM extraction failed");
     }
 
     const payload = response.payload as LLMResponse;
+    console.log("LLM payload details:", {
+      payloadKeys: Object.keys(payload),
+      contentType: typeof payload.content,
+      contentLength: payload.content?.length || 0,
+      contentPreview: payload.content?.substring(0, 100) + (payload.content && payload.content.length > 100 ? '...' : ''),
+      fullContent: payload.content,
+      hasUsage: !!payload.usage,
+      usage: payload.usage,
+      provider: payload.provider,
+      model: payload.model,
+      hasMetadata: !!payload.metadata,
+      metadataKeys: payload.metadata ? Object.keys(payload.metadata) : [],
+      rawResponse: payload.metadata?.rawResponse
+    });
 
-    const result = parseAndValidateLlmJson<{
-      relevance_score: number;
-      context: string;
-      file_path: string;
-      reasoning: string;
-    }>(payload.content, ["relevance_score", "context", "file_path", "reasoning"]);
+    // Additional Gemini-specific debugging
+    if (payload.provider === 'google' && payload.metadata?.rawResponse) {
+      const rawResponse = payload.metadata.rawResponse;
+      console.log("=== GEMINI CODE ELEMENT IDENTIFICATION RAW RESPONSE DEBUG ===");
+      console.log("Raw response structure:", {
+        hasResponse: !!rawResponse.response,
+        responseKeys: rawResponse.response ? Object.keys(rawResponse.response) : [],
+        hasCandidates: !!rawResponse.response?.candidates,
+        candidatesLength: rawResponse.response?.candidates?.length || 0,
+        hasPromptFeedback: !!rawResponse.response?.promptFeedback,
+        hasUsageMetadata: !!rawResponse.response?.usageMetadata
+      });
 
+      // Check for safety-related information
+      if (rawResponse.response?.promptFeedback) {
+        console.log("Gemini prompt feedback:", rawResponse.response.promptFeedback);
+      }
+
+      if (rawResponse.response?.candidates) {
+        rawResponse.response.candidates.forEach((candidate: any, index: number) => {
+          console.log(`Candidate ${index}:`, {
+            hasContent: !!candidate.content,
+            hasFinishReason: !!candidate.finishReason,
+            finishReason: candidate.finishReason,
+            hasSafetyRatings: !!candidate.safetyRatings,
+            safetyRatings: candidate.safetyRatings,
+            hasCitationMetadata: !!candidate.citationMetadata,
+            citationMetadata: candidate.citationMetadata
+          });
+
+          if (candidate.safetyRatings) {
+            console.log(`Candidate ${index} safety ratings:`, candidate.safetyRatings.map((rating: any) => ({
+              category: rating.category,
+              probability: rating.probability,
+              blocked: rating.blocked
+            })));
+          }
+
+          if (candidate.finishReason) {
+            console.log(`Candidate ${index} finish reason:`, candidate.finishReason);
+          }
+        });
+      }
+
+      console.log("=== END GEMINI CODE ELEMENT IDENTIFICATION RAW RESPONSE DEBUG ===");
+    }
+
+    const json = extractJsonFromLLMResponse(payload.content);
+
+    console.log("JSON extraction result:", {
+      jsonType: typeof json,
+      jsonIsNull: json === null,
+      jsonKeys: json && typeof json === 'object' ? Object.keys(json) : 'not an object',
+      jsonPreview: JSON.stringify(json)?.substring(0, 200) + (JSON.stringify(json) && JSON.stringify(json).length > 200 ? '...' : '')
+    });
+
+    // Check if JSON parsing was successful
+    if (!json || typeof json !== 'object') {
+      console.warn("LLM response parsing failed in identifyRelevantCodeElementsWithLLM:", {
+        json: json,
+        jsonType: typeof json,
+        payloadContent: payload.content,
+        payloadContentLength: payload.content?.length || 0,
+        payloadContentType: typeof payload.content,
+        responseType: response.type,
+        responseError: response.error
+      });
+      console.log("=== LLM CODE ELEMENT IDENTIFICATION DEBUG END (PARSE FAILED) ===");
+      throw new Error("Failed to parse LLM response for code element identification");
+    }
+
+    const filesObject = json.files || {};
+
+    const result = new Map<string, Array<{ name: string; type: string }>>();
+
+    for (const [filePath, elements] of Object.entries(filesObject)) {
+      if (!Array.isArray(elements)) {
+        continue;
+      }
+
+      const fileInfo = fileInfos.get(filePath);
+      console.log(`Processing file ${filePath} with elements:`, elements);
+      console.log(`Available elements in file:`, fileInfo?.elements.map(el => `${el.name} (${el.type})`).join(', '));
+
+      const elementSelections = elements.map((elementName) => {
+        const element = fileInfo?.elements.find((el) => el.name === elementName);
+        const result = {
+          name: elementName,
+          type: element?.type || "unknown",
+        };
+        console.log(`Element ${elementName} -> ${result.type} (found: ${!!element})`);
+        return result;
+      });
+
+      result.set(filePath, elementSelections);
+      }
+
+    console.log("=== LLM CODE ELEMENT IDENTIFICATION DEBUG END (SUCCESS) ===");
     return result;
+    
   }
 
   private async buildStructuredCodeContextSnippets(
@@ -507,7 +788,6 @@ export class ExtractCodeTool {
         
         if (matchingElement) {
           selectedElements.push(matchingElement);
-          console.log(`Found element: ${matchingElement.name} (${matchingElement.type}) for query: ${relevantElement.name} (${relevantElement.type})`);
         } else {
           console.warn(`Element ${relevantElement.name} (${relevantElement.type}) not found in file ${filePath}. Available elements:`, 
             fileInfo.elements.map(el => `${el.name} (${el.type})`).join(', '));

@@ -4,6 +4,24 @@ All notable changes to the "samurai-agent" extension will be documented in this 
 
 ## [Unreleased]
 
+## [0.0.6] - 2025-01-01
+
+### Fixed
+- **CRITICAL**: Fixed LLM JSON parsing failure in production for array format responses
+- **CRITICAL**: Fixed empty LLM response handling with better error messages and debugging
+- Improved LLM response parser to handle both object `{}` and array `[{},{}]` formats robustly
+- Enhanced JSON extraction with multiple fallback strategies for various LLM output formats
+- Fixed type system to properly handle arrays in addition to objects
+- Added intelligent truncation handling that respects markdown code block boundaries
+- Improved balanced extraction logic for nested JSON structures with code blocks
+- Added comprehensive test coverage for production array format scenarios
+- Enhanced error handling for empty, short, and non-JSON LLM responses with specific diagnostic messages
+
+### Improved
+- LLM JSON parsing is now more robust and handles edge cases better
+- Better error handling for malformed JSON in markdown code blocks
+- Enhanced parsing strategies for different LLM response formats
+
 ## [0.0.5] - 2025-01-01
 
 ### Fixed

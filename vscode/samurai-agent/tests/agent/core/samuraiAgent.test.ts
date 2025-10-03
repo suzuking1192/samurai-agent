@@ -1088,6 +1088,51 @@ describe('SamuraiAgent', () => {
       expect(result.message).toContain('I encountered issues creating the specs');
       expect(mockCreateSpecTool.execute).not.toHaveBeenCalled();
     });
+
+    it('should handle empty response from LLM', async () => {
+      // Mock LLM response with empty content
+      mockLLMProviderService.chat.mockResolvedValue({
+        type: 'success',
+        payload: { content: '' }
+      } as any);
+
+      const result = await samuraiAgent.handleGeneratingSpecs(userMessage, codeContexts, chatHistory, projectDetails);
+
+      expect(result.success).toBe(false);
+      expect(result.message).toContain('Error generating specs: LLM returned an empty response');
+      expect(result.message).toContain('LLM service timeout or rate limiting');
+      expect(mockCreateSpecTool.execute).not.toHaveBeenCalled();
+    });
+
+    it('should handle very short response from LLM', async () => {
+      // Mock LLM response with very short content
+      mockLLMProviderService.chat.mockResolvedValue({
+        type: 'success',
+        payload: { content: 'Error' }
+      } as any);
+
+      const result = await samuraiAgent.handleGeneratingSpecs(userMessage, codeContexts, chatHistory, projectDetails);
+
+      expect(result.success).toBe(false);
+      expect(result.message).toContain('Error generating specs: LLM returned a very short response');
+      expect(result.message).toContain('"Error"');
+      expect(mockCreateSpecTool.execute).not.toHaveBeenCalled();
+    });
+
+    it('should handle non-JSON response from LLM', async () => {
+      // Mock LLM response with non-JSON content
+      mockLLMProviderService.chat.mockResolvedValue({
+        type: 'success',
+        payload: { content: 'This is not JSON format' }
+      } as any);
+
+      const result = await samuraiAgent.handleGeneratingSpecs(userMessage, codeContexts, chatHistory, projectDetails);
+
+      expect(result.success).toBe(false);
+      expect(result.message).toContain('Error generating specs: LLM response doesn\'t contain JSON format');
+      expect(result.message).toContain('This is not JSON format');
+      expect(mockCreateSpecTool.execute).not.toHaveBeenCalled();
+    });
   });
 
   describe('handleSpecClarification', () => {

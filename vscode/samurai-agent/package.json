@@ -2,7 +2,7 @@
   "name": "samurai-agent",
   "displayName": "Samurai Agent",
   "description": "AI tool for spec-driven development: debugs requirements to prevent messy AI-generated code",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "publisher": "SamuraiAgent",
   "engines": {
     "vscode": "^1.104.0"
@@ -30,11 +30,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/yutosuzuki/samurai-agent"
+    "url": "https://github.com/suzuking1192/samurai-agent"
   },
-  "homepage": "https://github.com/yutosuzuki/samurai-agent",
+  "homepage": "https://github.com/suzuking1192/samurai-agent",
   "bugs": {
-    "url": "https://github.com/yutosuzuki/samurai-agent/issues"
+    "url": "https://github.com/suzuking1192/samurai-agent/issues"
   },
   "icon": "icon.png",
   "activationEvents": [

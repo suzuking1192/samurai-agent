@@ -254,9 +254,6 @@ describe('SamuraiAgent Integration Tests', () => {
 
       // Mock code extraction tool
       const mockCodeContext: ExtractCodeToolResultPayload = {
-        relevance_score: 0.9,
-        context: 'User service implementation with authentication methods',
-        file_path: 'src/services/userService.ts',
         relevantCodeElements: [
           {
             path: 'src/services/userService.ts',
@@ -265,6 +262,7 @@ describe('SamuraiAgent Integration Tests', () => {
                 name: 'UserService',
                 type: 'class',
                 lineStart: 1,
+                lineEnd: 50,
                 filePath: 'src/services/userService.ts',
                 signature: 'class UserService'
               }

@@ -625,9 +625,6 @@ describe('DataStore', () => {
         const mockSessionId = 'test-session-id';
         const mockCodeContextId = 'test-code-context-id';
         const mockPayload: ExtractCodeToolResultPayload = {
-            relevance_score: 8.5,
-            context: 'Test code context analysis',
-            file_path: '/test/file.ts',
             relevantCodeElements: [
                 {
                     path: '/test/file.ts',

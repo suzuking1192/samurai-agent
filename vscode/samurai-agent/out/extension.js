@@ -48,6 +48,11 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.activate = activate;
 exports.deactivate = deactivate;
+// Load environment variables from .env file for development
+const dotenv = __importStar(require("dotenv"));
+const path = __importStar(require("path"));
+// Load .env file from the extension root directory
+dotenv.config({ path: path.resolve(__dirname, '..', '.env') });
 const vscode = __importStar(require("vscode"));
 const SamuraiAgentPanelWebviewViewProvider_1 = require("./webview/SamuraiAgentPanelWebviewViewProvider");
 const globalDataStore_1 = require("./persistence/globalDataStore");
@@ -64,14 +69,16 @@ const CodeParserService_1 = require("./agent/code_parser/CodeParserService");
 const samuraiAgent_1 = require("./agent/core/samuraiAgent");
 const llmCostStorage_1 = require("./storage/llmCostStorage");
 const llmCostCalculator_1 = require("./common/utils/llmCostCalculator");
+const TelemetryService_1 = require("./services/TelemetryService");
 /**
  * Extension activation function - main backend entry point
  * Registers all commands, webview providers, and initializes the agent system
  */
 function activate(context) {
     const globalDataStore = new globalDataStore_1.GlobalDataStore();
+    const telemetryService = new TelemetryService_1.TelemetryService(context, globalDataStore);
     const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    const dataStore = workspaceRoot ? new dataStore_1.DataStore(workspaceRoot) : undefined;
+    const dataStore = workspaceRoot ? new dataStore_1.DataStore(workspaceRoot, telemetryService) : undefined;
     // Initialize LLM Cost Storage
     const llmCostStorage = new llmCostStorage_1.LLMCostStorage(context);
     // Create status bar item for cost display
@@ -81,6 +88,8 @@ function activate(context) {
     // Update status bar with initial cost
     updateCostStatusBar(costStatusBarItem, llmCostStorage);
     costStatusBarItem.show();
+    // Track extension activation
+    telemetryService.trackExtensionActivation();
     const llmProviderService = new llmProviderService_1.LLMProviderService(globalDataStore, dataStore);
     llmProviderService.registerClient("openai", new openaiChatClient_1.OpenAIChatClient());
     llmProviderService.registerClient("google", new geminiChatClient_1.GeminiChatClient());
@@ -211,6 +220,18 @@ Click to see details in the Samurai Agent panel.
     }));
     // Note: samurai-agent.ui.sendAssistantMessageToChat is now handled as a webview message
     // in SamuraiAgentPanelWebviewViewProvider.handleSendAssistantMessageToChat()
+    // Listen for telemetry setting changes
+    context.subscriptions.push(vscode.workspace.onDidChangeConfiguration((event) => {
+        if (event.affectsConfiguration('samurai-agent.enableTelemetry')) {
+            const config = vscode.workspace.getConfiguration('samurai-agent');
+            const isEnabled = config.get('enableTelemetry', true);
+            telemetryService.trackTelemetrySettingChange(isEnabled);
+        }
+    }));
+    // Clean up telemetry service on deactivation
+    context.subscriptions.push({
+        dispose: () => telemetryService.dispose()
+    });
 }
 /**
  * Update the status bar with current cost information

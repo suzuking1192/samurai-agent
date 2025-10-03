@@ -19,9 +19,6 @@ describe('DataStore - Code Context Methods', () => {
 
   describe('saveCodeContext', () => {
     const mockPayload: ExtractCodeToolResultPayload = {
-      relevance_score: 0.9,
-      context: 'Test context',
-      file_path: 'test.ts',
       relevantCodeElements: []
     };
 
@@ -70,9 +67,6 @@ describe('DataStore - Code Context Methods', () => {
 
   describe('loadCodeContext', () => {
     const mockPayload: ExtractCodeToolResultPayload = {
-      relevance_score: 0.9,
-      context: 'Test context',
-      file_path: 'test.ts',
       relevantCodeElements: []
     };
 
@@ -136,16 +130,10 @@ describe('DataStore - Code Context Methods', () => {
     };
 
     const mockPayload1: ExtractCodeToolResultPayload = {
-      relevance_score: 0.9,
-      context: 'Context 1',
-      file_path: 'test1.ts',
       relevantCodeElements: []
     };
 
     const mockPayload2: ExtractCodeToolResultPayload = {
-      relevance_score: 0.8,
-      context: 'Context 2',
-      file_path: 'test2.ts',
       relevantCodeElements: []
     };
 

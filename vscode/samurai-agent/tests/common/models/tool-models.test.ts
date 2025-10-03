@@ -7,9 +7,6 @@ import { ExtractCodeToolResultPayload } from '../../../src/common/models/tool-mo
 describe('ExtractCodeToolResultPayload', () => {
     it('should have correct structure', () => {
         const payload: ExtractCodeToolResultPayload = {
-            relevance_score: 8.5,
-            context: 'Test code context analysis',
-            file_path: '/test/file.ts',
             relevantCodeElements: [
                 {
                     path: '/test/file.ts',
@@ -28,17 +25,11 @@ describe('ExtractCodeToolResultPayload', () => {
             ]
         };
 
-        expect(typeof payload.relevance_score).toBe('number');
-        expect(typeof payload.context).toBe('string');
-        expect(typeof payload.file_path).toBe('string');
         expect(Array.isArray(payload.relevantCodeElements)).toBe(true);
     });
 
     it('should allow multiple code elements', () => {
         const payload: ExtractCodeToolResultPayload = {
-            relevance_score: 7.0,
-            context: 'Multiple elements analysis',
-            file_path: '/test/file.ts',
             relevantCodeElements: [
                 {
                     path: '/test/file.ts',
@@ -71,13 +62,9 @@ describe('ExtractCodeToolResultPayload', () => {
 
     it('should allow empty code elements array', () => {
         const payload: ExtractCodeToolResultPayload = {
-            relevance_score: 0,
-            context: 'No relevant elements found',
-            file_path: '/test/file.ts',
             relevantCodeElements: []
         };
 
         expect(payload.relevantCodeElements).toHaveLength(0);
-        expect(payload.relevance_score).toBe(0);
     });
 });

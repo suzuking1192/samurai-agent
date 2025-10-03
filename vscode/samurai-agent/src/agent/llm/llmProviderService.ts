@@ -113,7 +113,7 @@ export class LLMProviderService {
     if (projectMaxTokens && projectMaxTokens > 0) {
       modelRequest.maxTokens = projectMaxTokens;
     }
-
+    console.log('[LLM REQUEST DEBUG] LLMProviderService - maxTokens:', modelRequest.maxTokens);
     // Execute the LLM request
     const response = await client.chat(modelRequest);
     

@@ -107,9 +107,7 @@ describe("ExtractCodeTool", () => {
     const provider = new MockLLMProviderService(
       buildMockResponse(
         JSON.stringify({
-          relevance_score: 8,
-          context: "Details",
-          file_path: "/repo/src/file.ts",
+          analysis: "Details"
         }),
       ),
     );
@@ -137,9 +135,7 @@ describe("ExtractCodeTool", () => {
     const provider = new MockLLMProviderService(
       buildMockResponse(
         JSON.stringify({
-          relevance_score: 5,
-          context: "Summary",
-          file_path: "/repo/src/file.ts",
+          analysis: "Summary"
         }),
       ),
     );

@@ -552,7 +552,7 @@ export class DataStore {
                         codeAnalysisEnabled: true,
                         autoSpecGeneration: true,
                         memoryRetentionDays: 30,
-                        maxTokensPerRequest: 4000
+                        maxTokensPerRequest: 4096
                     },
                     theme: 'auto',
                     autoSave: true,

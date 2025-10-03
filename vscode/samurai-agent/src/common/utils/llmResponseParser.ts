@@ -13,16 +13,18 @@
  */
 
 /**
- * Extracts and parses JSON content from LLM text responses.
- * Handles common LLM output formats including markdown code blocks.
- * Uses balanced extraction for both objects and arrays to avoid issues
- * with nested code blocks containing backticks or brackets.
+
+/**
+ * Extracts JSON from LLM responses that may be wrapped in markdown code blocks or be plain JSON.
+ * This function handles multiple formats:
+ * 1. JSON wrapped in ```json``` code blocks
+ * 2. Plain JSON without code block markers
+ * 3. JSON with balanced brace counting for better accuracy
  * 
  * @param text - The raw LLM response content
  * @returns Parsed JSON object or array, or null if parsing fails
- * @throws Error if no valid JSON can be extracted after all attempts
  */
-export function extractJsonFromMarkdown(text: string): Record<string, any> | null {
+export function extractJsonFromLLMResponse(text: string): any | null {
     if (!text || typeof text !== 'string') {
         return null;
     }
@@ -32,325 +34,182 @@ export function extractJsonFromMarkdown(text: string): Record<string, any> | nul
         return null;
     }
 
-    // Strategy 1: Try to extract balanced JSON first (most reliable for code-containing JSON)
-    // Check for both objects {...} and arrays [{...}]
-    const firstBrace = trimmedText.indexOf('{');
-    const firstBracket = trimmedText.indexOf('[');
+    // Strategy 1: Try to find JSON wrapped in markdown code blocks
+    const jsonStartMarker = '```json';
+    const startIndex = trimmedText.indexOf(jsonStartMarker);
     
-    // Determine which comes first (or if only one exists)
-    let startChar = -1;
-    if (firstBrace !== -1 && firstBracket !== -1) {
-        startChar = Math.min(firstBrace, firstBracket);
-    } else if (firstBrace !== -1) {
-        startChar = firstBrace;
-    } else if (firstBracket !== -1) {
-        startChar = firstBracket;
-    }
-    
-    if (startChar !== -1) {
-        const isArray = trimmedText[startChar] === '[';
-        const extracted = isArray 
-            ? extractBalancedArray(trimmedText, startChar)
-            : extractBalancedJson(trimmedText, startChar);
-        if (extracted) {
-            const parsed = attemptJsonParse(extracted);
-            if (parsed) {
-                return parsed;
-            }
-        }
-    }
-
-    // Strategy 2: Try to find JSON within markdown code blocks
-    const jsonBlockMatch = trimmedText.match(/```(?:json)?\s*\n?([\s\S]*?)```/);
-    if (jsonBlockMatch) {
-        const jsonContent = jsonBlockMatch[1].trim();
-        const parsed = attemptJsonParse(jsonContent);
-        if (parsed) {
-            return parsed;
-        }
-        console.warn('Found JSON code block but failed to parse content');
-    }
-
-    // Strategy 3: Try to find JSON-like content between curly braces (original approach)
-    const jsonMatch = trimmedText.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-        const parsed = attemptJsonParse(jsonMatch[0]);
-        if (parsed) {
-            return parsed;
-        }
-    }
-
-    // Strategy 4: Try to parse the entire text as JSON (fallback)
-    return attemptJsonParse(trimmedText);
-}
-
-/**
- * Extracts a balanced JSON object by counting braces
- * Handles nested objects and ensures complete JSON
- */
-function extractBalancedJson(text: string, startIndex: number): string | null {
-    let depth = 0;
-    let inString = false;
-    let escapeNext = false;
-    
-    for (let i = startIndex; i < text.length; i++) {
-        const char = text[i];
+    if (startIndex !== -1) {
+        // Find the position after the ```json marker
+        const contentStartIndex = startIndex + jsonStartMarker.length;
         
-        if (escapeNext) {
-            escapeNext = false;
-            continue;
-        }
-        
-        if (char === '\\') {
-            escapeNext = true;
-            continue;
-        }
-        
-        if (char === '"' && !escapeNext) {
-            inString = !inString;
-            continue;
-        }
-        
-        if (!inString) {
-            if (char === '{') {
-                depth++;
-            } else if (char === '}') {
-                depth--;
-                if (depth === 0) {
-                    // Found complete balanced JSON
-                    return text.substring(startIndex, i + 1);
+        // Find the last ``` marker
+        const endMarker = '```';
+        const lastEndIndex = trimmedText.lastIndexOf(endMarker);
+        if (lastEndIndex !== -1 && lastEndIndex > contentStartIndex) {
+            // Extract content between the markers
+            const jsonContent = trimmedText.substring(contentStartIndex, lastEndIndex).trim();
+            
+            if (jsonContent) {
+                try {
+                    const parsed = JSON.parse(jsonContent);
+                    console.log('extractJsonFromLLMResponse - Successfully parsed JSON from code block:', {
+                        contentLength: jsonContent.length,
+                        hasExtractionQuery: !!parsed.extraction_query,
+                        extractionQueryLength: parsed.extraction_query?.length
+                    });
+                    return parsed;
+                } catch (error) {
+                    console.warn('Failed to parse JSON content from code block:', error);
+                    // Fall through to other strategies
                 }
             }
         }
     }
-    
-    // No balanced JSON found
-    return null;
-}
 
-/**
- * Extracts a balanced JSON array by counting brackets
- * Handles nested arrays and ensures complete JSON
- */
-function extractBalancedArray(text: string, startIndex: number): string | null {
-    let depth = 0;
-    let inString = false;
-    let escapeNext = false;
-    
-    for (let i = startIndex; i < text.length; i++) {
-        const char = text[i];
-        
-        if (escapeNext) {
-            escapeNext = false;
-            continue;
-        }
-        
-        if (char === '\\') {
-            escapeNext = true;
-            continue;
-        }
-        
-        if (char === '"' && !escapeNext) {
-            inString = !inString;
-            continue;
-        }
-        
-        if (!inString) {
-            if (char === '[') {
-                depth++;
-            } else if (char === ']') {
-                depth--;
-                if (depth === 0) {
-                    // Found complete balanced JSON array
-                    return text.substring(startIndex, i + 1);
-                }
-            }
-        }
-    }
-    
-    // No balanced JSON array found
-    return null;
-}
-
-/**
- * Safely extracts JSON from LLM response with error handling.
- * Returns null instead of throwing errors for malformed responses.
- * 
- * @param text - The raw LLM response content
- * @returns Parsed JSON object or null if parsing fails
- */
-export function safeExtractJson(text: string): Record<string, any> | null {
+    // Strategy 2: Try to parse the entire text as JSON (for plain JSON responses)
     try {
-        return extractJsonFromMarkdown(text);
+        const parsed = JSON.parse(trimmedText);
+        console.log('extractJsonFromLLMResponse - Successfully parsed plain JSON:', {
+            contentLength: trimmedText.length,
+            hasExtractionQuery: !!parsed.extraction_query,
+            extractionQueryLength: parsed.extraction_query?.length
+        });
+        return parsed;
     } catch (error) {
-        console.warn('Failed to extract JSON from LLM response:', error);
-        return null;
-    }
-}
-
-/**
- * Validates that the extracted JSON contains expected fields.
- * 
- * @param json - The parsed JSON object
- * @param requiredFields - Array of required field names
- * @returns True if all required fields are present, false otherwise
- */
-export function validateJsonStructure(
-    json: Record<string, any> | null,
-    requiredFields: string[]
-): boolean {
-    if (!json || typeof json !== 'object') {
-        return false;
+        // Fall through to brace counting strategy
     }
 
-    return requiredFields.every(field => field in json);
-}
+    // Strategy 3: Use balanced brace counting to find JSON object/array
+    let braceCount = 0;
+    let startIdx = -1;
+    let endIdx = -1;
+    let isArray = false;
 
-/**
- * Error model for parsing failures
- */
-export interface ErrorModel {
-    category: 'Parsing' | 'Validation' | 'Schema';
-    message: string;
-    originalError?: any;
-}
-
-/**
- * Error categories for different types of parsing failures
- */
-export enum ErrorCategory {
-    Parsing = 'Parsing',
-    Validation = 'Validation',
-    Schema = 'Schema'
-}
-
-/**
- * Generic utility function for parsing and validating JSON output from LLMs
- * Handles markdown wrapping, required field validation, and optional schema validation
- * 
- * @param text - Raw LLM response content
- * @param requiredFields - Array of field names that must be present in the JSON
- * @param schema - Optional schema for deeper validation (e.g., Zod schema)
- * @returns Parsed object of type T if successful
- * @throws ErrorModel with ErrorCategory.Parsing if extraction or validation fails
- */
-export function parseAndValidateLlmJson<T = Record<string, any>>(
-    text: string,
-    requiredFields: string[],
-    schema?: any
-): T {
-    // Step 1: Extract JSON from the text using existing utility
-    const extractedJson = safeExtractJson(text);
-    
-    if (!extractedJson) {
-        const error = new Error(`Failed to extract valid JSON from LLM response. Text: ${text.substring(0, 200)}...`);
-        (error as any).category = ErrorCategory.Parsing;
-        (error as any).originalError = new Error('JSON extraction failed');
-        throw error;
+    for (let i = 0; i < trimmedText.length; i++) {
+        const char = trimmedText[i];
+        
+        if (char === '{' || char === '[') {
+            if (braceCount === 0) {
+                startIdx = i;
+                isArray = char === '[';
+            }
+            braceCount++;
+        } else if (char === '}' || char === ']') {
+            braceCount--;
+            if (braceCount === 0 && startIdx !== -1) {
+                endIdx = i;
+                break;
+            }
+        }
     }
-    
-    // Step 2: Validate required fields are present
-    if (!validateJsonStructure(extractedJson, requiredFields)) {
-        const missingFields = requiredFields.filter(field => !(field in extractedJson));
-        const error = new Error(`Missing required fields in LLM response: ${missingFields.join(', ')}. Available fields: ${Object.keys(extractedJson).join(', ')}`);
-        (error as any).category = ErrorCategory.Parsing;
-        (error as any).originalError = new Error('Required field validation failed');
-        throw error;
-    }
-    
-    // Step 3: Apply schema validation if provided
-    if (schema) {
+
+    if (startIdx !== -1 && endIdx !== -1) {
+        const jsonCandidate = trimmedText.substring(startIdx, endIdx + 1);
         try {
-            // If schema has a parse method (like Zod), use it
-            if (typeof schema.parse === 'function') {
-                return schema.parse(extractedJson) as T;
-            }
-            // If schema has a validate method, use it
-            else if (typeof schema.validate === 'function') {
-                const validationResult = schema.validate(extractedJson);
-                if (!validationResult.valid) {
-                    const error = new Error(`Schema validation failed: ${validationResult.errors?.join(', ') || 'Unknown validation error'}`);
-                    (error as any).category = ErrorCategory.Schema;
-                    (error as any).originalError = validationResult;
-                    throw error;
-                }
-                return extractedJson as T;
-            }
-            // For other schema types, assume they're valid if we got this far
-            else {
-                return extractedJson as T;
-            }
+            const parsed = JSON.parse(jsonCandidate);
+            console.log('extractJsonFromLLMResponse - Successfully parsed JSON using brace counting:', {
+                contentLength: jsonCandidate.length,
+                hasExtractionQuery: !!parsed.extraction_query,
+                extractionQueryLength: parsed.extraction_query?.length
+            });
+            return parsed;
         } catch (error) {
-            if (error && typeof error === 'object' && 'category' in error) {
-                throw error; // Re-throw our ErrorModel
+            console.warn('Failed to parse JSON using brace counting:', error);
+        }
+    }
+
+    // Strategy 4: Handle truncated JSON responses (common with token limits)
+    if (startIdx !== -1 && endIdx === -1) {
+        console.log('Detected potentially truncated JSON response, attempting to repair...');
+        const truncatedJson = trimmedText.substring(startIdx);
+        
+        // Try to repair common truncation patterns
+        const repairAttempts = [
+            // Add missing closing braces/brackets
+            truncatedJson + '}',
+            truncatedJson + ']}',
+            truncatedJson + '}]}',
+            truncatedJson + '}]}]}',
+            // Handle incomplete string values
+            truncatedJson.replace(/"[^"]*$/, '""') + '}',
+            truncatedJson.replace(/"[^"]*$/, '""') + ']}',
+            truncatedJson.replace(/"[^"]*$/, '""') + '}]}',
+            // Handle incomplete array values
+            truncatedJson.replace(/,\s*$/, '') + '}',
+            truncatedJson.replace(/,\s*$/, '') + ']}',
+            truncatedJson.replace(/,\s*$/, '') + '}]}',
+            // Handle truncation in the middle of strings (like "Op...")
+            truncatedJson.replace(/"[^"]*\.\.\.$/, '""') + '}',
+            truncatedJson.replace(/"[^"]*\.\.\.$/, '""') + ']}',
+            truncatedJson.replace(/"[^"]*\.\.\.$/, '""') + '}]}',
+            // Handle truncation with ellipsis patterns
+            truncatedJson.replace(/"[^"]*\.\.\.$/, '""') + '}',
+            truncatedJson.replace(/"[^"]*\.\.\.$/, '""') + ']}',
+            truncatedJson.replace(/"[^"]*\.\.\.$/, '""') + '}]}',
+            // Handle incomplete array elements
+            truncatedJson.replace(/,\s*"[^"]*\.\.\.$/, '') + '}',
+            truncatedJson.replace(/,\s*"[^"]*\.\.\.$/, '') + ']}',
+            truncatedJson.replace(/,\s*"[^"]*\.\.\.$/, '') + '}]}',
+        ];
+
+        for (let i = 0; i < repairAttempts.length; i++) {
+            try {
+                const repaired = repairAttempts[i];
+                const parsed = JSON.parse(repaired);
+                console.log(`extractJsonFromLLMResponse - Successfully repaired and parsed truncated JSON (attempt ${i + 1}):`, {
+                    originalLength: truncatedJson.length,
+                    repairedLength: repaired.length,
+                    hasExtractionQuery: !!parsed.extraction_query,
+                    extractionQueryLength: parsed.extraction_query?.length,
+                    hasFiles: !!parsed.files,
+                    filesCount: parsed.files ? Object.keys(parsed.files).length : 0
+                });
+                return parsed;
+            } catch (error) {
+                // Continue to next repair attempt
             }
-            const schemaError = new Error(`Schema validation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-            (schemaError as any).category = ErrorCategory.Schema;
-            (schemaError as any).originalError = error;
-            throw schemaError;
-        }
-    }
-    
-    // Return the validated JSON as the requested type
-    return extractedJson as T;
-}
-
-function attemptJsonParse(raw: string): Record<string, any> | null {
-    if (!raw) {
-        return null;
-    }
-
-    const trimmed = raw.trim();
-
-    const tryParse = (value: string): Record<string, any> | null => {
-        try {
-            return JSON.parse(value);
-        } catch (error) {
-            return null;
-        }
-    };
-
-    // Attempt 1: Direct parse
-    const direct = tryParse(trimmed);
-    if (direct) {
-        return direct;
-    }
-
-    // Attempt 2: Remove trailing commas (common LLM mistake)
-    const withoutTrailingCommas = trimmed.replace(/,\s*(?=[}\]])/g, "");
-    const parsedWithoutTrailingCommas = tryParse(withoutTrailingCommas);
-    if (parsedWithoutTrailingCommas) {
-        return parsedWithoutTrailingCommas;
-    }
-
-    // Attempt 3: Extract content between first { and last }
-    const firstBrace = trimmed.indexOf("{");
-    const lastBrace = trimmed.lastIndexOf("}");
-    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-        const candidate = trimmed.slice(firstBrace, lastBrace + 1);
-        const balanced = tryParse(candidate);
-        if (balanced) {
-            return balanced;
         }
 
-        const fixedCandidate = candidate.replace(/,\s*(?=[}\]])/g, "");
-        const parsedFixedCandidate = tryParse(fixedCandidate);
-        if (parsedFixedCandidate) {
-            return parsedFixedCandidate;
+        // Strategy 5: Advanced repair for complex truncation patterns
+        console.log('Attempting advanced JSON repair for complex truncation patterns...');
+        
+        // Try to repair the specific pattern from the log: incomplete array elements
+        const advancedRepairAttempts = [
+            // Remove incomplete array elements and close properly
+            truncatedJson.replace(/,\s*"[^"]*\.\.\.$/, '') + ']}',
+            truncatedJson.replace(/,\s*"[^"]*\.\.\.$/, '') + '}]}',
+            truncatedJson.replace(/,\s*"[^"]*\.\.\.$/, '') + '}]}]}',
+            // Handle nested truncation patterns
+            truncatedJson.replace(/,\s*"[^"]*\.\.\.$/, '') + '}',
+            // Try to close arrays and objects systematically
+            truncatedJson.replace(/,\s*"[^"]*\.\.\.$/, '') + ']}',
+            truncatedJson.replace(/,\s*"[^"]*\.\.\.$/, '') + '}]}',
+            // Handle the specific case where we have incomplete string values
+            truncatedJson.replace(/"[^"]*\.\.\.$/, '""') + ']}',
+            truncatedJson.replace(/"[^"]*\.\.\.$/, '""') + '}]}',
+        ];
+
+        for (let i = 0; i < advancedRepairAttempts.length; i++) {
+            try {
+                const repaired = advancedRepairAttempts[i];
+                const parsed = JSON.parse(repaired);
+                console.log(`extractJsonFromLLMResponse - Successfully repaired truncated JSON with advanced strategy (attempt ${i + 1}):`, {
+                    originalLength: truncatedJson.length,
+                    repairedLength: repaired.length,
+                    hasExtractionQuery: !!parsed.extraction_query,
+                    extractionQueryLength: parsed.extraction_query?.length,
+                    hasFiles: !!parsed.files,
+                    filesCount: parsed.files ? Object.keys(parsed.files).length : 0
+                });
+                return parsed;
+            } catch (error) {
+                // Continue to next repair attempt
+            }
         }
+
+        console.warn('Failed to repair truncated JSON response after all attempts');
     }
 
-    // Attempt 4: Try to fix common JSON issues
-    // Remove control characters and fix common formatting issues
-    const cleaned = trimmed
-        .replace(/[\u0000-\u001F\u007F-\u009F]/g, '') // Remove control characters
-        .replace(/,(\s*[}\]])/g, '$1') // Remove trailing commas
-        .replace(/([{,]\s*)(\w+):/g, '$1"$2":'); // Quote unquoted keys
-    
-    const cleanedParsed = tryParse(cleaned);
-    if (cleanedParsed) {
-        return cleanedParsed;
-    }
-
+    // All strategies failed
     return null;
 }

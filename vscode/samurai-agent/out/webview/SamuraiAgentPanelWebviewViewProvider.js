@@ -40,11 +40,19 @@ const llm_models_1 = require("../common/constants/llm-models");
 const chat_models_1 = require("../common/models/chat-models");
 // Resolve each asset to whichever folder actually has that file
 const assetUri = (webview, extUri, filename) => {
+    // Check in order: dist (production), out (development), src (fallback)
+    const dist = vscode.Uri.joinPath(extUri, "dist", "webview", filename);
     const out = vscode.Uri.joinPath(extUri, "out", "webview", filename);
     const src = vscode.Uri.joinPath(extUri, "src", "webview", filename);
-    return fs.existsSync(out.fsPath)
-        ? webview.asWebviewUri(out)
-        : webview.asWebviewUri(src);
+    if (fs.existsSync(dist.fsPath)) {
+        return webview.asWebviewUri(dist);
+    }
+    else if (fs.existsSync(out.fsPath)) {
+        return webview.asWebviewUri(out);
+    }
+    else {
+        return webview.asWebviewUri(src);
+    }
 };
 class SamuraiAgentPanelWebviewViewProvider {
     _extensionUri;
@@ -73,17 +81,19 @@ class SamuraiAgentPanelWebviewViewProvider {
         this._webviewView = webviewView;
         console.log("Webview Provider: resolveWebviewView called");
         console.log("Webview Provider: webviewView visible:", webviewView.visible);
-        // Allow both src and out roots for maximum compatibility
+        // Allow dist, out, and src roots for maximum compatibility
+        const distRoot = vscode.Uri.joinPath(this._extensionUri, "dist", "webview");
         const srcRoot = vscode.Uri.joinPath(this._extensionUri, "src", "webview");
         const outRoot = vscode.Uri.joinPath(this._extensionUri, "out", "webview");
-        console.log("Webview Provider: Allowing both roots:", {
+        console.log("Webview Provider: Allowing all roots:", {
+            dist: distRoot.toString(),
             src: srcRoot.toString(),
             out: outRoot.toString(),
         });
         webviewView.webview.options = {
             enableScripts: true,
             enableCommandUris: true,
-            localResourceRoots: [srcRoot, outRoot], // include BOTH
+            localResourceRoots: [distRoot, srcRoot, outRoot], // include ALL
         };
         webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
         console.log("Webview Provider: HTML set for webview");
@@ -105,7 +115,7 @@ class SamuraiAgentPanelWebviewViewProvider {
         console.log("Webview Provider: Setting up webview with options:", {
             enableScripts: true,
             enableCommandUris: true,
-            localResourceRoots: [srcRoot.toString(), outRoot.toString()],
+            localResourceRoots: [distRoot.toString(), srcRoot.toString(), outRoot.toString()],
         });
     }
     /**
@@ -119,7 +129,7 @@ class SamuraiAgentPanelWebviewViewProvider {
     /**
      * Handles messages from the webview
      */
-    handleWebviewMessage(webview, message) {
+    async handleWebviewMessage(webview, message) {
         const { command } = message;
         try {
             // Direct agent execute command
@@ -332,6 +342,47 @@ class SamuraiAgentPanelWebviewViewProvider {
                             timestamp: new Date(),
                         });
                     });
+                }
+                return;
+            }
+            // Handle settings operations
+            if (command?.startsWith("settings.")) {
+                const settingsCommand = command.replace("settings.", "");
+                if (settingsCommand === "getTelemetrySetting") {
+                    const config = vscode.workspace.getConfiguration('samurai-agent');
+                    const isEnabled = config.get('enableTelemetry', true);
+                    webview.postMessage({
+                        type: "success",
+                        requestId: message.requestId,
+                        payload: isEnabled,
+                    });
+                }
+                else if (settingsCommand === "updateTelemetrySetting") {
+                    const { enabled } = message.payload || {};
+                    if (typeof enabled === 'boolean') {
+                        try {
+                            await vscode.workspace.getConfiguration('samurai-agent').update('enableTelemetry', enabled, vscode.ConfigurationTarget.Global);
+                            webview.postMessage({
+                                type: "success",
+                                requestId: message.requestId,
+                                payload: enabled,
+                            });
+                        }
+                        catch (error) {
+                            webview.postMessage({
+                                type: "error",
+                                requestId: message.requestId,
+                                error: `Failed to update telemetry setting: ${error?.message || 'Unknown error'}`,
+                            });
+                        }
+                    }
+                    else {
+                        webview.postMessage({
+                            type: "error",
+                            requestId: message.requestId,
+                            error: "Invalid telemetry setting value",
+                        });
+                    }
                 }
                 return;
             }
@@ -647,6 +698,9 @@ class SamuraiAgentPanelWebviewViewProvider {
                 }
                 // Get available models
                 const availableModels = this.getAvailableModels(globalSettings);
+                // Get telemetry setting
+                const config = vscode.workspace.getConfiguration('samurai-agent');
+                const telemetryEnabled = config.get('enableTelemetry', true);
                 // Send settings to webview
                 webview.postMessage({
                     type: "initialSettings",
@@ -658,6 +712,7 @@ class SamuraiAgentPanelWebviewViewProvider {
                         },
                         availableModels,
                         llmModels: llm_models_1.LLM_MODELS,
+                        telemetryEnabled,
                     },
                     timestamp: new Date(),
                 });
