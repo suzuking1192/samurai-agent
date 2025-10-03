@@ -4,6 +4,17 @@ All notable changes to the "samurai-agent" extension will be documented in this 
 
 ## [Unreleased]
 
+### Added
+- **PostHog Error Tracking**: Implemented centralized error tracking system with `TelemetryService.captureError` method
+- **SamuraiAgent Error Monitoring**: Added PostHog error capture to SamuraiAgent.execute method for critical error tracking
+- **ExtractCodeTool Error Monitoring**: Added comprehensive PostHog error tracking to ExtractCodeTool for all error scenarios:
+  - Main execution failures with detailed context (query, projectId, execution time)
+  - Codebase scanning failures with path and configuration details
+  - LLM ranking failures with query and file count information
+  - File reading failures with specific file path information
+- **Error Context Enrichment**: Enhanced error tracking with rich contextual data including service name, function name, and relevant parameters
+- **Comprehensive Test Coverage**: Added unit tests for error tracking functionality in both SamuraiAgent and ExtractCodeTool
+
 ### Fixed
 - **CRITICAL**: Fixed consistent model selection across all SamuraiAgent methods (handlePureDiscussion, handleFeatureExploration, handleSpecClarification, handleGeneratingSpecs, analyzeUserIntent)
 - **CRITICAL**: Enhanced LLM response parser to handle truncated JSON responses from Gemini API due to token limits

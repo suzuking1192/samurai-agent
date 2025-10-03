@@ -12,6 +12,7 @@ import { extractJsonFromLLMResponse } from "../../common/utils/llmResponseParser
 import { ExtractCodeTool } from "../tools/extractCodeTool";
 import { CreateSpecTool } from "../tools/createSpecTool";
 import { ConfirmationQuestionService } from "../../extension/services/confirmationQuestionService";
+import { TelemetryService } from "../../services/TelemetryService";
 
 export interface FeatureExplorationResult {
   ideas: string[];
@@ -33,7 +34,8 @@ export class SamuraiAgent {
     private readonly dataStore: DataStore,
     private readonly projectDetailService: ProjectDetailService,
     private readonly extractCodeTool: ExtractCodeTool,
-    private readonly createSpecTool: CreateSpecTool
+    private readonly createSpecTool: CreateSpecTool,
+    private readonly telemetryService: TelemetryService
   ) {}
 
   /**
@@ -221,6 +223,13 @@ export class SamuraiAgent {
       };
     } catch (error) {
       console.error('Error in SamuraiAgent.execute:', error);
+      
+      // Capture critical error to PostHog for monitoring
+      this.telemetryService.captureError(error as Error, { 
+        service: 'SamuraiAgent', 
+        function: 'execute' 
+      });
+      
       return {
         success: false,
         message: `Error processing message: ${error instanceof Error ? error.message : 'Unknown error'}`,

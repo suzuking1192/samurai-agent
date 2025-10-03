@@ -3,9 +3,9 @@
  */
 
 import * as vscode from 'vscode';
-import { TelemetryService } from '../TelemetryService';
-import { GlobalDataStore } from '../../persistence/globalDataStore';
-import { ErrorModel, ErrorSeverity, ErrorCategory } from '../../common/models/error-models';
+import { TelemetryService } from '../../src/services/TelemetryService';
+import { GlobalDataStore } from '../../src/persistence/globalDataStore';
+import { ErrorModel, ErrorSeverity, ErrorCategory } from '../../src/common/models/error-models';
 
 // Mock PostHog
 jest.mock('posthog-node', () => {
@@ -83,7 +83,7 @@ describe('TelemetryService', () => {
           chatMessageType: 'user_message',
           eventTimestamp: expect.any(String),
           extensionVersion: '1.0.0',
-          vscodeVersion: expect.any(String),
+          vscodeVersion: undefined,
         },
       });
     });
@@ -104,7 +104,7 @@ describe('TelemetryService', () => {
           chatMessageType: 'agent_response',
           eventTimestamp: expect.any(String),
           extensionVersion: '1.0.0',
-          vscodeVersion: expect.any(String),
+          vscodeVersion: undefined,
         },
       });
     });
@@ -153,7 +153,7 @@ describe('TelemetryService', () => {
         properties: {
           eventTimestamp: expect.any(String),
           extensionVersion: '1.0.0',
-          vscodeVersion: expect.any(String),
+          vscodeVersion: undefined,
         },
       });
     });
@@ -205,7 +205,7 @@ describe('TelemetryService', () => {
           $exception_type: 'Error',
           $exception_stack: expect.any(String),
           extensionVersion: '1.0.0',
-          vscodeVersion: expect.any(String),
+          vscodeVersion: undefined,
           service: 'TestService',
           function: 'testFunction'
         }
@@ -239,7 +239,7 @@ describe('TelemetryService', () => {
           $exception_type: 'ErrorModel',
           $exception_stack: undefined,
           extensionVersion: '1.0.0',
-          vscodeVersion: expect.any(String),
+          vscodeVersion: undefined,
           service: 'TestService',
           function: 'testFunction',
           severity: ErrorSeverity.HIGH,
@@ -266,7 +266,7 @@ describe('TelemetryService', () => {
           $exception_type: 'Error',
           $exception_stack: expect.any(String),
           extensionVersion: '1.0.0',
-          vscodeVersion: expect.any(String)
+          vscodeVersion: undefined
         }
       });
     });
@@ -345,7 +345,7 @@ describe('TelemetryService', () => {
           $exception_type: 'Error',
           $exception_stack: expect.any(String),
           extensionVersion: '1.0.0',
-          vscodeVersion: expect.any(String),
+          vscodeVersion: undefined,
           service: 'TestService',
           function: 'testFunction',
           customProperty: 'customValue'
@@ -377,7 +377,7 @@ describe('TelemetryService', () => {
           $exception_type: 'ErrorModel',
           $exception_stack: undefined,
           extensionVersion: '1.0.0',
-          vscodeVersion: expect.any(String),
+          vscodeVersion: undefined,
           severity: ErrorSeverity.LOW,
           code: 'TEST_ERROR',
           category: ErrorCategory.USER,

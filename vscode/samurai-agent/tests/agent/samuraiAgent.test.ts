@@ -8,6 +8,7 @@ import { DataStore } from '../../src/persistence/dataStore';
 import { ProjectDetailService } from '../../src/agent/memory/projectDetailService';
 import { ExtractCodeTool } from '../../src/agent/tools/extractCodeTool';
 import { CreateSpecTool } from '../../src/agent/tools/createSpecTool';
+import { TelemetryService } from '../../src/services/TelemetryService';
 import { ChatMessage, Session, UserIntentEnum, MessageType, SessionStatus } from '../../src/common/models/chat-models';
 import { AgentExecutionResult } from '../../src/agent/models/agent-models';
 
@@ -17,6 +18,7 @@ jest.mock('../../src/persistence/dataStore');
 jest.mock('../../src/agent/memory/projectDetailService');
 jest.mock('../../src/agent/tools/extractCodeTool');
 jest.mock('../../src/agent/tools/createSpecTool');
+jest.mock('../../src/services/TelemetryService');
 
 describe('SamuraiAgent', () => {
   let samuraiAgent: SamuraiAgent;
@@ -25,14 +27,16 @@ describe('SamuraiAgent', () => {
   let mockProjectDetailService: jest.Mocked<ProjectDetailService>;
   let mockExtractCodeTool: jest.Mocked<ExtractCodeTool>;
   let mockCreateSpecTool: jest.Mocked<CreateSpecTool>;
+  let mockTelemetryService: jest.Mocked<TelemetryService>;
 
   beforeEach(() => {
     // Create mock instances
     mockLLMProviderService = new LLMProviderService({} as any, {} as any) as jest.Mocked<LLMProviderService>;
     mockDataStore = new DataStore('/test/path') as jest.Mocked<DataStore>;
     mockProjectDetailService = new ProjectDetailService({} as any, {} as any, '') as jest.Mocked<ProjectDetailService>;
-    mockExtractCodeTool = new ExtractCodeTool({} as any, {} as any) as jest.Mocked<ExtractCodeTool>;
+    mockExtractCodeTool = new ExtractCodeTool({} as any, {} as any, {} as any) as jest.Mocked<ExtractCodeTool>;
     mockCreateSpecTool = new CreateSpecTool({} as any) as jest.Mocked<CreateSpecTool>;
+    mockTelemetryService = new TelemetryService({} as any, {} as any) as jest.Mocked<TelemetryService>;
 
     // Create SamuraiAgent instance
     samuraiAgent = new SamuraiAgent(
@@ -40,7 +44,8 @@ describe('SamuraiAgent', () => {
       mockDataStore,
       mockProjectDetailService,
       mockExtractCodeTool,
-      mockCreateSpecTool
+      mockCreateSpecTool,
+      mockTelemetryService
     );
   });
 
@@ -166,7 +171,7 @@ describe('SamuraiAgent', () => {
       expect(result.metadata).toBeDefined();
     });
 
-    it('should handle errors gracefully', async () => {
+    it('should handle errors gracefully and capture them via telemetry', async () => {
       const userMessage: ChatMessage = {
       id: 'msg-1',
       sessionId: 'session-1',
@@ -199,14 +204,21 @@ describe('SamuraiAgent', () => {
       };
 
       // Mock data store to throw an error
+      const testError = new Error('Database error');
       mockDataStore.loadChatMessagesForSession.mockImplementation(() => {
-        throw new Error('Database error');
+        throw testError;
       });
 
       const result = await samuraiAgent.execute(userMessage, session);
 
       expect(result.success).toBe(false);
       expect(result.message).toContain('Database error');
+      
+      // Verify that captureError was called with the correct parameters
+      expect(mockTelemetryService.captureError).toHaveBeenCalledWith(
+        testError,
+        { service: 'SamuraiAgent', function: 'execute' }
+      );
     });
   });
 });

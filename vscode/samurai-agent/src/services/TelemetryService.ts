@@ -8,6 +8,7 @@
 import * as vscode from 'vscode';
 import { PostHog } from 'posthog-node';
 import { GlobalDataStore } from '../persistence/globalDataStore';
+import { ErrorModel } from '../common/models/error-models';
 
 export class TelemetryService {
     private posthog: PostHog | null = null;
@@ -180,6 +181,76 @@ export class TelemetryService {
         } catch (error) {
             console.error('TelemetryService: Error tracking telemetry setting change:', error);
         }
+    }
+
+    /**
+     * Capture critical errors to PostHog for monitoring and debugging
+     * @param error - The error to capture (ErrorModel or Error instance)
+     * @param properties - Optional additional context properties
+     */
+    public captureError(error: ErrorModel | Error, properties?: Record<string, any>): void {
+        try {
+            // Check if PostHog is initialized
+            if (!this.posthog) {
+                console.warn('TelemetryService: PostHog not initialized, cannot capture error');
+                return;
+            }
+
+            // Check if telemetry is enabled
+            const config = vscode.workspace.getConfiguration('samurai-agent');
+            const isTelemetryEnabled = config.get<boolean>('enableTelemetry', true);
+
+            if (!isTelemetryEnabled) {
+                console.log('TelemetryService: Telemetry disabled, not capturing error');
+                return;
+            }
+
+            // Extract standard properties
+            const additionalProperties: Record<string, any> = {
+                extensionVersion: this.context.extension.packageJSON.version,
+                vscodeVersion: vscode.version,
+                ...properties
+            };
+
+            // Extract ErrorModel properties if applicable
+            if (this.isErrorModel(error)) {
+                additionalProperties.severity = error.severity;
+                additionalProperties.code = error.code;
+                additionalProperties.category = error.category;
+                additionalProperties.context = error.context;
+                additionalProperties.userId = error.userId;
+                additionalProperties.sessionId = error.sessionId;
+                additionalProperties.requestId = error.requestId;
+            }
+
+            // Call PostHog capture with $exception event
+            this.posthog.capture({
+                distinctId: this.distinctId || 'anonymous',
+                event: '$exception',
+                properties: {
+                    $exception_message: error.message,
+                    $exception_type: this.isErrorModel(error) ? 'ErrorModel' : error.name,
+                    $exception_stack: this.isErrorModel(error) ? error.stack : error.stack,
+                    ...additionalProperties
+                }
+            });
+
+            console.log('TelemetryService: Captured error to PostHog', {
+                errorType: this.isErrorModel(error) ? 'ErrorModel' : 'Error',
+                errorMessage: error.message,
+                additionalProperties
+            });
+        } catch (captureError) {
+            // Fail silently to avoid impacting core functionality
+            console.error('TelemetryService: Error capturing error to PostHog:', captureError);
+        }
+    }
+
+    /**
+     * Type guard to check if an object is an ErrorModel
+     */
+    private isErrorModel(error: ErrorModel | Error): error is ErrorModel {
+        return 'severity' in error && 'code' in error && 'category' in error;
     }
 
     /**

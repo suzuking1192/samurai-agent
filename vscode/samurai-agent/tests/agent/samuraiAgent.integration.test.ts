@@ -9,6 +9,7 @@ import { DataStore } from '../../src/persistence/dataStore';
 import { ProjectDetailService } from '../../src/agent/memory/projectDetailService';
 import { ExtractCodeTool } from '../../src/agent/tools/extractCodeTool';
 import { CreateSpecTool } from '../../src/agent/tools/createSpecTool';
+import { TelemetryService } from '../../src/services/TelemetryService';
 import { ChatMessage, Session, UserIntentEnum, MessageType, SessionStatus } from '../../src/common/models/chat-models';
 import { AgentExecutionResult } from '../../src/agent/models/agent-models';
 import { ExtractCodeToolResultPayload } from '../../src/common/models/tool-models';
@@ -33,8 +34,9 @@ describe('SamuraiAgent Integration Tests', () => {
     mockLLMProviderService = new LLMProviderService({} as any, {} as any) as jest.Mocked<LLMProviderService>;
     mockDataStore = new DataStore('/test/path') as jest.Mocked<DataStore>;
     mockProjectDetailService = new ProjectDetailService({} as any, {} as any, '') as jest.Mocked<ProjectDetailService>;
-    mockExtractCodeTool = new ExtractCodeTool({} as any, {} as any) as jest.Mocked<ExtractCodeTool>;
+    mockExtractCodeTool = new ExtractCodeTool({} as any, {} as any, {} as any) as jest.Mocked<ExtractCodeTool>;
     mockCreateSpecTool = new CreateSpecTool({} as any) as jest.Mocked<CreateSpecTool>;
+    const mockTelemetryService = new TelemetryService({} as any, {} as any) as jest.Mocked<TelemetryService>;
 
     // Create SamuraiAgent instance
     samuraiAgent = new SamuraiAgent(
@@ -42,7 +44,8 @@ describe('SamuraiAgent Integration Tests', () => {
       mockDataStore,
       mockProjectDetailService,
       mockExtractCodeTool,
-      mockCreateSpecTool
+      mockCreateSpecTool,
+      mockTelemetryService
     );
   });
 

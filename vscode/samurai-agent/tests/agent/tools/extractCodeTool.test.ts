@@ -1,6 +1,7 @@
 import { ExtractCodeTool, ExtractCodeToolResultPayload } from '../../../src/agent/tools/extractCodeTool';
 import { LLMProviderService } from '../../../src/agent/llm/llmProviderService';
 import { CodeParserService } from '../../../src/agent/code_parser/CodeParserService';
+import { TelemetryService } from '../../../src/services/TelemetryService';
 import { ResponseType } from '../../../src/common/models/response-models';
 import { LLMResponse } from '../../../src/common/models/llm-models';
 import { FileInfo, CodeElement } from '../../../src/common/models/context-models';
@@ -24,6 +25,7 @@ describe('ExtractCodeTool', () => {
   let extractCodeTool: ExtractCodeTool;
   let mockLlmProvider: jest.Mocked<LLMProviderService>;
   let mockCodeParser: jest.Mocked<CodeParserService>;
+  let mockTelemetryService: jest.Mocked<TelemetryService>;
 
   beforeEach(() => {
     mockLlmProvider = {
@@ -36,7 +38,11 @@ describe('ExtractCodeTool', () => {
       loadPrompt: jest.fn(),
     } as any;
 
-    extractCodeTool = new ExtractCodeTool(mockLlmProvider, mockCodeParser);
+    mockTelemetryService = {
+      captureError: jest.fn(),
+    } as any;
+
+    extractCodeTool = new ExtractCodeTool(mockLlmProvider, mockCodeParser, mockTelemetryService);
   });
 
   afterEach(() => {
@@ -502,6 +508,74 @@ describe('ExtractCodeTool', () => {
     it('should return default comment for unknown type', () => {
       const result = (extractCodeTool as any).getCommentForElementType('unknown');
       expect(result).toBe('// Element:');
+    });
+  });
+
+  describe('error tracking', () => {
+    it('should capture errors to telemetry service when execute fails', async () => {
+      const params = {
+        query: 'test query',
+        projectId: 'test-project',
+        connectedCodebasePath: '/test/path',
+        model: 'test-model'
+      };
+
+      // Mock scanCodebase to throw an error
+      mockCodeParser.scanCodebase.mockRejectedValue(new Error('Scan failed'));
+
+      const result = await extractCodeTool.execute(params);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Scan failed');
+      
+      // Verify that captureError was called
+      expect(mockTelemetryService.captureError).toHaveBeenCalledWith(
+        expect.any(Error),
+        expect.objectContaining({
+          service: 'ExtractCodeTool',
+          function: 'execute',
+          executionTime: expect.any(Number),
+          params: expect.objectContaining({
+            query: 'test query',
+            projectId: 'test-project',
+            hasFilePathPattern: false,
+            hasConnectedCodebasePath: true,
+            maxIterations: 2,
+            model: 'test-model'
+          })
+        })
+      );
+    });
+
+    it('should capture errors to telemetry service when scanCodebase fails', async () => {
+      const params = {
+        query: 'test query',
+        projectId: 'test-project',
+        connectedCodebasePath: '/test/path',
+        model: 'test-model'
+      };
+
+      // Mock scanCodebase to throw an error
+      const scanError = new Error('Codebase scan failed');
+      mockCodeParser.scanCodebase.mockRejectedValue(scanError);
+
+      const result = await extractCodeTool.execute(params);
+
+      expect(result.success).toBe(false);
+      
+      // Verify that captureError was called for scanCodebase error
+      expect(mockTelemetryService.captureError).toHaveBeenCalledWith(
+        scanError,
+        expect.objectContaining({
+          service: 'ExtractCodeTool',
+          function: 'scanCodebase',
+          params: expect.objectContaining({
+            projectId: 'test-project',
+            connectedCodebasePath: '/test/path',
+            maxFiles: 5000
+          })
+        })
+      );
     });
   });
 

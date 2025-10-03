@@ -98,7 +98,7 @@ function activate(context) {
     const treeSitterLoaderService = new TreeSitterLoaderService_1.TreeSitterLoaderService(context.globalStorageUri);
     // Initialize CodeParserService and ExtractCodeTool
     const codeParserService = new CodeParserService_1.CodeParserService(context.extensionUri.fsPath);
-    const extractCodeTool = new extractCodeTool_1.ExtractCodeTool(llmProviderService, codeParserService);
+    const extractCodeTool = new extractCodeTool_1.ExtractCodeTool(llmProviderService, codeParserService, telemetryService);
     // Initialize CreateSpecTool
     const createSpecTool = dataStore ? new createSpecTool_1.CreateSpecTool(dataStore) : undefined;
     const projectDetailService = dataStore
@@ -106,7 +106,7 @@ function activate(context) {
         : undefined;
     // Initialize SamuraiAgent
     const samuraiAgent = dataStore && projectDetailService && createSpecTool
-        ? new samuraiAgent_1.SamuraiAgent(llmProviderService, dataStore, projectDetailService, extractCodeTool, createSpecTool)
+        ? new samuraiAgent_1.SamuraiAgent(llmProviderService, dataStore, projectDetailService, extractCodeTool, createSpecTool, telemetryService)
         : undefined;
     const agentPanelProvider = new SamuraiAgentPanelWebviewViewProvider_1.SamuraiAgentPanelWebviewViewProvider(context.extensionUri, {
         llmProviderService,

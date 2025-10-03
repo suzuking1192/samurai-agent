@@ -15,6 +15,7 @@ import { ResponseType } from "../../common/models/response-models";
 import { TextDecoder } from "util";
 import * as vscode from "vscode";
 import { extractJsonFromLLMResponse } from "../../common/utils/llmResponseParser";
+import { TelemetryService } from "../../services/TelemetryService";
 
 const DEFAULT_MAX_ITERATIONS = 2;
 const DEFAULT_MAX_FILES = 5000;
@@ -103,6 +104,7 @@ export class ExtractCodeTool {
   constructor(
     private readonly llmProvider: LLMProviderService,
     private readonly codeParser: CodeParserService = new CodeParserService(),
+    private readonly telemetryService: TelemetryService,
   ) {}
 
   public async execute(
@@ -211,6 +213,22 @@ export class ExtractCodeTool {
       };
     } catch (error) {
       const executionTime = Date.now() - startTime;
+      
+      // Capture critical error to PostHog for monitoring
+      this.telemetryService.captureError(error as Error, { 
+        service: 'ExtractCodeTool', 
+        function: 'execute',
+        executionTime,
+        params: {
+          query: params.query,
+          projectId: params.projectId,
+          hasFilePathPattern: !!params.filePathPattern,
+          hasConnectedCodebasePath: !!params.connectedCodebasePath,
+          maxIterations: params.maxIterations || DEFAULT_MAX_ITERATIONS,
+          model: params.model
+        }
+      });
+      
       return {
         success: false,
         error: error instanceof Error ? error.message : "Unknown error",
@@ -265,6 +283,17 @@ export class ExtractCodeTool {
     try {
       return await this.codeParser.scanCodebase(root, DEFAULT_MAX_FILES);
     } catch (error) {
+      // Capture error to PostHog for monitoring
+      this.telemetryService.captureError(error as Error, { 
+        service: 'ExtractCodeTool', 
+        function: 'scanCodebase',
+        params: {
+          projectId: params.projectId,
+          connectedCodebasePath: root,
+          maxFiles: DEFAULT_MAX_FILES
+        }
+      });
+      
       throw new Error(
         `Failed to scan codebase${root ? ` at ${root}` : ""}: ${error instanceof Error ? error.message : error}`,
       );
@@ -537,6 +566,19 @@ export class ExtractCodeTool {
     } catch (error) {
       console.warn("Error in LLM ranking:", error);
       console.log("=== LLM RANKING DEBUG END (EXCEPTION) ===");
+      
+      // Capture error to PostHog for monitoring
+      this.telemetryService.captureError(error as Error, { 
+        service: 'ExtractCodeTool', 
+        function: 'rankRelevantFileswithLLM',
+        params: {
+          query,
+          projectId,
+          model,
+          fileCount: fileInfos.size
+        }
+      });
+      
       return this.fallbackToFileRanking(fileInfos, query);
     }
   }
@@ -965,6 +1007,16 @@ export class ExtractCodeTool {
       return new TextDecoder("utf-8").decode(data);
     } catch (error) {
       console.warn(`Failed to read file ${filePath}:`, error);
+      
+      // Capture error to PostHog for monitoring
+      this.telemetryService.captureError(error as Error, { 
+        service: 'ExtractCodeTool', 
+        function: 'readFileContent',
+        params: {
+          filePath
+        }
+      });
+      
       return undefined;
     }
   }

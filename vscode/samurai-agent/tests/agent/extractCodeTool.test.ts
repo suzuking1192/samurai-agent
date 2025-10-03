@@ -96,7 +96,7 @@ describe("ExtractCodeTool", () => {
   });
 
   it("defines tool metadata and schema", () => {
-    const tool = new ExtractCodeTool(new LLMProviderService({} as any));
+    const tool = new ExtractCodeTool(new LLMProviderService({} as any), undefined, {} as any);
 
     assert.strictEqual(tool.definition.name, "extract_relevant_code");
     assert.ok(tool.definition.parameters.properties.projectId);
@@ -116,6 +116,7 @@ describe("ExtractCodeTool", () => {
     const tool = new ExtractCodeTool(
       provider as unknown as LLMProviderService,
       parser,
+      {} as any
     );
 
     jest
@@ -144,6 +145,7 @@ describe("ExtractCodeTool", () => {
     const tool = new ExtractCodeTool(
       provider as unknown as LLMProviderService,
       parser,
+      {} as any
     );
 
     jest

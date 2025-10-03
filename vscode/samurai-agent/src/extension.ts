@@ -78,7 +78,7 @@ export function activate(context: vscode.ExtensionContext) {
   
   // Initialize CodeParserService and ExtractCodeTool
   const codeParserService = new CodeParserService(context.extensionUri.fsPath);
-  const extractCodeTool = new ExtractCodeTool(llmProviderService, codeParserService);
+  const extractCodeTool = new ExtractCodeTool(llmProviderService, codeParserService, telemetryService);
   
   // Initialize CreateSpecTool
   const createSpecTool = dataStore ? new CreateSpecTool(dataStore) : undefined;
@@ -98,7 +98,8 @@ export function activate(context: vscode.ExtensionContext) {
         dataStore,
         projectDetailService,
         extractCodeTool,
-        createSpecTool
+        createSpecTool,
+        telemetryService
       )
     : undefined;
 

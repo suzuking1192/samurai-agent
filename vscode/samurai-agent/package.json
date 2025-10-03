@@ -2,7 +2,7 @@
   "name": "samurai-agent",
   "displayName": "Samurai Agent",
   "description": "AI tool for spec-driven development: debugs requirements to prevent messy AI-generated code",
-  "version": "0.0.10",
+  "version": "0.0.11",
   "publisher": "SamuraiAgent",
   "engines": {
     "vscode": "^1.104.0"
