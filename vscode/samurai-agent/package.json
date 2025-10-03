@@ -2,7 +2,7 @@
   "name": "samurai-agent",
   "displayName": "Samurai Agent",
   "description": "AI tool for spec-driven development: debugs requirements to prevent messy AI-generated code",
-  "version": "0.0.7",
+  "version": "0.0.10",
   "publisher": "SamuraiAgent",
   "engines": {
     "vscode": "^1.104.0"
@@ -38,16 +38,10 @@
   },
   "icon": "icon.png",
   "activationEvents": [
-    "onCommand:samurai-agent.helloWorld"
   ],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
-      {
-        "command": "samurai-agent.helloWorld",
-        "title": "Hello World",
-        "category": "Samurai Agent"
-      }
     ],
     "configuration": {
       "title": "Samurai Agent",

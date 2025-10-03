@@ -34,7 +34,10 @@ export class TelemetryService {
             console.log('TelemetryService: Initializing PostHog...', {
                 hasApiKey: !!apiKey,
                 apiKeyPrefix: apiKey ? apiKey.substring(0, 10) + '...' : 'none',
-                host: host || 'https://us.i.posthog.com'
+                apiKeyLength: apiKey ? apiKey.length : 0,
+                apiKeySource: apiKey ? 'HARDCODED in webpack' : 'UNDEFINED',
+                host: host || 'https://us.i.posthog.com',
+                nodeEnv: process.env.NODE_ENV
             });
 
             if (!apiKey) {

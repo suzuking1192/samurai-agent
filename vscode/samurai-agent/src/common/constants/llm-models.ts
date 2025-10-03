@@ -34,7 +34,7 @@ export const LLM_MODELS: Record<string, LLMModel[]> = {
             inputCostPerMTokens: 2.50,
             outputCostPerMTokens: 10.00,
             description: 'Most capable GPT-4 model with vision capabilities',
-            maxTokens: 128000,
+            maxTokens: 4096,
             supportsStreaming: true
         },
         {
@@ -44,7 +44,7 @@ export const LLM_MODELS: Record<string, LLMModel[]> = {
             inputCostPerMTokens: 5.00,
             outputCostPerMTokens: 15.00,
             description: 'Next-generation GPT model (placeholder for future release)',
-            maxTokens: 200000,
+            maxTokens: 4096,
             supportsStreaming: true
         }
     ],
@@ -56,7 +56,7 @@ export const LLM_MODELS: Record<string, LLMModel[]> = {
             inputCostPerMTokens: 0.075,
             outputCostPerMTokens: 0.30,
             description: 'Fast and efficient Gemini model for quick responses',
-            maxTokens: 1000000,
+            maxTokens: 8192,
             supportsStreaming: true
         },
         {
@@ -66,7 +66,7 @@ export const LLM_MODELS: Record<string, LLMModel[]> = {
             inputCostPerMTokens: 1.25,
             outputCostPerMTokens: 5.00,
             description: 'Most capable Gemini model for complex tasks',
-            maxTokens: 2000000,
+            maxTokens: 8192,
             supportsStreaming: true
         }
     ],
@@ -78,7 +78,7 @@ export const LLM_MODELS: Record<string, LLMModel[]> = {
             inputCostPerMTokens: 3.00,
             outputCostPerMTokens: 15.00,
             description: 'Balanced Claude model with strong reasoning capabilities',
-            maxTokens: 200000,
+            maxTokens: 4096,
             supportsStreaming: true
         },
         {
@@ -88,7 +88,7 @@ export const LLM_MODELS: Record<string, LLMModel[]> = {
             inputCostPerMTokens: 15.00,
             outputCostPerMTokens: 75.00,
             description: 'Most capable Claude model for complex reasoning tasks',
-            maxTokens: 200000,
+            maxTokens: 4096,
             supportsStreaming: true
         },
         {
@@ -98,7 +98,7 @@ export const LLM_MODELS: Record<string, LLMModel[]> = {
             inputCostPerMTokens: 0.25,
             outputCostPerMTokens: 1.25,
             description: 'Fast and cost-effective Claude model',
-            maxTokens: 200000,
+            maxTokens: 4096,
             supportsStreaming: true
         }
     ]

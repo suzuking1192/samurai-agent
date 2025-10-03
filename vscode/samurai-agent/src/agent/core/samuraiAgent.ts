@@ -596,7 +596,8 @@ export class SamuraiAgent {
           type: "spec_clarification"
         },
         createdAt: new Date(),
-        updatedAt: new Date()
+        updatedAt: new Date(),
+        maxTokens: 10000,
       });
       
       if (response.type === "error" || !response.payload) {
@@ -698,7 +699,8 @@ export class SamuraiAgent {
           type: "spec_generation"
         },
         createdAt: new Date(),
-        updatedAt: new Date()
+        updatedAt: new Date(),
+        maxTokens: 20000,
       });
       
       if (response.type === "error" || !response.payload) {

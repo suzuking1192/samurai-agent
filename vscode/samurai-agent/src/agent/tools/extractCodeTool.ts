@@ -370,8 +370,10 @@ export class ExtractCodeTool {
       },
       createdAt: new Date(),
       updatedAt: new Date(),
-      maxTokens: 4096,
+      maxTokens: 20000,
     };
+
+    console.log('[EXTRACT CODE DEBUG] Setting explicit maxTokens for file ranking:', request.maxTokens);
 
     try {
       console.log("=== LLM RANKING DEBUG START ===");
@@ -575,8 +577,10 @@ export class ExtractCodeTool {
       },
       createdAt: new Date(),
       updatedAt: new Date(),
-      maxTokens: 4096,
+      maxTokens: 20000,
     };
+
+    console.log('[EXTRACT CODE DEBUG] Setting explicit maxTokens for code extraction:', request.maxTokens);
 
     console.log("=== LLM CODE ELEMENT IDENTIFICATION DEBUG START ===");
     console.log("Request details:", {

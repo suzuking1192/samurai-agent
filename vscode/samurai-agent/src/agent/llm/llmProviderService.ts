@@ -94,8 +94,6 @@ export class LLMProviderService {
       provider,
     );
 
-    const projectMaxTokens = this.getProjectMaxTokens(projectSettings);
-
     const modelRequest: LLMRequest = {
       ...request,
       provider,
@@ -110,10 +108,9 @@ export class LLMProviderService {
       },
     };
 
-    if (projectMaxTokens && projectMaxTokens > 0) {
-      modelRequest.maxTokens = projectMaxTokens;
-    }
-    console.log('[LLM REQUEST DEBUG] LLMProviderService - maxTokens:', modelRequest.maxTokens);
+    if (provider === "google" && request.maxTokens) {
+      modelRequest.maxTokens = request.maxTokens;
+    } 
     // Execute the LLM request
     const response = await client.chat(modelRequest);
     
@@ -295,11 +292,6 @@ export class LLMProviderService {
     return providers;
   }
 
-  private getProjectMaxTokens(
-    projectSettings?: ProjectSettings,
-  ): number | undefined {
-    return projectSettings?.projectSpecificConfig?.maxTokensPerRequest;
-  }
 
   private findProviderForModel(
     modelId: string | null | undefined,

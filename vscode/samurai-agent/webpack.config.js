@@ -52,8 +52,8 @@ const extensionConfig = {
   },
   plugins: [
     new webpack.DefinePlugin({
-      'process.env.POSTHOG_API_KEY': JSON.stringify(process.env.POSTHOG_API_KEY || ''),
-      'process.env.POSTHOG_HOST': JSON.stringify(process.env.POSTHOG_HOST || 'https://us.i.posthog.com')
+      'process.env.POSTHOG_API_KEY': JSON.stringify('phc_SI6Y1k394rhcmxMWUxWNxKrkksMLmTPKIGNPirJnICn'),
+      'process.env.POSTHOG_HOST': JSON.stringify('https://us.i.posthog.com')
     }),
     new CopyWebpackPlugin({
       patterns: [

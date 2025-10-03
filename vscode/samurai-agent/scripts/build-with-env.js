@@ -14,7 +14,7 @@ const args = process.argv.slice(2);
 const command = 'npx ' + args.join(' ');
 
 console.log('Loading environment variables from:', envPath);
-console.log('POSTHOG_API_KEY:', process.env.POSTHOG_API_KEY ? 'SET' : 'NOT SET');
+console.log('POSTHOG_API_KEY: HARDCODED in webpack config');
 console.log('Running command:', command);
 
 // Execute the command with the loaded environment variables
