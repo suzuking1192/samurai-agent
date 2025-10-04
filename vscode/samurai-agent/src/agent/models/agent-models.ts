@@ -26,4 +26,7 @@ export interface ICodeExtractionAnalysisResult {
     new_code_context_necessary: boolean;
     extraction_query: string;
     filePathPattern?: string;
+    filenameKeywords?: string[];
+    methodNameKeywords?: string[];
+    codeKeywords?: string[];
 }

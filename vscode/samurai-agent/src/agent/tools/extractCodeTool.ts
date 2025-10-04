@@ -27,6 +27,9 @@ type NormalizedExtractCodeParameters = ExtractCodeParameters & {
   projectId: string;
   maxIterations: number;
   model: string;
+  filenameKeywords: string[];
+  methodNameKeywords: string[];
+  codeKeywords: string[];
 };
 
 export interface ExtractCodeToolResultPayload {
@@ -49,6 +52,9 @@ export interface ExtractCodeParameters {
   sessionId?: string;
   maxIterations?: number;
   model?: string; // User's selected model
+  filenameKeywords?: string[];
+  methodNameKeywords?: string[];
+  codeKeywords?: string[];
 }
 
 export class ExtractCodeTool {
@@ -90,6 +96,21 @@ export class ExtractCodeTool {
           model: {
             type: "string",
             description: "User's selected LLM model for code extraction.",
+          },
+          filenameKeywords: {
+            type: "array",
+            items: { type: "string" },
+            description: "Optional array of keywords to match against filenames.",
+          },
+          methodNameKeywords: {
+            type: "array",
+            items: { type: "string" },
+            description: "Optional array of keywords to match against method/function names.",
+          },
+          codeKeywords: {
+            type: "array",
+            items: { type: "string" },
+            description: "Optional array of keywords to match against file content.",
           },
       },
       required: ["query", "projectId"],
@@ -133,9 +154,20 @@ export class ExtractCodeTool {
         normalizedParams.model,
       );
 
+      // Perform keyword-based search and merge with LLM selections
+      const keywordSelections = await this.performKeywordBasedSearch(
+        filteredFileInfos,
+        normalizedParams,
+      );
+
+      const mergedSelections = this.mergeKeywordAndLLMSelections(
+        relevantElementSelections,
+        keywordSelections,
+      );
+
       let structuredContext = await this.buildStructuredCodeContextSnippets(
         filteredFileInfos,
-        relevantElementSelections,
+        mergedSelections,
         GLOBAL_CONTEXT_TOKEN_LIMIT,
       );
 
@@ -246,7 +278,10 @@ export class ExtractCodeTool {
       projectId: params.projectId,
       sessionId: params.sessionId,
       connectedCodebasePath: params.connectedCodebasePath,
-      maxIterations: params.maxIterations
+      maxIterations: params.maxIterations,
+      filenameKeywords: params.filenameKeywords,
+      methodNameKeywords: params.methodNameKeywords,
+      codeKeywords: params.codeKeywords
     });
   }
 
@@ -273,6 +308,9 @@ export class ExtractCodeTool {
       projectId,
       maxIterations,
       model,
+      filenameKeywords: params.filenameKeywords || [],
+      methodNameKeywords: params.methodNameKeywords || [],
+      codeKeywords: params.codeKeywords || [],
     };
   }
 
@@ -1109,6 +1147,342 @@ export class ExtractCodeTool {
     }
 
     return result;
+  }
+
+  /**
+   * Performs keyword-based search across filenames, method names, and file contents
+   * @param fileInfos - Map of file paths to FileInfo objects
+   * @param params - Normalized extract code parameters containing keyword arrays
+   * @returns Map of file paths to arrays of matching elements
+   */
+  private async performKeywordBasedSearch(
+    fileInfos: Map<string, FileInfo>,
+    params: NormalizedExtractCodeParameters,
+  ): Promise<Map<string, Array<{ name: string; type: string; }>>> {
+    const result = new Map<string, Array<{ name: string; type: string; }>>();
+    
+    // Skip if no keywords provided
+    if (params.filenameKeywords.length === 0 && 
+        params.methodNameKeywords.length === 0 && 
+        params.codeKeywords.length === 0) {
+      return result;
+    }
+
+    console.log("ExtractCodeTool: Performing keyword-based search", {
+      filenameKeywords: params.filenameKeywords,
+      methodNameKeywords: params.methodNameKeywords,
+      codeKeywords: params.codeKeywords,
+      fileCount: fileInfos.size
+    });
+
+    // Step 1: Filename keyword matching
+    const filenameMatches = this.searchByFilenameKeywords(fileInfos, params.filenameKeywords);
+    
+    // Step 2: Method name keyword matching
+    const methodNameMatches = this.searchByMethodNameKeywords(fileInfos, params.methodNameKeywords);
+    
+    // Step 3: Code content keyword matching
+    const codeContentMatches = await this.searchByCodeKeywords(fileInfos, params.codeKeywords);
+    
+    // Step 4: Consolidate all matches
+    this.consolidateKeywordMatches(result, filenameMatches, methodNameMatches, codeContentMatches);
+    
+    // Step 5: Apply global limit of 20 distinct files/elements
+    this.applyGlobalLimit(result);
+    
+    console.log("ExtractCodeTool: Keyword search completed", {
+      totalMatches: result.size,
+      matches: Array.from(result.entries()).map(([path, elements]) => ({
+        path,
+        elementCount: elements.length,
+        elements: elements.map(el => `${el.name} (${el.type})`)
+      }))
+    });
+    
+    return result;
+  }
+
+  /**
+   * Searches files by filename keywords
+   */
+  private searchByFilenameKeywords(
+    fileInfos: Map<string, FileInfo>,
+    filenameKeywords: string[],
+  ): Map<string, Array<{ name: string; type: string; }>> {
+    const matches = new Map<string, Array<{ name: string; type: string; }>>();
+    
+    if (filenameKeywords.length === 0) {
+      return matches;
+    }
+
+    for (const [filePath, fileInfo] of fileInfos.entries()) {
+      const fileName = fileInfo.name.toLowerCase();
+      
+      for (const keyword of filenameKeywords) {
+        if (fileName.includes(keyword.toLowerCase())) {
+          // Include all elements from this file
+          const elements = fileInfo.elements.map(element => ({
+            name: element.name,
+            type: element.type
+          }));
+          matches.set(filePath, elements);
+          break; // Found a match, no need to check other keywords for this file
+        }
+      }
+    }
+    
+    return matches;
+  }
+
+  /**
+   * Searches files by method name keywords
+   */
+  private searchByMethodNameKeywords(
+    fileInfos: Map<string, FileInfo>,
+    methodNameKeywords: string[],
+  ): Map<string, Array<{ name: string; type: string; }>> {
+    const matches = new Map<string, Array<{ name: string; type: string; }>>();
+    
+    if (methodNameKeywords.length === 0) {
+      return matches;
+    }
+
+    for (const [filePath, fileInfo] of fileInfos.entries()) {
+      const matchingElements: Array<{ name: string; type: string; }> = [];
+      
+      for (const element of fileInfo.elements) {
+        const elementName = element.name.toLowerCase();
+        
+        for (const keyword of methodNameKeywords) {
+          if (elementName.includes(keyword.toLowerCase())) {
+            matchingElements.push({
+              name: element.name,
+              type: element.type
+            });
+            break; // Found a match, no need to check other keywords for this element
+          }
+        }
+      }
+      
+      if (matchingElements.length > 0) {
+        matches.set(filePath, matchingElements);
+      }
+    }
+    
+    return matches;
+  }
+
+  /**
+   * Searches files by code content keywords
+   */
+  private async searchByCodeKeywords(
+    fileInfos: Map<string, FileInfo>,
+    codeKeywords: string[],
+  ): Promise<Map<string, Array<{ name: string; type: string; }>>> {
+    const matches = new Map<string, Array<{ name: string; type: string; }>>();
+    
+    if (codeKeywords.length === 0) {
+      return matches;
+    }
+
+    for (const [filePath, fileInfo] of fileInfos.entries()) {
+      try {
+        const fileContent = await this.readFileSafe(filePath);
+        
+        if (!fileContent) {
+          continue;
+        }
+        
+        const content = fileContent.toLowerCase();
+        let hasMatch = false;
+        
+        for (const keyword of codeKeywords) {
+          if (content.includes(keyword.toLowerCase())) {
+            hasMatch = true;
+            break;
+          }
+        }
+        
+        if (hasMatch) {
+          // Try to find specific elements related to the match
+          const matchingElements = this.findElementsRelatedToCodeMatch(fileInfo, codeKeywords, fileContent);
+          
+          if (matchingElements.length > 0) {
+            matches.set(filePath, matchingElements);
+          } else {
+            // If no specific elements found, include up to 10 all elements from the file
+            const allElements = fileInfo.elements.slice(0, 10).map(element => ({
+              name: element.name,
+              type: element.type
+            }));
+            matches.set(filePath, allElements);
+          }
+        }
+      } catch (error) {
+        // Capture error to telemetry
+        this.telemetryService.captureError(error as Error, {
+          service: 'ExtractCodeTool',
+          function: 'searchByCodeKeywords',
+          params: {
+            filePath,
+            codeKeywords
+          }
+        });
+        console.warn(`Failed to read file ${filePath} for code keyword search:`, error);
+      }
+    }
+    
+    return matches;
+  }
+
+  /**
+   * Attempts to find specific elements related to code keyword matches
+   */
+  private findElementsRelatedToCodeMatch(
+    fileInfo: FileInfo,
+    codeKeywords: string[],
+    fileContent: string,
+  ): Array<{ name: string; type: string; }> {
+    const matchingElements: Array<{ name: string; type: string; }> = [];
+    
+    for (const element of fileInfo.elements) {
+      const elementName = element.name.toLowerCase();
+      
+      // Check if element name contains any of the code keywords
+      for (const keyword of codeKeywords) {
+        if (elementName.includes(keyword.toLowerCase())) {
+          matchingElements.push({
+            name: element.name,
+            type: element.type
+          });
+          break;
+        }
+      }
+    }
+    
+    return matchingElements;
+  }
+
+  /**
+   * Consolidates keyword matches from different search types
+   */
+  private consolidateKeywordMatches(
+    result: Map<string, Array<{ name: string; type: string; }>>,
+    filenameMatches: Map<string, Array<{ name: string; type: string; }>>,
+    methodNameMatches: Map<string, Array<{ name: string; type: string; }>>,
+    codeContentMatches: Map<string, Array<{ name: string; type: string; }>>,
+  ): void {
+    // Add filename matches (highest priority)
+    for (const [filePath, elements] of filenameMatches.entries()) {
+      result.set(filePath, elements);
+    }
+    
+    // Add method name matches (medium priority)
+    for (const [filePath, elements] of methodNameMatches.entries()) {
+      if (result.has(filePath)) {
+        // Merge with existing elements, avoiding duplicates
+        const existingElements = result.get(filePath)!;
+        const newElements = elements.filter(newEl => 
+          !existingElements.some(existingEl => 
+            existingEl.name === newEl.name && existingEl.type === newEl.type
+          )
+        );
+        result.set(filePath, [...existingElements, ...newElements]);
+      } else {
+        result.set(filePath, elements);
+      }
+    }
+    
+    // Add code content matches (lowest priority)
+    for (const [filePath, elements] of codeContentMatches.entries()) {
+      if (result.has(filePath)) {
+        // Merge with existing elements, avoiding duplicates
+        const existingElements = result.get(filePath)!;
+        const newElements = elements.filter(newEl => 
+          !existingElements.some(existingEl => 
+            existingEl.name === newEl.name && existingEl.type === newEl.type
+          )
+        );
+        result.set(filePath, [...existingElements, ...newElements]);
+      } else {
+        result.set(filePath, elements);
+      }
+    }
+  }
+
+  /**
+   * Applies global limit of 20 distinct files/elements with priority ordering
+   */
+  private applyGlobalLimit(
+    result: Map<string, Array<{ name: string; type: string; }>>,
+  ): void {
+    const MAX_ELEMENTS = 20;
+    
+    if (result.size <= MAX_ELEMENTS) {
+      return;
+    }
+    
+    // Convert to array and sort by priority (filename > method name > code content)
+    const entries = Array.from(result.entries());
+    
+    // For now, we'll just take the first MAX_ELEMENTS entries
+    // In a more sophisticated implementation, we could prioritize based on match type
+    const limitedEntries = entries.slice(0, MAX_ELEMENTS);
+    
+    result.clear();
+    for (const [filePath, elements] of limitedEntries) {
+      result.set(filePath, elements);
+    }
+  }
+
+  /**
+   * Merges keyword search results with LLM selections
+   */
+  private mergeKeywordAndLLMSelections(
+    llmSelections: Map<string, Array<{ name: string; type: string; }>>,
+    keywordSelections: Map<string, Array<{ name: string; type: string; }>>,
+  ): Map<string, Array<{ name: string; type: string; }>> {
+    const merged = new Map<string, Array<{ name: string; type: string; }>>();
+    
+    // Start with LLM selections
+    for (const [filePath, elements] of llmSelections.entries()) {
+      merged.set(filePath, [...elements]);
+    }
+    
+    // Merge keyword selections
+    for (const [filePath, elements] of keywordSelections.entries()) {
+      if (merged.has(filePath)) {
+        const existingElements = merged.get(filePath)!;
+        const newElements = elements.filter(newEl => 
+          !existingElements.some(existingEl => 
+            existingEl.name === newEl.name && existingEl.type === newEl.type
+          )
+        );
+        
+        // Merge elements, preferring specific types over "unknown"
+        const mergedElements = [...existingElements];
+        for (const newEl of newElements) {
+          const existingIndex = mergedElements.findIndex(existingEl => 
+            existingEl.name === newEl.name
+          );
+          
+          if (existingIndex >= 0) {
+            // Prefer specific type over "unknown"
+            if (existingElements[existingIndex].type === "unknown" && newEl.type !== "unknown") {
+              mergedElements[existingIndex] = newEl;
+            }
+          } else {
+            mergedElements.push(newEl);
+          }
+        }
+        
+        merged.set(filePath, mergedElements);
+      } else {
+        merged.set(filePath, [...elements]);
+      }
+    }
+    
+    return merged;
   }
 }
 

@@ -1339,4 +1339,192 @@ describe('SamuraiAgent', () => {
       expect(chatCall.messages).toHaveLength(mockChatHistory.length + 3); // system + system2 + history + user
     });
   });
+
+  describe('analyzeCodeExtractionNeeds', () => {
+    it('should return keyword arrays when LLM provides them', async () => {
+      const chatHistory: LLMMessage[] = [
+        { role: 'user', content: 'I need to understand the authentication system' }
+      ];
+      const projectDetails = 'Test project with authentication';
+      const session: Session = {
+        id: 'test-session',
+        projectId: 'test-project',
+        metadata: {
+          projectId: 'test-project',
+          model: 'test-model',
+          connectedCodebasePath: '/test/path'
+        },
+        messageCount: 1,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+
+      // Mock the prompt file
+      mockedFs.readFileSync.mockReturnValue(`
+        # Code Extraction Necessity Analysis Prompt
+        Analyze the situation and respond with the appropriate JSON.
+      `);
+
+      // Mock LLM response with keyword arrays
+      const mockLLMResponse = {
+        type: 'success' as const,
+        payload: {
+          content: JSON.stringify({
+            new_code_context_necessary: true,
+            extraction_query: 'authentication system code',
+            reasoning: 'User needs to understand authentication',
+            filenameKeywords: ['auth', 'login', 'user'],
+            methodNameKeywords: ['authenticate', 'login', 'validateUser'],
+            codeKeywords: ['JWT', 'session', 'password', 'token']
+          }),
+          role: 'assistant',
+          metadata: {},
+          createdAt: new Date(),
+          updatedAt: new Date()
+        }
+      };
+
+      mockLLMProviderService.chat.mockResolvedValue(mockLLMResponse);
+      mockDataStore.loadAllCodeContextForSession.mockResolvedValue([]);
+
+      const result = await (samuraiAgent as any).analyzeCodeExtractionNeeds(
+        chatHistory,
+        projectDetails,
+        session,
+        UserIntentEnum.PURE_DISCUSSION
+      );
+
+      expect(result.new_code_context_necessary).toBe(true);
+      expect(result.extraction_query).toBe('authentication system code');
+      expect(result.filenameKeywords).toEqual(['auth', 'login', 'user']);
+      expect(result.methodNameKeywords).toEqual(['authenticate', 'login', 'validateUser']);
+      expect(result.codeKeywords).toEqual(['JWT', 'session', 'password', 'token']);
+    });
+
+    it('should return empty keyword arrays when LLM does not provide them', async () => {
+      const chatHistory: LLMMessage[] = [
+        { role: 'user', content: 'I need to understand the authentication system' }
+      ];
+      const projectDetails = 'Test project with authentication';
+      const session: Session = {
+        id: 'test-session',
+        projectId: 'test-project',
+        metadata: {
+          projectId: 'test-project',
+          model: 'test-model',
+          connectedCodebasePath: '/test/path'
+        },
+        messageCount: 1,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+
+      // Mock the prompt file
+      mockedFs.readFileSync.mockReturnValue(`
+        # Code Extraction Necessity Analysis Prompt
+        Analyze the situation and respond with the appropriate JSON.
+      `);
+
+      // Mock LLM response without keyword arrays
+      const mockLLMResponse = {
+        type: 'success' as const,
+        payload: {
+          content: JSON.stringify({
+            new_code_context_necessary: true,
+            extraction_query: 'authentication system code',
+            reasoning: 'User needs to understand authentication'
+          }),
+          role: 'assistant',
+          metadata: {},
+          createdAt: new Date(),
+          updatedAt: new Date()
+        }
+      };
+
+      mockLLMProviderService.chat.mockResolvedValue(mockLLMResponse);
+      mockDataStore.loadAllCodeContextForSession.mockResolvedValue([]);
+
+      const result = await (samuraiAgent as any).analyzeCodeExtractionNeeds(
+        chatHistory,
+        projectDetails,
+        session,
+        UserIntentEnum.PURE_DISCUSSION
+      );
+
+      expect(result.new_code_context_necessary).toBe(true);
+      expect(result.extraction_query).toBe('authentication system code');
+      expect(result.filenameKeywords).toEqual([]);
+      expect(result.methodNameKeywords).toEqual([]);
+      expect(result.codeKeywords).toEqual([]);
+    });
+
+    it('should return empty keyword arrays when keyword detection bypasses LLM', async () => {
+      const chatHistory: LLMMessage[] = [
+        { role: 'user', content: 'Please read the latest code' }
+      ];
+      const projectDetails = 'Test project';
+      const session: Session = {
+        id: 'test-session',
+        projectId: 'test-project',
+        metadata: {
+          projectId: 'test-project',
+          model: 'test-model',
+          connectedCodebasePath: '/test/path'
+        },
+        messageCount: 1,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+
+      const result = await (samuraiAgent as any).analyzeCodeExtractionNeeds(
+        chatHistory,
+        projectDetails,
+        session,
+        UserIntentEnum.PURE_DISCUSSION
+      );
+
+      expect(result.new_code_context_necessary).toBe(true);
+      expect(result.extraction_query).toBe('Please read the latest code');
+      expect(result.filenameKeywords).toEqual([]);
+      expect(result.methodNameKeywords).toEqual([]);
+      expect(result.codeKeywords).toEqual([]);
+    });
+
+    it('should return empty keyword arrays when error occurs', async () => {
+      const chatHistory: LLMMessage[] = [
+        { role: 'user', content: 'I need to understand the authentication system' }
+      ];
+      const projectDetails = 'Test project with authentication';
+      const session: Session = {
+        id: 'test-session',
+        projectId: 'test-project',
+        metadata: {
+          projectId: 'test-project',
+          model: 'test-model',
+          connectedCodebasePath: '/test/path'
+        },
+        messageCount: 1,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+
+      // Mock the prompt file to throw an error
+      mockedFs.readFileSync.mockImplementation(() => {
+        throw new Error('File not found');
+      });
+
+      const result = await (samuraiAgent as any).analyzeCodeExtractionNeeds(
+        chatHistory,
+        projectDetails,
+        session,
+        UserIntentEnum.PURE_DISCUSSION
+      );
+
+      expect(result.new_code_context_necessary).toBe(false);
+      expect(result.extraction_query).toBe(null);
+      expect(result.filenameKeywords).toEqual([]);
+      expect(result.methodNameKeywords).toEqual([]);
+      expect(result.codeKeywords).toEqual([]);
+    });
+  });
 });

@@ -579,4 +579,579 @@ describe('ExtractCodeTool', () => {
     });
   });
 
+  describe('keyword-based search functionality', () => {
+    describe('performKeywordBasedSearch', () => {
+      it('should return empty result when no keywords provided', async () => {
+        const fileInfos = new Map<string, FileInfo>();
+        const params = {
+          query: 'test query',
+          projectId: 'test-project',
+          maxIterations: 2,
+          model: 'test-model',
+          filenameKeywords: [],
+          methodNameKeywords: [],
+          codeKeywords: [],
+        };
+
+        const result = await (extractCodeTool as any).performKeywordBasedSearch(fileInfos, params);
+
+        expect(result).toBeInstanceOf(Map);
+        expect(result.size).toBe(0);
+      });
+
+      it('should perform filename keyword search', async () => {
+        const fileInfos = new Map<string, FileInfo>();
+        const mockElements: CodeElement[] = [
+          {
+            name: 'testFunction',
+            type: 'function',
+            lineStart: 10,
+            lineEnd: 15,
+            filePath: '/test/auth.ts',
+            signature: 'function testFunction() {',
+            codeSnippet: 'function testFunction() {\n  return "test";\n}',
+          },
+        ];
+
+        fileInfos.set('/test/auth.ts', {
+          path: '/test/auth.ts',
+          name: 'auth.ts',
+          extension: '.ts',
+          language: 'typescript',
+          size: 1000,
+          elements: mockElements,
+          lastModified: new Date(),
+        });
+
+        fileInfos.set('/test/user.ts', {
+          path: '/test/user.ts',
+          name: 'user.ts',
+          extension: '.ts',
+          language: 'typescript',
+          size: 1000,
+          elements: mockElements,
+          lastModified: new Date(),
+        });
+
+        const params = {
+          query: 'test query',
+          projectId: 'test-project',
+          maxIterations: 2,
+          model: 'test-model',
+          filenameKeywords: ['auth'],
+          methodNameKeywords: [],
+          codeKeywords: [],
+        };
+
+        const result = await (extractCodeTool as any).performKeywordBasedSearch(fileInfos, params);
+
+        expect(result.size).toBe(1);
+        expect(result.has('/test/auth.ts')).toBe(true);
+        expect(result.get('/test/auth.ts')).toEqual([
+          { name: 'testFunction', type: 'function' }
+        ]);
+      });
+
+      it('should perform method name keyword search', async () => {
+        const fileInfos = new Map<string, FileInfo>();
+        const mockElements: CodeElement[] = [
+          {
+            name: 'authenticateUser',
+            type: 'function',
+            lineStart: 10,
+            lineEnd: 15,
+            filePath: '/test/auth.ts',
+            signature: 'function authenticateUser() {',
+            codeSnippet: 'function authenticateUser() {\n  return "auth";\n}',
+          },
+          {
+            name: 'validateToken',
+            type: 'function',
+            lineStart: 20,
+            lineEnd: 25,
+            filePath: '/test/auth.ts',
+            signature: 'function validateToken() {',
+            codeSnippet: 'function validateToken() {\n  return "valid";\n}',
+          },
+        ];
+
+        fileInfos.set('/test/auth.ts', {
+          path: '/test/auth.ts',
+          name: 'auth.ts',
+          extension: '.ts',
+          language: 'typescript',
+          size: 1000,
+          elements: mockElements,
+          lastModified: new Date(),
+        });
+
+        const params = {
+          query: 'test query',
+          projectId: 'test-project',
+          maxIterations: 2,
+          model: 'test-model',
+          filenameKeywords: [],
+          methodNameKeywords: ['authenticate'],
+          codeKeywords: [],
+        };
+
+        const result = await (extractCodeTool as any).performKeywordBasedSearch(fileInfos, params);
+
+        expect(result.size).toBe(1);
+        expect(result.get('/test/auth.ts')).toEqual([
+          { name: 'authenticateUser', type: 'function' }
+        ]);
+      });
+
+      it('should perform code content keyword search', async () => {
+        const fileInfos = new Map<string, FileInfo>();
+        const mockElements: CodeElement[] = [
+          {
+            name: 'loginFunction',
+            type: 'function',
+            lineStart: 10,
+            lineEnd: 15,
+            filePath: '/test/auth.ts',
+            signature: 'function loginFunction() {',
+            codeSnippet: 'function loginFunction() {\n  return "login";\n}',
+          },
+        ];
+
+        fileInfos.set('/test/auth.ts', {
+          path: '/test/auth.ts',
+          name: 'auth.ts',
+          extension: '.ts',
+          language: 'typescript',
+          size: 1000,
+          elements: mockElements,
+          lastModified: new Date(),
+        });
+
+        // Mock file reading
+        (vscode.workspace.fs.readFile as jest.Mock).mockResolvedValue(
+          new Uint8Array(Buffer.from('function loginFunction() {\n  const jwt = "token";\n  return jwt;\n}'))
+        );
+
+        const params = {
+          query: 'test query',
+          projectId: 'test-project',
+          maxIterations: 2,
+          model: 'test-model',
+          filenameKeywords: [],
+          methodNameKeywords: [],
+          codeKeywords: ['jwt'],
+        };
+
+        const result = await (extractCodeTool as any).performKeywordBasedSearch(fileInfos, params);
+
+        expect(result.size).toBe(1);
+        expect(result.get('/test/auth.ts')).toEqual([
+          { name: 'loginFunction', type: 'function' }
+        ]);
+      });
+
+      it('should handle file reading errors gracefully', async () => {
+        const fileInfos = new Map<string, FileInfo>();
+        const mockElements: CodeElement[] = [
+          {
+            name: 'testFunction',
+            type: 'function',
+            lineStart: 10,
+            lineEnd: 15,
+            filePath: '/test/auth.ts',
+            signature: 'function testFunction() {',
+            codeSnippet: 'function testFunction() {\n  return "test";\n}',
+          },
+        ];
+
+        fileInfos.set('/test/auth.ts', {
+          path: '/test/auth.ts',
+          name: 'auth.ts',
+          extension: '.ts',
+          language: 'typescript',
+          size: 1000,
+          elements: mockElements,
+          lastModified: new Date(),
+        });
+
+        // Mock file reading to throw an error
+        (vscode.workspace.fs.readFile as jest.Mock).mockRejectedValue(new Error('File read failed'));
+
+        const params = {
+          query: 'test query',
+          projectId: 'test-project',
+          maxIterations: 2,
+          model: 'test-model',
+          filenameKeywords: [],
+          methodNameKeywords: [],
+          codeKeywords: ['jwt'],
+        };
+
+        const result = await (extractCodeTool as any).performKeywordBasedSearch(fileInfos, params);
+
+        expect(result.size).toBe(0);
+        expect(mockTelemetryService.captureError).toHaveBeenCalledWith(
+          expect.any(Error),
+          expect.objectContaining({
+            service: 'ExtractCodeTool',
+            function: 'searchByCodeKeywords',
+            params: expect.objectContaining({
+              filePath: '/test/auth.ts',
+              codeKeywords: ['jwt']
+            })
+          })
+        );
+      });
+
+      it('should apply global limit of 20 elements', async () => {
+        const fileInfos = new Map<string, FileInfo>();
+        const mockElements: CodeElement[] = [
+          {
+            name: 'testFunction',
+            type: 'function',
+            lineStart: 10,
+            lineEnd: 15,
+            filePath: '/test/file.ts',
+            signature: 'function testFunction() {',
+            codeSnippet: 'function testFunction() {\n  return "test";\n}',
+          },
+        ];
+
+        // Create 25 files to test the limit
+        for (let i = 0; i < 25; i++) {
+          const filePath = `/test/file${i}.ts`;
+          fileInfos.set(filePath, {
+            path: filePath,
+            name: `file${i}.ts`,
+            extension: '.ts',
+            language: 'typescript',
+            size: 1000,
+            elements: mockElements,
+            lastModified: new Date(),
+          });
+        }
+
+        const params = {
+          query: 'test query',
+          projectId: 'test-project',
+          maxIterations: 2,
+          model: 'test-model',
+          filenameKeywords: ['file'],
+          methodNameKeywords: [],
+          codeKeywords: [],
+        };
+
+        const result = await (extractCodeTool as any).performKeywordBasedSearch(fileInfos, params);
+
+        expect(result.size).toBe(20); // Should be limited to 20
+      });
+    });
+
+    describe('mergeKeywordAndLLMSelections', () => {
+      it('should merge keyword and LLM selections correctly', () => {
+        const llmSelections = new Map<string, Array<{ name: string; type: string; }>>();
+        llmSelections.set('/test/file1.ts', [
+          { name: 'function1', type: 'function' },
+          { name: 'class1', type: 'class' }
+        ]);
+
+        const keywordSelections = new Map<string, Array<{ name: string; type: string; }>>();
+        keywordSelections.set('/test/file1.ts', [
+          { name: 'function2', type: 'function' }
+        ]);
+        keywordSelections.set('/test/file2.ts', [
+          { name: 'function3', type: 'function' }
+        ]);
+
+        const result = (extractCodeTool as any).mergeKeywordAndLLMSelections(llmSelections, keywordSelections);
+
+        expect(result.size).toBe(2);
+        expect(result.get('/test/file1.ts')).toEqual([
+          { name: 'function1', type: 'function' },
+          { name: 'class1', type: 'class' },
+          { name: 'function2', type: 'function' }
+        ]);
+        expect(result.get('/test/file2.ts')).toEqual([
+          { name: 'function3', type: 'function' }
+        ]);
+      });
+
+      it('should prefer specific types over unknown types', () => {
+        const llmSelections = new Map<string, Array<{ name: string; type: string; }>>();
+        llmSelections.set('/test/file1.ts', [
+          { name: 'function1', type: 'unknown' }
+        ]);
+
+        const keywordSelections = new Map<string, Array<{ name: string; type: string; }>>();
+        keywordSelections.set('/test/file1.ts', [
+          { name: 'function1', type: 'function' }
+        ]);
+
+        const result = (extractCodeTool as any).mergeKeywordAndLLMSelections(llmSelections, keywordSelections);
+
+        expect(result.get('/test/file1.ts')).toEqual([
+          { name: 'function1', type: 'function' }
+        ]);
+      });
+
+      it('should avoid duplicate elements', () => {
+        const llmSelections = new Map<string, Array<{ name: string; type: string; }>>();
+        llmSelections.set('/test/file1.ts', [
+          { name: 'function1', type: 'function' }
+        ]);
+
+        const keywordSelections = new Map<string, Array<{ name: string; type: string; }>>();
+        keywordSelections.set('/test/file1.ts', [
+          { name: 'function1', type: 'function' }
+        ]);
+
+        const result = (extractCodeTool as any).mergeKeywordAndLLMSelections(llmSelections, keywordSelections);
+
+        expect(result.get('/test/file1.ts')).toEqual([
+          { name: 'function1', type: 'function' }
+        ]);
+      });
+    });
+
+    describe('searchByFilenameKeywords', () => {
+      it('should match filenames case-insensitively', () => {
+        const fileInfos = new Map<string, FileInfo>();
+        const mockElements: CodeElement[] = [
+          {
+            name: 'testFunction',
+            type: 'function',
+            lineStart: 10,
+            lineEnd: 15,
+            filePath: '/test/AUTH.ts',
+            signature: 'function testFunction() {',
+            codeSnippet: 'function testFunction() {\n  return "test";\n}',
+          },
+        ];
+
+        fileInfos.set('/test/AUTH.ts', {
+          path: '/test/AUTH.ts',
+          name: 'AUTH.ts',
+          extension: '.ts',
+          language: 'typescript',
+          size: 1000,
+          elements: mockElements,
+          lastModified: new Date(),
+        });
+
+        const result = (extractCodeTool as any).searchByFilenameKeywords(fileInfos, ['auth']);
+
+        expect(result.size).toBe(1);
+        expect(result.has('/test/AUTH.ts')).toBe(true);
+      });
+
+      it('should return empty result when no filename keywords provided', () => {
+        const fileInfos = new Map<string, FileInfo>();
+        const result = (extractCodeTool as any).searchByFilenameKeywords(fileInfos, []);
+
+        expect(result.size).toBe(0);
+      });
+    });
+
+    describe('searchByMethodNameKeywords', () => {
+      it('should match method names case-insensitively', () => {
+        const fileInfos = new Map<string, FileInfo>();
+        const mockElements: CodeElement[] = [
+          {
+            name: 'AUTHENTICATE_USER',
+            type: 'function',
+            lineStart: 10,
+            lineEnd: 15,
+            filePath: '/test/auth.ts',
+            signature: 'function AUTHENTICATE_USER() {',
+            codeSnippet: 'function AUTHENTICATE_USER() {\n  return "auth";\n}',
+          },
+        ];
+
+        fileInfos.set('/test/auth.ts', {
+          path: '/test/auth.ts',
+          name: 'auth.ts',
+          extension: '.ts',
+          language: 'typescript',
+          size: 1000,
+          elements: mockElements,
+          lastModified: new Date(),
+        });
+
+        const result = (extractCodeTool as any).searchByMethodNameKeywords(fileInfos, ['authenticate']);
+
+        expect(result.size).toBe(1);
+        expect(result.get('/test/auth.ts')).toEqual([
+          { name: 'AUTHENTICATE_USER', type: 'function' }
+        ]);
+      });
+
+      it('should return empty result when no method name keywords provided', () => {
+        const fileInfos = new Map<string, FileInfo>();
+        const result = (extractCodeTool as any).searchByMethodNameKeywords(fileInfos, []);
+
+        expect(result.size).toBe(0);
+      });
+    });
+
+    describe('searchByCodeKeywords', () => {
+      it('should match code content case-insensitively', async () => {
+        const fileInfos = new Map<string, FileInfo>();
+        const mockElements: CodeElement[] = [
+          {
+            name: 'testFunction',
+            type: 'function',
+            lineStart: 10,
+            lineEnd: 15,
+            filePath: '/test/auth.ts',
+            signature: 'function testFunction() {',
+            codeSnippet: 'function testFunction() {\n  return "test";\n}',
+          },
+        ];
+
+        fileInfos.set('/test/auth.ts', {
+          path: '/test/auth.ts',
+          name: 'auth.ts',
+          extension: '.ts',
+          language: 'typescript',
+          size: 1000,
+          elements: mockElements,
+          lastModified: new Date(),
+        });
+
+        // Mock file reading
+        (vscode.workspace.fs.readFile as jest.Mock).mockResolvedValue(
+          new Uint8Array(Buffer.from('function testFunction() {\n  const JWT_TOKEN = "secret";\n  return JWT_TOKEN;\n}'))
+        );
+
+        const result = await (extractCodeTool as any).searchByCodeKeywords(fileInfos, ['jwt']);
+
+        expect(result.size).toBe(1);
+        expect(result.get('/test/auth.ts')).toEqual([
+          { name: 'testFunction', type: 'function' }
+        ]);
+      });
+
+      it('should return empty result when no code keywords provided', async () => {
+        const fileInfos = new Map<string, FileInfo>();
+        const result = await (extractCodeTool as any).searchByCodeKeywords(fileInfos, []);
+
+        expect(result.size).toBe(0);
+      });
+
+      it('should include all elements when no specific element matches found', async () => {
+        const fileInfos = new Map<string, FileInfo>();
+        const mockElements: CodeElement[] = [
+          {
+            name: 'function1',
+            type: 'function',
+            lineStart: 10,
+            lineEnd: 15,
+            filePath: '/test/auth.ts',
+            signature: 'function function1() {',
+            codeSnippet: 'function function1() {\n  return "test1";\n}',
+          },
+          {
+            name: 'function2',
+            type: 'function',
+            lineStart: 20,
+            lineEnd: 25,
+            filePath: '/test/auth.ts',
+            signature: 'function function2() {',
+            codeSnippet: 'function function2() {\n  return "test2";\n}',
+          },
+        ];
+
+        fileInfos.set('/test/auth.ts', {
+          path: '/test/auth.ts',
+          name: 'auth.ts',
+          extension: '.ts',
+          language: 'typescript',
+          size: 1000,
+          elements: mockElements,
+          lastModified: new Date(),
+        });
+
+        // Mock file reading
+        (vscode.workspace.fs.readFile as jest.Mock).mockResolvedValue(
+          new Uint8Array(Buffer.from('function function1() {\n  const jwt = "token";\n  return jwt;\n}\nfunction function2() {\n  return "test2";\n}'))
+        );
+
+        const result = await (extractCodeTool as any).searchByCodeKeywords(fileInfos, ['jwt']);
+
+        expect(result.size).toBe(1);
+        expect(result.get('/test/auth.ts')).toEqual([
+          { name: 'function1', type: 'function' },
+          { name: 'function2', type: 'function' }
+        ]);
+      });
+    });
+
+    describe('consolidateKeywordMatches', () => {
+      it('should consolidate matches with proper priority', () => {
+        const result = new Map<string, Array<{ name: string; type: string; }>>();
+        const filenameMatches = new Map<string, Array<{ name: string; type: string; }>>();
+        const methodNameMatches = new Map<string, Array<{ name: string; type: string; }>>();
+        const codeContentMatches = new Map<string, Array<{ name: string; type: string; }>>();
+
+        filenameMatches.set('/test/file1.ts', [
+          { name: 'function1', type: 'function' }
+        ]);
+
+        methodNameMatches.set('/test/file1.ts', [
+          { name: 'function2', type: 'function' }
+        ]);
+        methodNameMatches.set('/test/file2.ts', [
+          { name: 'function3', type: 'function' }
+        ]);
+
+        codeContentMatches.set('/test/file2.ts', [
+          { name: 'function4', type: 'function' }
+        ]);
+        codeContentMatches.set('/test/file3.ts', [
+          { name: 'function5', type: 'function' }
+        ]);
+
+        (extractCodeTool as any).consolidateKeywordMatches(result, filenameMatches, methodNameMatches, codeContentMatches);
+
+        expect(result.size).toBe(3);
+        expect(result.get('/test/file1.ts')).toEqual([
+          { name: 'function1', type: 'function' },
+          { name: 'function2', type: 'function' }
+        ]);
+        expect(result.get('/test/file2.ts')).toEqual([
+          { name: 'function3', type: 'function' },
+          { name: 'function4', type: 'function' }
+        ]);
+        expect(result.get('/test/file3.ts')).toEqual([
+          { name: 'function5', type: 'function' }
+        ]);
+      });
+    });
+
+    describe('applyGlobalLimit', () => {
+      it('should not limit when under the maximum', () => {
+        const result = new Map<string, Array<{ name: string; type: string; }>>();
+        result.set('/test/file1.ts', [{ name: 'function1', type: 'function' }]);
+        result.set('/test/file2.ts', [{ name: 'function2', type: 'function' }]);
+
+        (extractCodeTool as any).applyGlobalLimit(result);
+
+        expect(result.size).toBe(2);
+      });
+
+      it('should limit to 20 elements when over the maximum', () => {
+        const result = new Map<string, Array<{ name: string; type: string; }>>();
+        
+        // Create 25 entries
+        for (let i = 0; i < 25; i++) {
+          result.set(`/test/file${i}.ts`, [{ name: `function${i}`, type: 'function' }]);
+        }
+
+        (extractCodeTool as any).applyGlobalLimit(result);
+
+        expect(result.size).toBe(20);
+      });
+    });
+  });
+
 });

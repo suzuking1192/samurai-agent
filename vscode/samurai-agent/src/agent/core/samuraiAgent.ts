@@ -108,6 +108,9 @@ export class SamuraiAgent {
             sessionId: session.id,
             connectedCodebasePath: session.metadata.connectedCodebasePath,
             model: session.metadata.model,
+            filenameKeywords: codeExtractionAnalysisResult.filenameKeywords,
+            methodNameKeywords: codeExtractionAnalysisResult.methodNameKeywords,
+            codeKeywords: codeExtractionAnalysisResult.codeKeywords,
           });
 
           if (extractionResult.success && extractionResult.result) {
@@ -288,7 +291,7 @@ export class SamuraiAgent {
     projectDetails: string, 
     session: Session, 
     userIntent: UserIntentEnum
-  ): Promise<{ new_code_context_necessary: boolean, extraction_query: string | null, reasoning: string }> {
+  ): Promise<{ new_code_context_necessary: boolean, extraction_query: string | null, reasoning: string, filenameKeywords?: string[], methodNameKeywords?: string[], codeKeywords?: string[] }> {
     this.logInvocation("analyzeCodeExtractionNeeds", `Intent: ${userIntent}`);
     
     try {
@@ -303,7 +306,10 @@ export class SamuraiAgent {
         return {
           new_code_context_necessary: true,
           extraction_query: currentUserMessage,
-          reasoning: "Keyword 'Please read the latest code' detected in user message - bypassing LLM analysis"
+          reasoning: "Keyword 'Please read the latest code' detected in user message - bypassing LLM analysis",
+          filenameKeywords: [],
+          methodNameKeywords: [],
+          codeKeywords: []
         };
       }
       
@@ -370,7 +376,10 @@ export class SamuraiAgent {
       const result = {
         new_code_context_necessary: parsedResult.new_code_context_necessary,
         extraction_query: parsedResult.extraction_query,
-        reasoning: parsedResult.reasoning
+        reasoning: parsedResult.reasoning,
+        filenameKeywords: parsedResult.filenameKeywords || [],
+        methodNameKeywords: parsedResult.methodNameKeywords || [],
+        codeKeywords: parsedResult.codeKeywords || []
       };
       
       // Log the extraction query details for debugging
@@ -388,7 +397,10 @@ export class SamuraiAgent {
       return {
         new_code_context_necessary: false,
         extraction_query: null,
-        reasoning: `Error in code extraction analysis: ${error instanceof Error ? error.message : 'Unknown error'}`
+        reasoning: `Error in code extraction analysis: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        filenameKeywords: [],
+        methodNameKeywords: [],
+        codeKeywords: []
       };
     }
   }
