@@ -145,6 +145,14 @@ export class SamuraiAgent {
           }
         } catch (error) {
           console.error('Error in code extraction:', error);
+          
+          // Capture error to PostHog for monitoring
+          this.telemetryService.captureError(error as Error, { 
+            service: 'SamuraiAgent', 
+            function: 'codeExtraction',
+            extractionQuery: codeExtractionAnalysisResult.extraction_query
+          });
+          
           this.logInvocation("extractCodeTool.execute", `Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
           onProgress?.({
             stage: "extraction-failed",
@@ -394,6 +402,13 @@ export class SamuraiAgent {
       
     } catch (error) {
       console.error('Error in analyzeCodeExtractionNeeds:', error);
+      
+      // Capture error to PostHog for monitoring
+      this.telemetryService.captureError(error as Error, { 
+        service: 'SamuraiAgent', 
+        function: 'analyzeCodeExtractionNeeds' 
+      });
+      
       return {
         new_code_context_necessary: false,
         extraction_query: null,
@@ -501,6 +516,13 @@ export class SamuraiAgent {
       
     } catch (error) {
       console.error('Error in handlePureDiscussion:', error);
+      
+      // Capture error to PostHog for monitoring
+      this.telemetryService.captureError(error as Error, { 
+        service: 'SamuraiAgent', 
+        function: 'handlePureDiscussion' 
+      });
+      
       return "I'm here to help with your project! What would you like to discuss?";
     }
   }
@@ -570,6 +592,13 @@ export class SamuraiAgent {
       
     } catch (error) {
       console.error('Error in handleFeatureExploration:', error);
+      
+      // Capture error to PostHog for monitoring
+      this.telemetryService.captureError(error as Error, { 
+        service: 'SamuraiAgent', 
+        function: 'handleFeatureExploration' 
+      });
+      
       return "That's an interesting feature idea! Tell me more about what you have in mind.";
     }
   }
@@ -666,6 +695,13 @@ export class SamuraiAgent {
       
     } catch (error) {
       console.error('Error in handleSpecClarification:', error);
+      
+      // Capture error to PostHog for monitoring
+      this.telemetryService.captureError(error as Error, { 
+        service: 'SamuraiAgent', 
+        function: 'handleSpecClarification' 
+      });
+      
       // Return a fallback response with error indication
       return {
         clarification_text: "I'm here to help clarify your specifications! What would you like to specify?",
@@ -865,6 +901,13 @@ export class SamuraiAgent {
             errors.push(`Failed to create parent spec "${parentSpecData.title}": ${createSpecResult.error}`);
           }
         } catch (error) {
+          // Capture error to PostHog for monitoring
+          this.telemetryService.captureError(error as Error, { 
+            service: 'SamuraiAgent', 
+            function: 'createParentSpec',
+            specTitle: parentSpecData.title
+          });
+          
           errors.push(`Error creating parent spec "${parentSpecData.title}": ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
       }
@@ -890,6 +933,14 @@ export class SamuraiAgent {
               errors.push(`Failed to create child spec "${specData.title}": ${createSpecResult.error}`);
             }
           } catch (error) {
+            // Capture error to PostHog for monitoring
+            this.telemetryService.captureError(error as Error, { 
+              service: 'SamuraiAgent', 
+              function: 'createChildSpec',
+              specTitle: specData.title,
+              parentSpecId: rootSpecId
+            });
+            
             errors.push(`Error creating child spec "${specData.title}": ${error instanceof Error ? error.message : 'Unknown error'}`);
           }
         }
@@ -914,6 +965,13 @@ export class SamuraiAgent {
               console.log(`Updated parent spec to mark it as having subspecs`);
             }
           } catch (error) {
+            // Capture error to PostHog for monitoring
+            this.telemetryService.captureError(error as Error, { 
+              service: 'SamuraiAgent', 
+              function: 'updateParentSpecHasSubspecs',
+              parentSpecId: createdSpecs[0]?.id
+            });
+            
             console.warn(`Error updating parent spec hasSubspecs: ${error instanceof Error ? error.message : 'Unknown error'}`);
           }
         }
@@ -967,6 +1025,13 @@ export class SamuraiAgent {
       
     } catch (error) {
       console.error('Error in handleGeneratingSpecs:', error);
+      
+      // Capture error to PostHog for monitoring
+      this.telemetryService.captureError(error as Error, { 
+        service: 'SamuraiAgent', 
+        function: 'handleGeneratingSpecs' 
+      });
+      
       return {
         success: false,
         message: `Error generating specs: ${error instanceof Error ? error.message : 'Unknown error'}`,
@@ -1026,6 +1091,13 @@ export class SamuraiAgent {
       
     } catch (error) {
       console.error('Error in LLM intent analysis:', error);
+      
+      // Capture error to PostHog for monitoring
+      this.telemetryService.captureError(error as Error, { 
+        service: 'SamuraiAgent', 
+        function: 'performLLMIntentAnalysis' 
+      });
+      
       // Default to pure_discussion if analysis fails
       return UserIntentEnum.PURE_DISCUSSION;
     }

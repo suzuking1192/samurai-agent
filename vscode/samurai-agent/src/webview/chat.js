@@ -969,7 +969,7 @@
 
                 const hint = document.createElement('div');
                 hint.className = 'chat-input-hint';
-                hint.textContent = 'Press Enter to send • Shift + Enter for a new line';
+                hint.innerHTML = '💡 Tip: Try these commands:<br>"please read the latest code" — Extract and analyze your code<br>"create specs" — Generate specifications<br>Press Enter to send • Shift + Enter for a new line';
                 if (textArea.parentElement) {
                     textArea.parentElement.appendChild(hint);
                 }
@@ -1106,9 +1106,19 @@
 
             setTimeout(async () => {
                 if (!chatState.availableModels || chatState.availableModels.length === 0) {
+                    console.log('Chat: Fallback - refreshing LLM model dropdown after timeout');
                     await refreshLLMModelDropdown();
                 }
             }, 2000);
+
+            // Additional fallback: Check if we need to refresh state periodically
+            // This helps in case the visibility change handler doesn't fire
+            setInterval(() => {
+                if (chatState.projectSettings && (!chatState.availableModels || chatState.availableModels.length === 0)) {
+                    console.log('Chat: Periodic check - refreshing LLM model dropdown');
+                    void refreshLLMModelDropdown();
+                }
+            }, 10000); // Check every 10 seconds
         });
     }
 
@@ -1116,6 +1126,13 @@
         if (!payload) {
             return;
         }
+
+        console.log('Chat: handleInitialSettings called with payload:', {
+            hasGlobalSettings: !!payload.globalSettings,
+            hasProjectSettings: !!payload.projectSettings,
+            availableModelsCount: payload.availableModels?.length || 0,
+            hasLLMModels: !!payload.llmModels
+        });
 
         chatState.globalSettings = payload.globalSettings;
         chatState.projectSettings = payload.projectSettings;
@@ -1237,14 +1254,25 @@
 
         const dispatchNotification = async (type, payload) => {
             if (type === 'initialSettings' && payload) {
+                console.log('Chat: Received initialSettings notification, re-initializing state');
                 handleInitialSettings(payload);
                 chatMessagesElement?.dispatchEvent(new CustomEvent('chat-initialized'));
                 return;
             }
 
             if (type === 'globalSettingsUpdated') {
+                console.log('Chat: Received globalSettingsUpdated notification, refreshing LLM models');
                 await refreshLLMModelDropdown();
                 chatMessagesElement?.dispatchEvent(new CustomEvent('chat-settings-updated'));
+            }
+
+            if (type === 'webviewRefresh') {
+                console.log('Chat: Received webviewRefresh notification, refreshing webview state');
+                // Call the refresh function if it's available
+                if (globalScope.ChatManager?.refreshWebviewState) {
+                    globalScope.ChatManager.refreshWebviewState();
+                }
+                chatMessagesElement?.dispatchEvent(new CustomEvent('webview-refreshed'));
             }
         };
 
@@ -1393,6 +1421,24 @@
             initializeChat();
         }
 
+        // Function to refresh webview state when it becomes visible
+        function refreshWebviewState() {
+            console.log('Chat: refreshWebviewState called - refreshing all state');
+            
+            // Refresh LLM model dropdown
+            void refreshLLMModelDropdown();
+            
+            // Re-initialize chat session if we have project settings
+            if (chatState.projectSettings) {
+                void initializeChatSession();
+            }
+            
+            // Refresh cost display
+            updateApiCostDisplay(0);
+            
+            console.log('Chat: Webview state refresh completed');
+        }
+
         globalScope.ChatManager = {
             handleInitialSettings,
             populateLLMModelDropdown,
@@ -1402,7 +1448,8 @@
             displayMessage,
             MessageType,
             getChatState: () => chatState,
-            refreshCostDisplay: () => updateApiCostDisplay(0)
+            refreshCostDisplay: () => updateApiCostDisplay(0),
+            refreshWebviewState
         };
     }
 })(typeof window !== 'undefined' ? window : undefined);

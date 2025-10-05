@@ -4,6 +4,7 @@ import { ProjectDetailService } from '../../../src/agent/memory/projectDetailSer
 import { DataStore } from '../../../src/persistence/dataStore';
 import { ExtractCodeTool } from '../../../src/agent/tools/extractCodeTool';
 import { CreateSpecTool } from '../../../src/agent/tools/createSpecTool';
+import { TelemetryService } from '../../../src/services/TelemetryService';
 import { ChatMessage, Session, UserIntentEnum } from '../../../src/common/models/chat-models';
 import { ExtractCodeToolResultPayload } from '../../../src/common/models/tool-models';
 import { LLMMessage } from '../../../src/common/models/llm-models';
@@ -21,6 +22,7 @@ describe('SamuraiAgent', () => {
   let mockProjectDetailService: jest.Mocked<ProjectDetailService>;
   let mockExtractCodeTool: jest.Mocked<ExtractCodeTool>;
   let mockCreateSpecTool: jest.Mocked<CreateSpecTool>;
+  let mockTelemetryService: jest.Mocked<TelemetryService>;
 
   beforeEach(() => {
     // Create mocks
@@ -47,13 +49,18 @@ describe('SamuraiAgent', () => {
       execute: jest.fn(),
     } as any;
 
+    mockTelemetryService = {
+      captureError: jest.fn(),
+    } as any;
+
     // Create SamuraiAgent instance
     samuraiAgent = new SamuraiAgent(
       mockLLMProviderService,
       mockDataStore,
       mockProjectDetailService,
       mockExtractCodeTool,
-      mockCreateSpecTool
+      mockCreateSpecTool,
+      mockTelemetryService
     );
 
     // Mock fs.readFileSync for prompt loading
@@ -268,7 +275,10 @@ describe('SamuraiAgent', () => {
       expect(result).toEqual({
         new_code_context_necessary: true,
         extraction_query: 'Please read the latest code and summarize it',
-        reasoning: "Keyword 'Please read the latest code' detected in user message - bypassing LLM analysis"
+        reasoning: "Keyword 'Please read the latest code' detected in user message - bypassing LLM analysis",
+        filenameKeywords: [],
+        methodNameKeywords: [],
+        codeKeywords: []
       });
 
       // Verify LLM was not called
@@ -319,7 +329,10 @@ describe('SamuraiAgent', () => {
       expect(result).toEqual({
         new_code_context_necessary: false,
         extraction_query: null,
-        reasoning: 'No code context needed for weather question'
+        reasoning: 'No code context needed for weather question',
+        filenameKeywords: [],
+        methodNameKeywords: [],
+        codeKeywords: []
       });
 
       // Verify LLM was called

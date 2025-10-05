@@ -2,7 +2,20 @@
 
 All notable changes to the "samurai-agent" extension will be documented in this file.
 
-## [Unreleased]
+## [0.0.12] - 2025-10-03
+
+### Added
+- **Keyword Trigger Hints**: Added helpful keyword trigger examples to chat input area
+  - "please read the latest code" for code extraction tool
+  - "create specs" for specification creation tool
+- **Keyword Search for Code**: Implemented intelligent keyword-based code search functionality
+- Enhanced user experience with discoverable tool triggers in chat interface
+
+### Improved
+- Chat input now displays keyword examples to help users discover tool functionality
+- Better onboarding experience for new users with visible tool trigger suggestions
+
+
 
 ### Added
 - **PostHog Error Tracking**: Implemented centralized error tracking system with `TelemetryService.captureError` method
@@ -43,7 +56,7 @@ All notable changes to the "samurai-agent" extension will be documented in this 
 - Enhanced error messages for LLM parsing failures with specific diagnostic information
 - Removed unused hello world command from package.json for cleaner extension structure
 
-## [0.0.6] - 2025-01-01
+## [0.0.6] - 2025-10-02
 
 ### Fixed
 - **CRITICAL**: Fixed LLM JSON parsing failure in production for array format responses
@@ -61,7 +74,7 @@ All notable changes to the "samurai-agent" extension will be documented in this 
 - Better error handling for malformed JSON in markdown code blocks
 - Enhanced parsing strategies for different LLM response formats
 
-## [0.0.5] - 2025-01-01
+## [0.0.5] - 2025-10-02
 
 ### Fixed
 - Fixed PostHog telemetry tracking by properly loading environment variables from .env file
@@ -70,13 +83,13 @@ All notable changes to the "samurai-agent" extension will be documented in this 
 - PostHog tracking now works in both development and production environments
 - Verified PostHog API key is properly embedded in packaged extension
 
-## [0.0.4] - 2025-01-01
+## [0.0.4] - 2025-10-02
 
 ### Fixed
 - Fixed code extraction not starting in production by fixing SamuraiAgent prompt file loading
 - Updated SamuraiAgent to use the same prompt loading logic as CodeParserService for consistency
 
-## [0.0.3] - 2025-01-01
+## [0.0.3] - 2025-10-02
 
 ### Fixed
 - Fixed code extraction failure in packaged extension by ensuring workspace path is properly set in session metadata
@@ -85,13 +98,13 @@ All notable changes to the "samurai-agent" extension will be documented in this 
 ### Security
 - Removed hardcoded PostHog API key from webpack configuration for better security
 
-## [0.0.2] - 2025-01-01
+## [0.0.2] - 2025-10-01
 
 ### Fixed
 - Fixed code extraction failure in packaged extension due to incorrect prompt file path resolution
 - Fixed CSS loading issue in published extension by updating webview resource paths
 - Updated asset resolution to prioritize dist directory for packaged extensions
 
-## [0.0.1] - 2025-01-01
+## [0.0.1] - 2025-10-01
 
 - Initial release
