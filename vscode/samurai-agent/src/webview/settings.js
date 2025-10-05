@@ -59,7 +59,33 @@ let settingsState = {
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Settings: DOMContentLoaded event fired');
     initializeSettingsTab();
+    
+    // Set up message listener for webview refresh notifications
+    setupSettingsMessageListener();
 });
+
+// Set up message listener to handle webview refresh notifications
+function setupSettingsMessageListener() {
+    console.log('Settings: Setting up message listener for webview refresh');
+    
+    // Listen for messages from the webview provider
+    window.addEventListener('message', function(event) {
+        const message = event.data;
+        if (!message || typeof message !== 'object') {
+            return;
+        }
+        
+        console.log('Settings: Received message:', message.type);
+        
+        if (message.type === 'webviewRefresh') {
+            console.log('Settings: Received webviewRefresh notification, refreshing settings state');
+            // Call the refresh function if it's available
+            if (window.SettingsManager?.refreshSettingsState) {
+                window.SettingsManager.refreshSettingsState();
+            }
+        }
+    });
+}
 
 async function initializeSettingsTab() {
     console.log('Settings: initializeSettingsTab called');
@@ -97,6 +123,21 @@ async function initializeSettingsTab() {
         console.log('Settings: Rendering settings initially');
         renderSettings();
     }
+    
+    // Fallback mechanism: Check if settings need to be refreshed periodically
+    // This helps in case the visibility change handler doesn't fire
+    setInterval(() => {
+        const currentSettingsContent = document.getElementById('setting-content');
+        if (currentSettingsContent && currentSettingsContent.style.display !== 'none') {
+            // If settings tab is visible but we don't have proper state, refresh it
+            if (!settingsState.globalSettings || Object.keys(settingsState.globalSettings).length === 0) {
+                console.log('Settings: Periodic check - refreshing settings state');
+                void loadSettingsFromPersistence().then(() => {
+                    renderSettings();
+                });
+            }
+        }
+    }, 15000); // Check every 15 seconds
 }
 
 function renderSettings() {
@@ -649,6 +690,23 @@ async function generateDigestedMemory() {
     }
 }
 
+    // Function to refresh settings state when webview becomes visible
+    function refreshSettingsState() {
+        console.log('Settings: refreshSettingsState called - refreshing all settings state');
+        
+        // Reload settings from persistence
+        void loadSettingsFromPersistence().then(() => {
+            // Re-render settings if the settings tab is currently visible
+            const settingsContent = document.getElementById('setting-content');
+            if (settingsContent && settingsContent.style.display !== 'none') {
+                console.log('Settings: Re-rendering settings after state refresh');
+                renderSettings();
+            }
+        });
+        
+        console.log('Settings: Settings state refresh completed');
+    }
+
     // Export functions for potential external use
     window.SettingsManager = {
         renderSettings: renderSettings,
@@ -656,6 +714,7 @@ async function generateDigestedMemory() {
         saveGlobalSettingsWithFeedback: saveGlobalSettingsWithFeedback,
         saveProjectSettingsWithFeedback: saveProjectSettingsWithFeedback,
         getSettings: () => settingsState,
+        refreshSettingsState: refreshSettingsState,
         updateGlobalSettings: async (newSettings) => {
             settingsState.globalSettings = { ...settingsState.globalSettings, ...newSettings };
             await saveGlobalSettingsWithFeedback();

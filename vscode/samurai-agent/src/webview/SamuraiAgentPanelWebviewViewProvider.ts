@@ -232,10 +232,21 @@ export class SamuraiAgentPanelWebviewViewProvider
               
               if (this.dataStore) {
                 console.log('[PERSISTENCE DEBUG] WebviewProvider - Saving assistant message to DB');
-                this.dataStore.handleWebviewMessage({
-                  command: 'saveChatMessage',
-                  payload: assistantMessage
-                });
+                try {
+                  const saveResult = this.dataStore.handleWebviewMessage({
+                    command: 'saveChatMessage',
+                    payload: assistantMessage
+                  });
+                  console.log('[PERSISTENCE DEBUG] WebviewProvider - Save result:', saveResult.type);
+                  
+                  if (saveResult.type === 'error') {
+                    console.error('[PERSISTENCE DEBUG] WebviewProvider - Failed to save assistant message:', saveResult.error);
+                  } else {
+                    console.log('[PERSISTENCE DEBUG] WebviewProvider - Assistant message saved successfully');
+                  }
+                } catch (error) {
+                  console.error('[PERSISTENCE DEBUG] WebviewProvider - Error saving assistant message:', error);
+                }
               }
               
               webview.postMessage({

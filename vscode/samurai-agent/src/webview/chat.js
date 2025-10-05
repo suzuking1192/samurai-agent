@@ -12,7 +12,9 @@
         currentSessionId: null,
         currentSession: null,
         lastAssistantMessageContent: null,
-        lastAssistantMessageTimestamp: 0
+        lastAssistantMessageTimestamp: 0,
+        messagesLoaded: false, // Track if messages have been loaded
+        lastRefreshTime: 0 // Track when we last refreshed to prevent rapid refreshes
     };
 
     const MessageType = {
@@ -478,6 +480,9 @@
         console.log('Chat: Message element appended to chatMessages');
         messageElement.scrollIntoView({ block: 'start', behavior: 'smooth' });
 
+        // Mark that we have messages loaded
+        chatState.messagesLoaded = true;
+
         return messageElement;
     }
 
@@ -571,18 +576,61 @@
             chatState.currentSessionId = sessionId;
 
             if (sessionId) {
-                const messages = await globalScope.WebviewApi.persistence.loadChatMessagesForSession(sessionId);
-                if (Array.isArray(messages)) {
-                    messages.forEach(displayMessage);
-                }
-
-                const chatMessages = safeGetDocumentElement('chatMessages');
-                if (chatMessages) {
-                    chatMessages.scrollTop = chatMessages.scrollHeight;
-                }
+                await loadAndDisplayMessages(sessionId);
             }
         } catch (error) {
             console.error('Chat: Failed to initialize session', error);
+        }
+    }
+
+    async function loadAndDisplayMessages(sessionId, retryCount = 0) {
+        try {
+            console.log(`Chat: Loading messages for session ${sessionId} (attempt ${retryCount + 1})`);
+            const messages = await globalScope.WebviewApi.persistence.loadChatMessagesForSession(sessionId);
+            
+            if (Array.isArray(messages)) {
+                console.log(`Chat: Loaded ${messages.length} messages from database`);
+                
+                // Clear existing messages before loading new ones
+                const chatMessages = safeGetDocumentElement('chatMessages');
+                if (chatMessages) {
+                    chatMessages.innerHTML = '';
+                }
+                
+                messages.forEach(displayMessage);
+                
+                if (chatMessages) {
+                    chatMessages.scrollTop = chatMessages.scrollHeight;
+                }
+                
+                // If we have messages, we're done
+                if (messages.length > 0) {
+                    console.log('Chat: Messages loaded successfully');
+                    chatState.messagesLoaded = true;
+                    return;
+                }
+            }
+            
+            // If no messages found and this is the first attempt, retry after a short delay
+            // This handles cases where the database write hasn't been flushed yet
+            if (retryCount === 0) {
+                console.log('Chat: No messages found on first attempt, retrying after delay...');
+                setTimeout(() => {
+                    void loadAndDisplayMessages(sessionId, 1);
+                }, 1000); // Wait 1 second before retry
+            } else {
+                console.log('Chat: No messages found after retry, session may be empty');
+            }
+        } catch (error) {
+            console.error('Chat: Failed to load messages:', error);
+            
+            // Retry once on error
+            if (retryCount === 0) {
+                console.log('Chat: Error loading messages, retrying after delay...');
+                setTimeout(() => {
+                    void loadAndDisplayMessages(sessionId, 1);
+                }, 1000);
+            }
         }
     }
 
@@ -1004,6 +1052,7 @@
                     if (chatMessages) {
                         console.log('Chat: Clearing chat messages for new conversation');
                         chatMessages.innerHTML = '';
+                        chatState.messagesLoaded = false; // Reset the flag since we cleared messages
                     }
                     if (chatInput) {
                         chatInput.value = '';
@@ -1423,14 +1472,58 @@
 
         // Function to refresh webview state when it becomes visible
         function refreshWebviewState() {
+            const now = Date.now();
+            
+            // Prevent rapid successive refreshes (within 2 seconds)
+            if (now - chatState.lastRefreshTime < 2000) {
+                console.log('Chat: Skipping refresh - too soon since last refresh');
+                return;
+            }
+            
+            chatState.lastRefreshTime = now;
             console.log('Chat: refreshWebviewState called - refreshing all state');
             
             // Refresh LLM model dropdown
             void refreshLLMModelDropdown();
             
-            // Re-initialize chat session if we have project settings
+            // Only re-initialize chat session if we don't have messages loaded
+            // This prevents clearing messages that were just saved
             if (chatState.projectSettings) {
-                void initializeChatSession();
+                const chatMessages = safeGetDocumentElement('chatMessages');
+                
+                // More robust message detection - check for actual message elements
+                const hasMessages = chatMessages && (
+                    chatMessages.children.length > 0 || 
+                    chatMessages.querySelectorAll('.chat-message').length > 0 ||
+                    chatMessages.innerHTML.trim().length > 0
+                );
+                
+                console.log('Chat: Message detection:', {
+                    hasElement: !!chatMessages,
+                    childrenCount: chatMessages ? chatMessages.children.length : 0,
+                    messageElements: chatMessages ? chatMessages.querySelectorAll('.chat-message').length : 0,
+                    innerHTMLLength: chatMessages ? chatMessages.innerHTML.trim().length : 0,
+                    hasMessages: hasMessages,
+                    messagesLoaded: chatState.messagesLoaded
+                });
+                
+                // If we've already loaded messages and they're still there, don't reload
+                if (chatState.messagesLoaded && hasMessages) {
+                    console.log('Chat: Messages already loaded and present, skipping session initialization');
+                    // Just ensure we have the current session ID
+                    if (!chatState.currentSessionId && chatState.projectSettings.currentSessionId) {
+                        chatState.currentSessionId = chatState.projectSettings.currentSessionId;
+                    }
+                } else if (!hasMessages) {
+                    console.log('Chat: No messages found, initializing chat session');
+                    void initializeChatSession();
+                } else {
+                    console.log('Chat: Messages present but not marked as loaded, ensuring session ID');
+                    chatState.messagesLoaded = true;
+                    if (!chatState.currentSessionId && chatState.projectSettings.currentSessionId) {
+                        chatState.currentSessionId = chatState.projectSettings.currentSessionId;
+                    }
+                }
             }
             
             // Refresh cost display
