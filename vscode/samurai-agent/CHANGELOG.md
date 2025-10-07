@@ -2,6 +2,53 @@
 
 All notable changes to the "samurai-agent" extension will be documented in this file.
 
+## [0.0.14] - 2025-10-07
+
+### Changed
+- **Expanded VS Code Compatibility**: Lowered minimum VS Code version requirement from `^1.104.0` to `^1.75.0`
+  - Extension now supports VS Code versions from early 2023 onwards
+  - Significantly increases potential user base by supporting users who haven't updated to the latest VS Code
+  - Maintains compatibility with all modern VS Code features used by the extension
+
+## [0.0.13] - 2025-10-05
+
+### Added
+- **LLM Cost Tracking System**: Implemented comprehensive cost tracking with real-time status bar display
+  - Real-time cost display in VS Code status bar showing session and total costs
+  - Cost details command (`samurai-agent.showCostDetails`) for detailed cost breakdown
+  - Persistent cost storage across VS Code sessions with monthly statistics
+  - Cost tracking for all LLM provider calls (OpenAI, Gemini, Anthropic)
+  - Automatic cost updates after each agent execution
+- **Enhanced PostHog Logging**: Added comprehensive logging throughout the extension
+  - Detailed cost tracking logs for debugging and monitoring
+  - Enhanced error context with request IDs and execution metadata
+  - Improved telemetry for better extension performance monitoring
+
+### Fixed
+- **CRITICAL**: Fixed webview lifecycle issues that caused model list and chat history to disappear
+  - Added visibility change handler to re-initialize webview state when returning to tabs
+  - Fixed model name not showing when closing and reopening VS Code plugin
+  - Enhanced message persistence with retry mechanisms for database synchronization
+  - Fixed tab switching issues that caused message loss during navigation
+  - Added robust fallback mechanisms for webview state management
+- **CRITICAL**: Fixed message persistence race conditions
+  - Enhanced message detection logic to prevent unnecessary reloading
+  - Added state tracking to prevent duplicate message loading
+  - Implemented refresh throttling to prevent rapid successive refreshes
+  - Added comprehensive retry mechanisms for database write operations
+
+### Improved
+- **Webview State Management**: Enhanced webview lifecycle handling
+  - Centralized `refreshWebviewState()` function for consistent state management
+  - Added periodic checks and timeout-based refreshes for edge cases
+  - Improved DOM state checking with multiple criteria for message detection
+  - Enhanced logging for debugging webview lifecycle issues
+- **Cost Display Integration**: Seamless cost tracking integration
+  - Status bar shows current session cost and total cost with clickable details
+  - Real-time cost updates without requiring webview refresh
+  - Persistent cost storage with monthly aggregation and statistics
+  - Cost formatting with proper currency display and precision
+
 ## [0.0.12] - 2025-10-03
 
 ### Added

@@ -2,10 +2,10 @@
   "name": "samurai-agent",
   "displayName": "Samurai Agent",
   "description": "AI tool for spec-driven development: debugs requirements to prevent messy AI-generated code",
-  "version": "0.0.12",
+  "version": "0.0.14",
   "publisher": "SamuraiAgent",
   "engines": {
-    "vscode": "^1.104.0"
+    "vscode": "^1.75.0"
   },
   "categories": [
     "Other"
@@ -90,7 +90,7 @@
     "@types/jest": "^29.5.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "22.x",
-    "@types/vscode": "^1.104.0",
+    "@types/vscode": "^1.75.0",
     "@typescript-eslint/eslint-plugin": "^8.42.0",
     "@typescript-eslint/parser": "^8.42.0",
     "@vscode/test-cli": "^0.0.11",
