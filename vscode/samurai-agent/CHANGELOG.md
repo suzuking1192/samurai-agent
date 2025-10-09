@@ -2,11 +2,26 @@
 
 All notable changes to the "samurai-agent" extension will be documented in this file.
 
+## [0.0.17] - 2025-10-09
+
+### Fixed
+- **README Demo GIF Display**: Fixed demo gif display in VS Code marketplace by using GitHub raw URL
+  - Changed from relative path `./samurai-agent-demo.gif` to absolute GitHub raw URL
+  - Ensures demo gif displays properly in VS Code marketplace and all platforms
+  - Uses `https://raw.githubusercontent.com/suzuking1192/samurai-agent/main/vscode/samurai-agent/samurai-agent-demo.gif`
+
+## [0.0.16] - 2025-10-09
+
+### Fixed
+- **README Demo GIF**: Fixed demo gif filename in README to use correct spelling
+  - Corrected filename from `samuri-agent-demo.gif` to `samurai-agent-demo.gif`
+  - Ensures demo gif displays properly in VS Code marketplace and GitHub
+
 ## [0.0.15] - 2025-10-09
 
 ### Improved
 - **Comprehensive README Overhaul**: Significantly improved documentation for better user onboarding and understanding
-  - Added animated demo gif showcasing extension functionality
+  - Added animated demo gif showcasing extension functionality with proper VS Code marketplace path formatting
   - Restructured content with clear sections: Why Samurai Agent, When to Use, How It Works, Setup, Quick Commands, Privacy & Telemetry, and FAQ
   - Enhanced value proposition explaining LLM-based code understanding vs grep-based keyword search
   - Added detailed comparison showing how Samurai Agent references existing code instead of suggesting generic solutions

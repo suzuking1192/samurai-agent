@@ -2,7 +2,7 @@
   "name": "samurai-agent",
   "displayName": "Samurai Agent",
   "description": "Generate codebase-aware specs for complex features, refactoring, and hard bugs",
-  "version": "0.0.15",
+  "version": "0.0.17",
   "publisher": "SamuraiAgent",
   "engines": {
     "vscode": "^1.75.0"

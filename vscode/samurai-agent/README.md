@@ -5,7 +5,7 @@
 When AI coding tools suggest generic solutions, Samurai Agent references YOUR existing code.
 
 ## 🎥 Quick Demo
-![Samurai Agent Demo](samuri-agent-demo.gif)
+![Samurai Agent Demo](https://raw.githubusercontent.com/suzuking1192/samurai-agent/main/vscode/samurai-agent/samurai-agent-demo.gif)
 
 ---
 
