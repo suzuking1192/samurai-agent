@@ -2,6 +2,19 @@
 
 All notable changes to the "samurai-agent" extension will be documented in this file.
 
+## [0.0.15] - 2025-10-09
+
+### Improved
+- **Comprehensive README Overhaul**: Significantly improved documentation for better user onboarding and understanding
+  - Added animated demo gif showcasing extension functionality
+  - Restructured content with clear sections: Why Samurai Agent, When to Use, How It Works, Setup, Quick Commands, Privacy & Telemetry, and FAQ
+  - Enhanced value proposition explaining LLM-based code understanding vs grep-based keyword search
+  - Added detailed comparison showing how Samurai Agent references existing code instead of suggesting generic solutions
+  - Improved setup instructions with recommended LLM provider configuration (Gemini Flash 2.5)
+  - Added comprehensive FAQ section addressing common questions about LLM-based analysis benefits
+  - Clarified positioning as a complementary tool for complex features, refactoring, and difficult bugs
+  - Enhanced privacy section emphasizing code privacy and telemetry control
+
 ## [0.0.14] - 2025-10-07
 
 ### Changed
