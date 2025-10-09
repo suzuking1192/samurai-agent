@@ -314,10 +314,13 @@ export class DataStore {
         // Track telemetry event for chat message
         if (this.telemetryService) {
             try {
+                // Get LLM model from session metadata
+                const llmModelUsed = session.metadata?.model;
+                
                 if (chatMessage.type === MessageType.USER) {
-                    this.telemetryService.trackChatMessage('user_message');
+                    this.telemetryService.trackChatMessage('user_message', llmModelUsed);
                 } else if (chatMessage.type === MessageType.ASSISTANT) {
-                    this.telemetryService.trackChatMessage('agent_response');
+                    this.telemetryService.trackChatMessage('agent_response', llmModelUsed);
                 }
             } catch (error) {
                 // Telemetry errors should not affect core functionality

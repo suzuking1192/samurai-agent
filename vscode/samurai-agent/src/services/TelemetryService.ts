@@ -81,8 +81,12 @@ export class TelemetryService {
     /**
      * Track a chat message interaction
      * @param messageType - Type of message: 'user_message' or 'agent_response'
+     * @param llmModelUsed - Optional LLM model ID used for the chat interaction
      */
-    public async trackChatMessage(messageType: 'user_message' | 'agent_response'): Promise<void> {
+    public async trackChatMessage(
+        messageType: 'user_message' | 'agent_response',
+        llmModelUsed?: string
+    ): Promise<void> {
         try {
             // Check if telemetry is enabled
             const config = vscode.workspace.getConfiguration('samurai-agent');
@@ -90,6 +94,7 @@ export class TelemetryService {
 
             console.log('TelemetryService: trackChatMessage called', {
                 messageType,
+                llmModelUsed,
                 isTelemetryEnabled,
                 hasPostHog: !!this.posthog,
                 hasDistinctId: !!this.distinctId
@@ -108,16 +113,24 @@ export class TelemetryService {
                 return;
             }
 
+            // Build properties object with optional llmModelUsed
+            const properties: Record<string, any> = {
+                chatMessageType: messageType,
+                eventTimestamp: new Date().toISOString(),
+                extensionVersion: this.context.extension.packageJSON.version,
+                vscodeVersion: vscode.version
+            };
+
+            // Only add llmModelUsed if it's a non-empty string
+            if (llmModelUsed && llmModelUsed.trim()) {
+                properties.llmModelUsed = llmModelUsed;
+            }
+
             // Send the event
             const eventData = {
                 distinctId: this.distinctId,
                 event: 'chat_interaction',
-                properties: {
-                    chatMessageType: messageType,
-                    eventTimestamp: new Date().toISOString(),
-                    extensionVersion: this.context.extension.packageJSON.version,
-                    vscodeVersion: vscode.version
-                }
+                properties
             };
 
             console.log('TelemetryService: Sending event to PostHog', eventData);

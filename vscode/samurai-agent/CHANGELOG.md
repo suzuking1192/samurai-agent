@@ -2,6 +2,33 @@
 
 All notable changes to the "samurai-agent" extension will be documented in this file.
 
+## [0.0.18] - 2025-10-09
+
+### Added
+- **Free Tier Launch**: Introduced free tier to lower barrier to entry
+  - Users can now use Samurai Agent immediately without API key setup
+  - No credit card or LLM provider configuration required to get started
+  - Enables instant testing and evaluation of the extension
+  - Perfect for trying out the extension before committing to API costs
+- **Copy All Spec Feature**: Added ability to copy entire spec hierarchy to clipboard
+  - New "Copy All Spec" button on each spec card
+  - Copies the selected spec and all its descendant subspecs in hierarchical markdown format
+  - Automatically formats specs with proper markdown heading levels based on hierarchy depth
+  - Preserves parent-child relationships in the copied content for easy sharing and documentation
+- **LLM Model Tracking in Telemetry**: Enhanced telemetry system to track which LLM model is used for each chat interaction
+  - Added optional `llmModelUsed` parameter to `TelemetryService.trackChatMessage()` method
+  - Telemetry now includes LLM model ID (e.g., gpt-4, claude-3-sonnet, gemini-flash-2.5) in chat interaction events
+  - DataStore automatically extracts LLM model from session metadata and passes it to telemetry
+  - Only includes model information in telemetry when model ID is present and non-empty
+  - Helps track usage patterns and model preferences across the user base
+
+### Improved
+- **Enhanced Test Coverage**: Added comprehensive unit tests for LLM model tracking
+  - Tests verify model tracking for both user messages and agent responses
+  - Tests ensure model information is only included when present and non-empty
+  - Tests cover edge cases like undefined, empty string, and whitespace-only model IDs
+  - Added integration tests in dataStore.telemetry.test.ts for end-to-end telemetry flow
+
 ## [0.0.16] - 2025-10-09
 
 ### Fixed

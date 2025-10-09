@@ -219,6 +219,9 @@ function renderSpecCard(spec) {
                 <button class="spec-btn" data-action="toggle-detail" data-spec-id="${spec.id}">
                     ${isExpanded ? 'Hide Details' : 'Show Details'}
                 </button>
+                <button class="spec-btn" data-action="copy-all-spec" data-spec-id="${spec.id}">
+                    Copy All Spec
+                </button>
                 ${spec.hasSubspecs ? `
                     <button class="spec-btn secondary" data-action="toggle-subspecs" data-spec-id="${spec.id}">
                         ${showSubspecs ? 'Hide Subspecs' : 'Show Subspecs'}
@@ -316,6 +319,14 @@ function attachSpecEventListeners() {
         button.addEventListener('click', function() {
             const specId = this.getAttribute('data-spec-id');
             copySpec(specId);
+        });
+    });
+    
+    // Copy all spec and descendants
+    document.querySelectorAll('[data-action="copy-all-spec"]').forEach(button => {
+        button.addEventListener('click', async function() {
+            const specId = this.getAttribute('data-spec-id');
+            await copyAllSpecAndDescendants(specId);
         });
     });
     
@@ -429,6 +440,70 @@ function copySpec(specId) {
             alert('Failed to copy spec to clipboard');
         });
     }
+}
+
+async function copyAllSpecAndDescendants(specId) {
+    try {
+        // Load spec and all descendants
+        const specs = await loadSpecAndDescendants(specId);
+        
+        if (!specs || specs.length === 0) {
+            console.error('No specs found for specId:', specId);
+            return;
+        }
+        
+        // Format specs hierarchically in markdown
+        const formattedContent = formatSpecsHierarchically(specs, specId);
+        
+        // Copy to clipboard
+        await navigator.clipboard.writeText(formattedContent);
+        
+        // Show success message
+        const button = document.querySelector(`[data-action="copy-all-spec"][data-spec-id="${specId}"]`);
+        if (button) {
+            window.WebviewApi?.ui?.showSuccess(button, 'Copied All Specs!');
+        }
+    } catch (err) {
+        console.error('Failed to copy all specs:', err);
+        alert('Failed to copy all specs to clipboard');
+    }
+}
+
+function formatSpecsHierarchically(specs, rootSpecId) {
+    // Build a map of specs by id for easy lookup
+    const specMap = new Map(specs.map(spec => [spec.id, spec]));
+    
+    // Build children map
+    const childrenMap = new Map();
+    specs.forEach(spec => {
+        if (spec.parentSpecId) {
+            if (!childrenMap.has(spec.parentSpecId)) {
+                childrenMap.set(spec.parentSpecId, []);
+            }
+            childrenMap.get(spec.parentSpecId).push(spec);
+        }
+    });
+    
+    // Recursive function to format specs depth-first
+    function formatSpecRecursively(specId, depth) {
+        const spec = specMap.get(specId);
+        if (!spec) return '';
+        
+        // Create markdown heading based on depth
+        const heading = '#'.repeat(depth);
+        let result = `${heading} ${spec.title}\n${spec.spec}\n\n`;
+        
+        // Recursively format children
+        const children = childrenMap.get(specId) || [];
+        children.forEach(child => {
+            result += formatSpecRecursively(child.id, depth + 1);
+        });
+        
+        return result;
+    }
+    
+    // Start with root spec at depth 1
+    return formatSpecRecursively(rootSpecId, 1);
 }
 
 async function saveSpec(specId) {
@@ -818,6 +893,7 @@ window.SpecManager = {
     toggleSpecDetail: toggleSpecDetail,
     toggleSubspecs: toggleSubspecs,
     copySpec: copySpec,
+    copyAllSpecAndDescendants: copyAllSpecAndDescendants,
     saveSpec: saveSpec,
     toggleSpecCompletionStatus: toggleSpecCompletionStatus,
     setSpecFilter: setSpecFilter,

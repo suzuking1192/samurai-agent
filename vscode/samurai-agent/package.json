@@ -2,7 +2,7 @@
   "name": "samurai-agent",
   "displayName": "Samurai Agent: Tackle complex bugs, features & refactors",
   "description": "Deep codebase analysis for debugging, planning & refactoring - references YOUR code, not generic patterns",
-  "version": "0.0.17",
+  "version": "0.0.18",
   "publisher": "SamuraiAgent",
   "engines": {
     "vscode": "^1.75.0"

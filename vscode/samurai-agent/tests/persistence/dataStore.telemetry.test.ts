@@ -52,6 +52,7 @@ describe('DataStore Telemetry Integration', () => {
         messageCount: 0,
         totalTokens: 0,
         totalCost: 0,
+        metadata: {},
       });
       
       jest.spyOn(dataStore as any, 'readStoredChatMessages').mockReturnValue([]);
@@ -61,8 +62,8 @@ describe('DataStore Telemetry Integration', () => {
       // Call the method
       dataStore['saveChatMessageInternal'](request);
 
-      // Verify telemetry was called
-      expect(mockTelemetryService.trackChatMessage).toHaveBeenCalledWith('user_message');
+      // Verify telemetry was called with undefined model (no model in session metadata)
+      expect(mockTelemetryService.trackChatMessage).toHaveBeenCalledWith('user_message', undefined);
     });
 
     it('should track agent response when saving agent message', () => {
@@ -80,6 +81,7 @@ describe('DataStore Telemetry Integration', () => {
         messageCount: 0,
         totalTokens: 0,
         totalCost: 0,
+        metadata: {},
       });
       
       jest.spyOn(dataStore as any, 'readStoredChatMessages').mockReturnValue([]);
@@ -89,8 +91,8 @@ describe('DataStore Telemetry Integration', () => {
       // Call the method
       dataStore['saveChatMessageInternal'](request);
 
-      // Verify telemetry was called
-      expect(mockTelemetryService.trackChatMessage).toHaveBeenCalledWith('agent_response');
+      // Verify telemetry was called with undefined model (no model in session metadata)
+      expect(mockTelemetryService.trackChatMessage).toHaveBeenCalledWith('agent_response', undefined);
     });
 
     it('should not track telemetry when TelemetryService is not provided', () => {
@@ -144,6 +146,7 @@ describe('DataStore Telemetry Integration', () => {
         messageCount: 0,
         totalTokens: 0,
         totalCost: 0,
+        metadata: {},
       });
       
       jest.spyOn(dataStore as any, 'readStoredChatMessages').mockReturnValue([]);
@@ -155,8 +158,72 @@ describe('DataStore Telemetry Integration', () => {
         dataStore['saveChatMessageInternal'](request);
       }).not.toThrow();
 
-      // Verify telemetry was attempted
-      expect(mockTelemetryService.trackChatMessage).toHaveBeenCalledWith('user_message');
+      // Verify telemetry was attempted with undefined model
+      expect(mockTelemetryService.trackChatMessage).toHaveBeenCalledWith('user_message', undefined);
+    });
+
+    it('should track user message with LLM model when session has model metadata', () => {
+      const request = {
+        sessionId: 'test-session',
+        projectId: 'test-project',
+        type: MessageType.USER,
+        content: 'Hello',
+        role: 'user',
+      };
+
+      // Mock the internal methods to avoid file system operations
+      jest.spyOn(dataStore as any, 'loadSessionInternal').mockReturnValue({
+        id: 'test-session',
+        messageCount: 0,
+        totalTokens: 0,
+        totalCost: 0,
+        metadata: {
+          model: 'gpt-4',
+          projectId: 'test-project',
+        },
+      });
+      
+      jest.spyOn(dataStore as any, 'readStoredChatMessages').mockReturnValue([]);
+      jest.spyOn(dataStore as any, 'writeStoredChatMessages').mockImplementation(() => {});
+      jest.spyOn(dataStore as any, 'updateSessionInternal').mockReturnValue({});
+
+      // Call the method
+      dataStore['saveChatMessageInternal'](request);
+
+      // Verify telemetry was called with model ID
+      expect(mockTelemetryService.trackChatMessage).toHaveBeenCalledWith('user_message', 'gpt-4');
+    });
+
+    it('should track agent response with LLM model when session has model metadata', () => {
+      const request = {
+        sessionId: 'test-session',
+        projectId: 'test-project',
+        type: MessageType.ASSISTANT,
+        content: 'Hello there!',
+        role: 'assistant',
+      };
+
+      // Mock the internal methods to avoid file system operations
+      jest.spyOn(dataStore as any, 'loadSessionInternal').mockReturnValue({
+        id: 'test-session',
+        messageCount: 0,
+        totalTokens: 0,
+        totalCost: 0,
+        metadata: {
+          model: 'claude-3-sonnet',
+          projectId: 'test-project',
+        },
+      });
+      
+      jest.spyOn(dataStore as any, 'readStoredChatMessages').mockReturnValue([]);
+      jest.spyOn(dataStore as any, 'writeStoredChatMessages').mockImplementation(() => {});
+      jest.spyOn(dataStore as any, 'updateSessionInternal').mockReturnValue({});
+
+      // Call the method
+      dataStore['saveChatMessageInternal'](request);
+
+      // Verify telemetry was called with model ID
+      expect(mockTelemetryService.trackChatMessage).toHaveBeenCalledWith('agent_response', 'claude-3-sonnet');
     });
   });
 

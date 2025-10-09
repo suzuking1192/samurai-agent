@@ -135,6 +135,113 @@ describe('TelemetryService', () => {
       // Should not throw error
       expect(true).toBe(true);
     });
+
+    it('should include llmModelUsed property when model ID is provided', async () => {
+      const mockPostHog = require('posthog-node').PostHog;
+      const mockInstance = new mockPostHog();
+      
+      // Mock the PostHog instance
+      (telemetryService as any).posthog = mockInstance;
+
+      await telemetryService.trackChatMessage('user_message', 'gpt-4');
+
+      expect(mockInstance.capture).toHaveBeenCalledWith({
+        distinctId: 'test-user-id',
+        event: 'chat_interaction',
+        properties: {
+          chatMessageType: 'user_message',
+          eventTimestamp: expect.any(String),
+          extensionVersion: '1.0.0',
+          vscodeVersion: undefined,
+          llmModelUsed: 'gpt-4',
+        },
+      });
+    });
+
+    it('should include llmModelUsed property for agent response when model ID is provided', async () => {
+      const mockPostHog = require('posthog-node').PostHog;
+      const mockInstance = new mockPostHog();
+      
+      // Mock the PostHog instance
+      (telemetryService as any).posthog = mockInstance;
+
+      await telemetryService.trackChatMessage('agent_response', 'claude-3-sonnet');
+
+      expect(mockInstance.capture).toHaveBeenCalledWith({
+        distinctId: 'test-user-id',
+        event: 'chat_interaction',
+        properties: {
+          chatMessageType: 'agent_response',
+          eventTimestamp: expect.any(String),
+          extensionVersion: '1.0.0',
+          vscodeVersion: undefined,
+          llmModelUsed: 'claude-3-sonnet',
+        },
+      });
+    });
+
+    it('should not include llmModelUsed property when model ID is undefined', async () => {
+      const mockPostHog = require('posthog-node').PostHog;
+      const mockInstance = new mockPostHog();
+      
+      // Mock the PostHog instance
+      (telemetryService as any).posthog = mockInstance;
+
+      await telemetryService.trackChatMessage('user_message', undefined);
+
+      expect(mockInstance.capture).toHaveBeenCalledWith({
+        distinctId: 'test-user-id',
+        event: 'chat_interaction',
+        properties: {
+          chatMessageType: 'user_message',
+          eventTimestamp: expect.any(String),
+          extensionVersion: '1.0.0',
+          vscodeVersion: undefined,
+        },
+      });
+    });
+
+    it('should not include llmModelUsed property when model ID is empty string', async () => {
+      const mockPostHog = require('posthog-node').PostHog;
+      const mockInstance = new mockPostHog();
+      
+      // Mock the PostHog instance
+      (telemetryService as any).posthog = mockInstance;
+
+      await telemetryService.trackChatMessage('user_message', '');
+
+      expect(mockInstance.capture).toHaveBeenCalledWith({
+        distinctId: 'test-user-id',
+        event: 'chat_interaction',
+        properties: {
+          chatMessageType: 'user_message',
+          eventTimestamp: expect.any(String),
+          extensionVersion: '1.0.0',
+          vscodeVersion: undefined,
+        },
+      });
+    });
+
+    it('should not include llmModelUsed property when model ID is whitespace only', async () => {
+      const mockPostHog = require('posthog-node').PostHog;
+      const mockInstance = new mockPostHog();
+      
+      // Mock the PostHog instance
+      (telemetryService as any).posthog = mockInstance;
+
+      await telemetryService.trackChatMessage('user_message', '   ');
+
+      expect(mockInstance.capture).toHaveBeenCalledWith({
+        distinctId: 'test-user-id',
+        event: 'chat_interaction',
+        properties: {
+          chatMessageType: 'user_message',
+          eventTimestamp: expect.any(String),
+          extensionVersion: '1.0.0',
+          vscodeVersion: undefined,
+        },
+      });
+    });
   });
 
   describe('trackExtensionActivation', () => {
