@@ -390,6 +390,185 @@ describe('TelemetryService', () => {
     });
   });
 
+  describe('trackLLMKeyStatusChange', () => {
+    let mockPostHog: any;
+    let mockInstance: any;
+
+    beforeEach(() => {
+      mockPostHog = require('posthog-node').PostHog;
+      mockInstance = new mockPostHog();
+      (telemetryService as any).posthog = mockInstance;
+      (telemetryService as any).distinctId = 'test-user-id';
+    });
+
+    it('should track when an LLM API key is added', () => {
+      telemetryService.trackLLMKeyStatusChange('openai', 'added', false, true);
+
+      expect(mockInstance.capture).toHaveBeenCalledWith({
+        distinctId: 'test-user-id',
+        event: 'llm_key_status_changed',
+        properties: {
+          provider: 'openai',
+          changeType: 'added',
+          hadKeyPreviously: false,
+          hasKeyNow: true,
+          eventTimestamp: expect.any(String),
+          extensionVersion: '1.0.0',
+        },
+      });
+    });
+
+    it('should track when an LLM API key is updated', () => {
+      telemetryService.trackLLMKeyStatusChange('gemini', 'updated', true, true);
+
+      expect(mockInstance.capture).toHaveBeenCalledWith({
+        distinctId: 'test-user-id',
+        event: 'llm_key_status_changed',
+        properties: {
+          provider: 'gemini',
+          changeType: 'updated',
+          hadKeyPreviously: true,
+          hasKeyNow: true,
+          eventTimestamp: expect.any(String),
+          extensionVersion: '1.0.0',
+        },
+      });
+    });
+
+    it('should track when an LLM API key is removed', () => {
+      telemetryService.trackLLMKeyStatusChange('claude', 'removed', true, false);
+
+      expect(mockInstance.capture).toHaveBeenCalledWith({
+        distinctId: 'test-user-id',
+        event: 'llm_key_status_changed',
+        properties: {
+          provider: 'claude',
+          changeType: 'removed',
+          hadKeyPreviously: true,
+          hasKeyNow: false,
+          eventTimestamp: expect.any(String),
+          extensionVersion: '1.0.0',
+        },
+      });
+    });
+
+    it('should track for all supported providers', () => {
+      const providers: Array<'openai' | 'gemini' | 'claude' | 'anthropic'> = ['openai', 'gemini', 'claude', 'anthropic'];
+
+      providers.forEach(provider => {
+        mockInstance.capture.mockClear();
+        telemetryService.trackLLMKeyStatusChange(provider, 'added', false, true);
+
+        expect(mockInstance.capture).toHaveBeenCalledWith({
+          distinctId: 'test-user-id',
+          event: 'llm_key_status_changed',
+          properties: {
+            provider,
+            changeType: 'added',
+            hadKeyPreviously: false,
+            hasKeyNow: true,
+            eventTimestamp: expect.any(String),
+            extensionVersion: '1.0.0',
+          },
+        });
+      });
+    });
+
+    it('should not track when PostHog is not initialized', () => {
+      (telemetryService as any).posthog = null;
+      const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
+
+      telemetryService.trackLLMKeyStatusChange('openai', 'added', false, true);
+
+      expect(mockInstance.capture).not.toHaveBeenCalled();
+      expect(consoleSpy).toHaveBeenCalledWith(
+        'TelemetryService: PostHog not initialized or distinct ID missing, not tracking LLM key status change'
+      );
+
+      consoleSpy.mockRestore();
+    });
+
+    it('should not track when distinct ID is missing', () => {
+      (telemetryService as any).distinctId = null;
+      const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
+
+      telemetryService.trackLLMKeyStatusChange('openai', 'added', false, true);
+
+      expect(mockInstance.capture).not.toHaveBeenCalled();
+      expect(consoleSpy).toHaveBeenCalledWith(
+        'TelemetryService: PostHog not initialized or distinct ID missing, not tracking LLM key status change'
+      );
+
+      consoleSpy.mockRestore();
+    });
+
+    it('should not track when telemetry is disabled', () => {
+      // Mock telemetry disabled
+      (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
+        get: jest.fn().mockReturnValue(false),
+      });
+
+      const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
+
+      telemetryService.trackLLMKeyStatusChange('openai', 'added', false, true);
+
+      expect(mockInstance.capture).not.toHaveBeenCalled();
+      expect(consoleSpy).toHaveBeenCalledWith(
+        'TelemetryService: Telemetry disabled, not tracking LLM key status change'
+      );
+
+      consoleSpy.mockRestore();
+    });
+
+    it('should handle errors gracefully without throwing', () => {
+      const captureError = new Error('PostHog capture failed');
+      mockInstance.capture.mockImplementation(() => {
+        throw captureError;
+      });
+
+      const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
+
+      // Should not throw
+      expect(() => {
+        telemetryService.trackLLMKeyStatusChange('openai', 'added', false, true);
+      }).not.toThrow();
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        'TelemetryService: Error tracking LLM key status change:',
+        captureError
+      );
+
+      consoleSpy.mockRestore();
+    });
+
+    it('should never include actual API key values in event properties', () => {
+      telemetryService.trackLLMKeyStatusChange('openai', 'added', false, true);
+
+      const captureCall = mockInstance.capture.mock.calls[0][0];
+      const properties = captureCall.properties;
+
+      // Verify that no property contains anything that looks like an API key
+      Object.values(properties).forEach(value => {
+        if (typeof value === 'string') {
+          // API keys are typically long alphanumeric strings
+          // This is a basic check to ensure we're not accidentally logging keys
+          expect(value).not.toMatch(/^sk-[a-zA-Z0-9]{32,}$/); // OpenAI format
+          expect(value).not.toMatch(/^[a-zA-Z0-9_-]{32,}$/); // Generic long key format
+        }
+      });
+
+      // Explicitly verify the properties we do send
+      expect(properties).toEqual({
+        provider: 'openai',
+        changeType: 'added',
+        hadKeyPreviously: false,
+        hasKeyNow: true,
+        eventTimestamp: expect.any(String),
+        extensionVersion: '1.0.0',
+      });
+    });
+  });
+
   describe('dispose', () => {
     it('should shutdown PostHog client', async () => {
       const mockPostHog = require('posthog-node').PostHog;

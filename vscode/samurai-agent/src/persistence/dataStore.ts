@@ -313,10 +313,15 @@ export class DataStore {
 
         // Track telemetry event for chat message
         if (this.telemetryService) {
-            if (chatMessage.type === MessageType.USER) {
-                this.telemetryService.trackChatMessage('user_message');
-            } else if (chatMessage.type === MessageType.ASSISTANT) {
-                this.telemetryService.trackChatMessage('agent_response');
+            try {
+                if (chatMessage.type === MessageType.USER) {
+                    this.telemetryService.trackChatMessage('user_message');
+                } else if (chatMessage.type === MessageType.ASSISTANT) {
+                    this.telemetryService.trackChatMessage('agent_response');
+                }
+            } catch (error) {
+                // Telemetry errors should not affect core functionality
+                console.error('DataStore: Error tracking chat message telemetry:', error);
             }
         }
 
@@ -510,17 +515,97 @@ export class DataStore {
                 return this.createErrorResponse(requestId, 'Global settings data is required');
             }
 
+            // Load old settings to detect API key changes
+            const oldSettings = this.readSingleJsonFile<GlobalSettings>(this.getDataFilePath('globalSettings'));
+            
             const now = new Date();
             settings.updatedAt = now;
             if (!settings.createdAt) {
                 settings.createdAt = now;
             }
 
+            // Detect and track LLM API key changes before saving
+            this.detectAndTrackLLMKeyChanges(oldSettings, settings);
+
             this.writeSingleJsonFile(this.getDataFilePath('globalSettings'), settings);
             return this.createSuccessResponse(requestId, settings);
         } catch (error) {
             return this.createErrorResponse(requestId, `Failed to save global settings: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
+    }
+
+    /**
+     * Detects changes in LLM API keys and tracks them via telemetry
+     * @param oldSettings - Previous global settings (null if first save)
+     * @param newSettings - New global settings being saved
+     */
+    private detectAndTrackLLMKeyChanges(
+        oldSettings: GlobalSettings | null,
+        newSettings: GlobalSettings
+    ): void {
+        if (!this.telemetryService) {
+            return;
+        }
+
+        // Define the LLM provider key mappings (property name -> provider identifier)
+        const providerKeyMappings: Array<{ key: keyof GlobalSettings; provider: string }> = [
+            { key: 'openaiApiKey', provider: 'openai' },
+            { key: 'geminiApiKey', provider: 'gemini' },
+            { key: 'claudeApiKey', provider: 'claude' }
+        ];
+
+        try {
+            for (const { key, provider } of providerKeyMappings) {
+                const oldKey = oldSettings?.[key] as string | undefined;
+                const newKey = newSettings[key] as string | undefined;
+
+                const changeDetails = this.detectKeyChange(oldKey, newKey);
+                
+                if (changeDetails) {
+                    this.telemetryService.trackLLMKeyStatusChange(
+                        provider,
+                        changeDetails.changeType,
+                        changeDetails.hadKeyPreviously,
+                        changeDetails.hasKeyNow
+                    );
+                }
+            }
+        } catch (error) {
+            // Errors during telemetry should not prevent settings from being saved
+            console.error('DataStore: Error detecting/tracking LLM key changes:', error);
+        }
+    }
+
+    /**
+     * Detects if an API key has changed and determines the change type
+     * @param oldKey - Previous API key value
+     * @param newKey - New API key value
+     * @returns Change details if a change was detected, null otherwise
+     */
+    private detectKeyChange(
+        oldKey: string | undefined,
+        newKey: string | undefined
+    ): { changeType: 'added' | 'updated' | 'removed'; hadKeyPreviously: boolean; hasKeyNow: boolean } | null {
+        // An API key is considered 'empty' if it's null, undefined, or empty string
+        // A string with only whitespace is considered 'present'
+        const hadKeyPreviously = oldKey !== null && oldKey !== undefined && oldKey !== '';
+        const hasKeyNow = newKey !== null && newKey !== undefined && newKey !== '';
+
+        // No change if both states are the same (both empty or both present with same value)
+        if (!hadKeyPreviously && !hasKeyNow) {
+            return null; // Both empty, no change
+        }
+
+        // Determine change type
+        if (!hadKeyPreviously && hasKeyNow) {
+            return { changeType: 'added', hadKeyPreviously: false, hasKeyNow: true };
+        } else if (hadKeyPreviously && !hasKeyNow) {
+            return { changeType: 'removed', hadKeyPreviously: true, hasKeyNow: false };
+        } else if (hadKeyPreviously && hasKeyNow && oldKey !== newKey) {
+            return { changeType: 'updated', hadKeyPreviously: true, hasKeyNow: true };
+        }
+
+        return null; // No change detected
     }
 
     // Public ProjectSettings methods

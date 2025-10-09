@@ -184,6 +184,55 @@ export class TelemetryService {
     }
 
     /**
+     * Track LLM API key status changes
+     * @param provider - LLM provider identifier (e.g., 'openai', 'gemini', 'claude', 'anthropic')
+     * @param changeType - Type of change: 'added', 'updated', or 'removed'
+     * @param hadKeyPreviously - Whether an API key was present before the change
+     * @param hasKeyNow - Whether an API key is present after the change
+     */
+    public trackLLMKeyStatusChange(
+        provider: 'openai' | 'gemini' | 'claude' | 'anthropic' | string,
+        changeType: 'added' | 'updated' | 'removed',
+        hadKeyPreviously: boolean,
+        hasKeyNow: boolean
+    ): void {
+        try {
+            // Check if telemetry is enabled
+            const config = vscode.workspace.getConfiguration('samurai-agent');
+            const isTelemetryEnabled = config.get<boolean>('enableTelemetry', true);
+
+            if (!isTelemetryEnabled) {
+                console.log('TelemetryService: Telemetry disabled, not tracking LLM key status change');
+                return;
+            }
+
+            if (!this.posthog || !this.distinctId) {
+                console.log('TelemetryService: PostHog not initialized or distinct ID missing, not tracking LLM key status change');
+                return;
+            }
+
+            // Send the event
+            this.posthog.capture({
+                distinctId: this.distinctId,
+                event: 'llm_key_status_changed',
+                properties: {
+                    provider,
+                    changeType,
+                    hadKeyPreviously,
+                    hasKeyNow,
+                    eventTimestamp: new Date().toISOString(),
+                    extensionVersion: this.context.extension.packageJSON.version
+                }
+            });
+
+            console.log(`TelemetryService: Tracked LLM key status change for ${provider}: ${changeType}`);
+        } catch (error) {
+            // Fail silently to avoid impacting core functionality
+            console.error('TelemetryService: Error tracking LLM key status change:', error);
+        }
+    }
+
+    /**
      * Capture critical errors to PostHog for monitoring and debugging
      * @param error - The error to capture (ErrorModel or Error instance)
      * @param properties - Optional additional context properties

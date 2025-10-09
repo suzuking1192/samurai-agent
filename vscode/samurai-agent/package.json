@@ -1,7 +1,7 @@
 {
   "name": "samurai-agent",
   "displayName": "Samurai Agent: Tackle complex bugs, features & refactors",
-  "description": "Generate codebase-aware specs for complex features, refactoring, and hard bugs",
+  "description": "Deep codebase analysis for debugging, planning & refactoring - references YOUR code, not generic patterns",
   "version": "0.0.17",
   "publisher": "SamuraiAgent",
   "engines": {
@@ -11,18 +11,16 @@
     "Other"
   ],
   "keywords": [
-    "ai",
-    "spec",
-    "development",
-    "code-review",
-    "requirements",
-    "debugging",
-    "llm",
-    "assistant",
-    "samurai",
-    "cursor",
-    "specification",
-    "code-analysis"
+    "ai-coding",
+  "copilot",
+  "cursor", 
+  "code-analysis",
+  "debugging",
+  "refactoring",
+  "codebase",
+  "planning",
+  "architecture",
+  "bug-fix"
   ],
   "galleryBanner": {
     "color": "#1e1e1e",

@@ -111,6 +111,23 @@ class SamuraiAgentPanelWebviewViewProvider {
         }, 200);
         // Set up message listener
         webviewView.webview.onDidReceiveMessage((message) => this.handleWebviewMessage(webviewView.webview, message));
+        // CRITICAL FIX: Add visibility change handler to re-initialize webview state
+        webviewView.onDidChangeVisibility(() => {
+            console.log("Webview Provider: Visibility changed, visible:", webviewView.visible);
+            if (webviewView.visible) {
+                // When webview becomes visible, re-send initial settings to refresh state
+                console.log("Webview Provider: Webview became visible, re-initializing state");
+                setTimeout(() => {
+                    this.sendInitialSettingsToWebview(webviewView.webview);
+                    // Also send a refresh message to trigger webview state refresh
+                    webviewView.webview.postMessage({
+                        type: "webviewRefresh",
+                        message: "Webview became visible, refreshing state",
+                        timestamp: new Date(),
+                    });
+                }, 50); // Small delay to ensure webview is ready
+            }
+        });
         // Add debugging for script loading
         console.log("Webview Provider: Setting up webview with options:", {
             enableScripts: true,
@@ -193,10 +210,22 @@ class SamuraiAgentPanelWebviewViewProvider {
                         };
                         if (this.dataStore) {
                             console.log('[PERSISTENCE DEBUG] WebviewProvider - Saving assistant message to DB');
-                            this.dataStore.handleWebviewMessage({
-                                command: 'saveChatMessage',
-                                payload: assistantMessage
-                            });
+                            try {
+                                const saveResult = this.dataStore.handleWebviewMessage({
+                                    command: 'saveChatMessage',
+                                    payload: assistantMessage
+                                });
+                                console.log('[PERSISTENCE DEBUG] WebviewProvider - Save result:', saveResult.type);
+                                if (saveResult.type === 'error') {
+                                    console.error('[PERSISTENCE DEBUG] WebviewProvider - Failed to save assistant message:', saveResult.error);
+                                }
+                                else {
+                                    console.log('[PERSISTENCE DEBUG] WebviewProvider - Assistant message saved successfully');
+                                }
+                            }
+                            catch (error) {
+                                console.error('[PERSISTENCE DEBUG] WebviewProvider - Error saving assistant message:', error);
+                            }
                         }
                         webview.postMessage({
                             type: "success",
