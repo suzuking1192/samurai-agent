@@ -1,6 +1,6 @@
 {
   "name": "samurai-agent",
-  "displayName": "Samurai Agent",
+  "displayName": "Samurai Agent: Tackle complex bugs, features & refactors",
   "description": "Generate codebase-aware specs for complex features, refactoring, and hard bugs",
   "version": "0.0.17",
   "publisher": "SamuraiAgent",

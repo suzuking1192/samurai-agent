@@ -122,8 +122,6 @@ data/
 .vscode-test/
 *.vsix
 out/
-*.js.map
-*.ts.map
 .vscode/
 *.code-workspace
 

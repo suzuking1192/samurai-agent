@@ -2,14 +2,6 @@
 
 All notable changes to the "samurai-agent" extension will be documented in this file.
 
-## [0.0.17] - 2025-10-09
-
-### Fixed
-- **README Demo GIF Display**: Fixed demo gif display in VS Code marketplace by using GitHub raw URL
-  - Changed from relative path `./samurai-agent-demo.gif` to absolute GitHub raw URL
-  - Ensures demo gif displays properly in VS Code marketplace and all platforms
-  - Uses `https://raw.githubusercontent.com/suzuking1192/samurai-agent/main/vscode/samurai-agent/samurai-agent-demo.gif`
-
 ## [0.0.16] - 2025-10-09
 
 ### Fixed
