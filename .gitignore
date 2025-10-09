@@ -132,3 +132,26 @@ out/
 vscode/samurai-agent/.vscode-test/
 vscode/samurai-agent/out/
 vscode/samurai-agent/*.vsix
+
+# Large media files (except documentation images)
+*.gif
+*.jpg
+*.jpeg
+*.mp4
+*.mov
+*.avi
+
+# Allow documentation images but ignore others
+*.png
+!samurai-agent-screenshot*.png
+!vscode/samurai-agent/icon.png
+
+# Vite build artifacts
+.vite/
+frontend/.vite/
+**/.vite/
+
+# Source maps (build artifacts)
+*.js.map
+*.ts.map
+*.css.map
