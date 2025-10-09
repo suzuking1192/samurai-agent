@@ -127,7 +127,4 @@ If any reflection questions suggest a different classification, reconsider your 
 ## OUTPUT FORMAT
 
 Return ONLY the intent type: pure_discussion, feature_exploration, or spec_clarification
-
-Use this framework to analyze the current message and provide the most accurate intent classification.
-
-Return ONLY the intent type: pure_discussion, feature_exploration, or spec_clarification
+No markdown, code fences, or extra commentary.

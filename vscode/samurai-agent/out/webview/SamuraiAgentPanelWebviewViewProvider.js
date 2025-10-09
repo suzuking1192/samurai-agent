@@ -760,21 +760,37 @@ class SamuraiAgentPanelWebviewViewProvider {
         if (globalSettings.openaiApiKey && globalSettings.openaiApiKey.trim()) {
             availableModels.push(...llm_models_1.LLM_MODELS.openai);
         }
-        // Check Google models
+        // Always add free tier model since it uses hardcoded API key
+        const freeTierModel = llm_models_1.LLM_MODELS.google.find(m => m.id === 'gemini-2.5-flash-free-tier');
+        if (freeTierModel) {
+            availableModels.push(freeTierModel);
+        }
+        // Check Google models (add other models if user has Gemini API key)
         if (globalSettings.geminiApiKey && globalSettings.geminiApiKey.trim()) {
-            availableModels.push(...llm_models_1.LLM_MODELS.google);
+            const otherGoogleModels = llm_models_1.LLM_MODELS.google.filter(m => m.id !== 'gemini-2.5-flash-free-tier');
+            availableModels.push(...otherGoogleModels);
         }
         // Check Anthropic models
         if (globalSettings.claudeApiKey && globalSettings.claudeApiKey.trim()) {
             availableModels.push(...llm_models_1.LLM_MODELS.anthropic);
         }
         // Sort alphabetically by provider, then by model name
+        // But always put free tier model last within its provider group
         return availableModels.sort((a, b) => {
             const providerA = a.provider;
             const providerB = b.provider;
+            // First sort by provider
             if (providerA !== providerB) {
                 return providerA.localeCompare(providerB);
             }
+            // Within same provider, put free tier model last
+            const aIsFree = a.id === 'gemini-2.5-flash-free-tier';
+            const bIsFree = b.id === 'gemini-2.5-flash-free-tier';
+            if (aIsFree && !bIsFree)
+                return 1; // a (free tier) goes after b
+            if (!aIsFree && bIsFree)
+                return -1; // b (free tier) goes after a
+            // Otherwise sort alphabetically by name
             return a.name.localeCompare(b.name);
         });
     }

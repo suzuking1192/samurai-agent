@@ -1248,12 +1248,20 @@
         }
 
         try {
+            // Load both global and project settings to ensure we have latest data
             const globalSettings = await globalScope.WebviewApi.persistence.loadGlobalSettings();
+            const projectSettings = await globalScope.WebviewApi.persistence.loadProjectSettings();
+            
             if (!globalSettings || !chatState.llmModels) {
                 return;
             }
 
             chatState.globalSettings = globalSettings;
+            
+            // Update project settings if we got fresh data
+            if (projectSettings) {
+                chatState.projectSettings = projectSettings;
+            }
 
             const availableModels = [];
 
@@ -1261,8 +1269,16 @@
                 availableModels.push(...chatState.llmModels.openai);
             }
 
+            // Always add free tier model since it uses hardcoded API key
+            const freeTierModel = chatState.llmModels.google?.find(m => m.id === 'gemini-2.5-flash-free-tier');
+            if (freeTierModel) {
+                availableModels.push(freeTierModel);
+            }
+
+            // Add other Google models if user has Gemini API key
             if (globalSettings.geminiApiKey?.trim()) {
-                availableModels.push(...chatState.llmModels.google);
+                const otherGoogleModels = chatState.llmModels.google?.filter(m => m.id !== 'gemini-2.5-flash-free-tier') || [];
+                availableModels.push(...otherGoogleModels);
             }
 
             if (globalSettings.claudeApiKey?.trim()) {
@@ -1270,19 +1286,31 @@
             }
 
             chatState.availableModels = availableModels.sort((a, b) => {
+                // First sort by provider
                 if (a.provider !== b.provider) {
                     return a.provider.localeCompare(b.provider);
                 }
+                
+                // Within same provider, put free tier model last
+                const aIsFree = a.id === 'gemini-2.5-flash-free-tier';
+                const bIsFree = b.id === 'gemini-2.5-flash-free-tier';
+                
+                if (aIsFree && !bIsFree) return 1;  // a (free tier) goes after b
+                if (!aIsFree && bIsFree) return -1; // b (free tier) goes after a
+                
+                // Otherwise sort alphabetically by name
                 return a.name.localeCompare(b.name);
             });
 
             populateLLMModelDropdown();
 
             const currentSelection = chatState.projectSettings?.primaryLLMModel;
+            const llmModelSelect = safeGetDocumentElement('llm-model-select');
+            
             if (currentSelection && !chatState.availableModels.some(model => model.id === currentSelection)) {
+                // Current selection is no longer available, select first available model
                 if (chatState.availableModels.length > 0) {
                     const newSelection = chatState.availableModels[0].id;
-                    const llmModelSelect = safeGetDocumentElement('llm-model-select');
                     if (llmModelSelect) {
                         llmModelSelect.value = newSelection;
                     }
@@ -1292,6 +1320,12 @@
                     };
                     await globalScope.WebviewApi.persistence.saveProjectSettings(chatState.projectSettings);
                 }
+            } else if (currentSelection && llmModelSelect) {
+                // Current selection is still available, restore it in the dropdown
+                llmModelSelect.value = currentSelection;
+            } else if (!currentSelection && chatState.availableModels.length > 0 && llmModelSelect) {
+                // No current selection, select first available model
+                llmModelSelect.value = chatState.availableModels[0].id;
             }
         } catch (error) {
             console.error('Error refreshing LLM model dropdown:', error);

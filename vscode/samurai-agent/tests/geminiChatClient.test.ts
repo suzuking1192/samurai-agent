@@ -111,15 +111,15 @@ describe('GeminiChatClient', () => {
     });
 
     it('should surface API errors as error responses', async () => {
-        const apiError = Object.assign(new Error('Rate limit'), { status: 429 });
+        const apiError = Object.assign(new Error('Network error'), { status: 500 });
         generateContentMock.mockRejectedValue(apiError);
 
         const result = await client.chat(baseRequest);
 
         expect(result.type).toBe(ResponseType.ERROR);
-        expect(result.error).toContain('Rate limit');
-        expect(result.payload?.errorCode).toBe('http_429');
-        expect(result.payload?.retryable).toBe(false);
+        expect(result.error).toContain('Network error');
+        expect(result.payload?.errorCode).toBe('http_500');
+        expect(result.payload?.retryable).toBe(true);
     });
 
     it('should return validation error when API key missing', async () => {
@@ -141,6 +141,57 @@ describe('GeminiChatClient', () => {
 
         expect(result.type).toBe(ResponseType.ERROR);
         expect(result.error).toContain('message');
+    });
+
+    it('should map free tier model ID to actual API model name', async () => {
+        generateContentMock.mockResolvedValue({
+            response: {
+                text: () => 'Free tier response',
+                usageMetadata: {
+                    promptTokenCount: 10,
+                    candidatesTokenCount: 5,
+                    totalTokenCount: 15
+                }
+            }
+        });
+
+        const freeTierRequest = {
+            ...baseRequest,
+            model: 'gemini-2.5-flash-free-tier'
+        };
+
+        const result = await client.chat(freeTierRequest);
+
+        expect(result.type).toBe(ResponseType.SUCCESS);
+        
+        // Verify that the API was called with the mapped model name
+        const modelFactory = GoogleGenerativeAIConstructor.mock.results[0].value.getGenerativeModel;
+        expect(modelFactory).toHaveBeenCalledWith({
+            model: 'gemini-2.5-flash', // Should use the actual API model name
+            generationConfig: expect.anything()
+        });
+
+        expect(result.payload?.content).toBe('Free tier response');
+    });
+
+    it('should detect rate limit errors correctly', async () => {
+        const quotaError = Object.assign(new Error('Quota exceeded'), { status: 429 });
+        generateContentMock.mockRejectedValue(quotaError);
+
+        const result = await client.chat(baseRequest);
+
+        expect(result.type).toBe(ResponseType.ERROR);
+        expect(result.payload?.errorCode).toBe('RATE_LIMIT_EXCEEDED');
+    });
+
+    it('should detect rate limit from error message patterns', async () => {
+        const resourceExhaustedError = new Error('resource_exhausted: Quota exceeded for requests');
+        generateContentMock.mockRejectedValue(resourceExhaustedError);
+
+        const result = await client.chat(baseRequest);
+
+        expect(result.type).toBe(ResponseType.ERROR);
+        expect(result.payload?.errorCode).toBe('RATE_LIMIT_EXCEEDED');
     });
 });
 

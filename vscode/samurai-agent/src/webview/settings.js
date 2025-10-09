@@ -29,6 +29,7 @@ let LLM_MODELS = {
         { id: 'gpt-5', name: 'GPT-5', description: 'Next-generation GPT model (placeholder for future release)' }
     ],
     google: [
+        { id: 'gemini-2.5-flash-free-tier', name: 'Free Tier', description: 'Free tier Gemini model with daily usage limits' },
         { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', description: 'Fast and efficient Gemini model for quick responses' },
         { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', description: 'Most capable Gemini model for complex tasks' }
     ],

@@ -45,9 +45,17 @@ export class GeminiChatClient implements ChatClient {
         const clientOptions = this.buildClientOptions(request);
         const genAI = new GoogleGenerativeAI(apiKey);
         return genAI.getGenerativeModel({
-            model: request.model,
+            model: this.mapModelName(request.model),
             generationConfig: this.buildGenerationConfig(request)
         });
+    }
+
+    private mapModelName(modelId: string): string {
+        // Map free tier model ID to actual Gemini API model name
+        if (modelId === 'gemini-2.5-flash-free-tier') {
+            return 'gemini-2.5-flash';
+        }
+        return modelId;
     }
 
     private buildClientOptions(request: LLMRequest) {
@@ -310,11 +318,42 @@ export class GeminiChatClient implements ChatClient {
     }
 
     private extractErrorCode(error: unknown): string {
+        // Check for rate limit/quota errors
+        if (this.isRateLimitError(error)) {
+            return 'RATE_LIMIT_EXCEEDED';
+        }
+
         if (typeof error === 'object' && error !== null && 'status' in error) {
             const status = (error as { status?: number }).status;
             return typeof status === 'number' ? `http_${status}` : 'unknown_error';
         }
         return 'unknown_error';
+    }
+
+    private isRateLimitError(error: unknown): boolean {
+        if (typeof error !== 'object' || error === null) {
+            return false;
+        }
+
+        // Check HTTP status code 429 (Too Many Requests)
+        if ('status' in error) {
+            const status = (error as { status?: number }).status;
+            if (status === 429) {
+                return true;
+            }
+        }
+
+        // Check error message for rate limit/quota patterns
+        const errorMessage = error instanceof Error ? error.message.toLowerCase() : '';
+        const rateLimitPatterns = [
+            'quota exceeded',
+            'rate limit',
+            'resource exhausted',
+            'too many requests',
+            'resource_exhausted'
+        ];
+
+        return rateLimitPatterns.some(pattern => errorMessage.includes(pattern));
     }
 
     private isRetryable(error: unknown): boolean {

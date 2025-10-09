@@ -37,7 +37,7 @@ describe('LLM Models Constants', () => {
         it('should have Google models with correct structure', () => {
             const googleModels = LLM_MODELS.google;
             expect(Array.isArray(googleModels)).toBe(true);
-            expect(googleModels.length).toBeGreaterThanOrEqual(2);
+            expect(googleModels.length).toBeGreaterThanOrEqual(3);
             
             googleModels.forEach(model => {
                 expect(typeof model.id).toBe('string');
@@ -71,6 +71,7 @@ describe('LLM Models Constants', () => {
             expect(modelIds).toEqual(expect.arrayContaining([
                 'gpt-4o',
                 'gpt-5',
+                'gemini-2.5-flash-free-tier',
                 'gemini-2.5-flash',
                 'gemini-2.5-pro',
                 'claude-sonnet-4-20250514',
@@ -83,11 +84,23 @@ describe('LLM Models Constants', () => {
             const allModels = getAllModels();
             
             allModels.forEach(model => {
-                expect(model.inputCostPerMTokens).toBeGreaterThan(0);
-                expect(model.outputCostPerMTokens).toBeGreaterThan(0);
+                // Allow zero cost for free tier models
+                expect(model.inputCostPerMTokens).toBeGreaterThanOrEqual(0);
+                expect(model.outputCostPerMTokens).toBeGreaterThanOrEqual(0);
                 expect(model.inputCostPerMTokens).toBeLessThan(100);
                 expect(model.outputCostPerMTokens).toBeLessThan(100);
             });
+        });
+
+        it('should have free tier model with zero costs', () => {
+            const freeTierModel = getModelById('gemini-2.5-flash-free-tier');
+            
+            expect(freeTierModel).toBeTruthy();
+            expect(freeTierModel?.id).toBe('gemini-2.5-flash-free-tier');
+            expect(freeTierModel?.name).toBe('Free Tier');
+            expect(freeTierModel?.provider).toBe('google');
+            expect(freeTierModel?.inputCostPerMTokens).toBe(0);
+            expect(freeTierModel?.outputCostPerMTokens).toBe(0);
         });
     });
 

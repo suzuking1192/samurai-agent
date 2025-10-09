@@ -46,6 +46,11 @@ import { TelemetryService } from "./services/TelemetryService";
 export function activate(context: vscode.ExtensionContext) {
   const globalDataStore = new GlobalDataStore();
   const telemetryService = new TelemetryService(context, globalDataStore);
+  
+  // Set telemetry service on GlobalDataStore to enable LLM key change tracking
+  // This must be done after TelemetryService is initialized to avoid circular dependency
+  globalDataStore.setTelemetryService(telemetryService);
+  
   const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   const dataStore = workspaceRoot ? new DataStore(workspaceRoot, telemetryService) : undefined;
 

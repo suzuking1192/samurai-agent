@@ -50,6 +50,16 @@ export const LLM_MODELS: Record<string, LLMModel[]> = {
     ],
     google: [
         {
+            id: 'gemini-2.5-flash-free-tier',
+            name: 'Free Tier',
+            provider: 'google',
+            inputCostPerMTokens: 0,
+            outputCostPerMTokens: 0,
+            description: 'Free tier Gemini model with daily usage limits',
+            maxTokens: 8192,
+            supportsStreaming: true
+        },
+        {
             id: 'gemini-2.5-flash',
             name: 'Gemini 2.5 Flash',
             provider: 'google',

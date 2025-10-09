@@ -8,6 +8,7 @@ import {
 } from "../../common/models/llm-models";
 import { ApiResponse, ResponseType } from "../../common/models/response-models";
 import { LLM_MODELS } from "../../common/constants/llm-models";
+import { FREE_TIER_GEMINI_API_KEY } from "../../common/constants/llm-constants";
 import { ProjectSettings } from "../../common/models/settings-models";
 import { calculateLLMCost } from "../../common/utils/llmCostCalculator";
 
@@ -73,20 +74,20 @@ export class LLMProviderService {
       );
     }
 
-    const apiKey = this.getApiKeyForProvider(provider, globalSettings);
-    if (!apiKey) {
-      return this.createErrorResponse(
-        `No API key configured for provider ${provider}`,
-        request.id,
-      );
-    }
-
     const primaryModel = this.resolvePrimaryModel(
       projectSettings,
       provider,
       request.model,
       globalSettings,
     );
+
+    const apiKey = this.getApiKeyForProvider(provider, globalSettings, primaryModel || request.model);
+    if (!apiKey) {
+      return this.createErrorResponse(
+        `No API key configured for provider ${provider}`,
+        request.id,
+      );
+    }
 
     const normalizedMessages = this.normalizeMessages(
       request.messages,
@@ -113,6 +114,20 @@ export class LLMProviderService {
     } 
     // Execute the LLM request
     const response = await client.chat(modelRequest);
+    
+    // Check for rate limit errors on free tier model
+    if (response.type === ResponseType.ERROR && response.payload) {
+      const llmError = response.payload as LLMError;
+      if (
+        llmError.errorCode === 'RATE_LIMIT_EXCEEDED' &&
+        modelRequest.model === 'gemini-2.5-flash-free-tier'
+      ) {
+        // Customize error message for free tier rate limit
+        const customMessage = 'free tier daily limit is reached, please set your own LLM API key and select different model';
+        llmError.error = customMessage;
+        response.error = customMessage;
+      }
+    }
     
     // Calculate and add cost if response is successful
     if (response.type === ResponseType.SUCCESS && response.payload) {
@@ -218,7 +233,13 @@ export class LLMProviderService {
   private getApiKeyForProvider(
     provider: string,
     globalSettings: any,
+    model?: string,
   ): string | undefined {
+    // Always use hardcoded API key for free tier model
+    if (model === 'gemini-2.5-flash-free-tier') {
+      return FREE_TIER_GEMINI_API_KEY;
+    }
+
     switch (provider) {
       case "openai":
         return globalSettings.openaiApiKey;
@@ -283,9 +304,8 @@ export class LLMProviderService {
     if (globalSettings?.openaiApiKey) {
       providers.push("openai");
     }
-    if (globalSettings?.geminiApiKey) {
-      providers.push("google");
-    }
+    // Always include google provider since free tier model is always available
+    providers.push("google");
     if (globalSettings?.claudeApiKey) {
       providers.push("anthropic");
     }

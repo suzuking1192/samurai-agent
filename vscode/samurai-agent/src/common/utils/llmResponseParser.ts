@@ -13,6 +13,53 @@
  */
 
 /**
+ * Sanitizes JSON string by escaping literal newlines within string values.
+ * LLMs sometimes generate JSON with actual line breaks inside string values,
+ * which is invalid JSON. This function converts them to \n escape sequences.
+ * 
+ * @param jsonString - The JSON string to sanitize
+ * @returns Sanitized JSON string with escaped newlines
+ */
+function sanitizeJsonNewlines(jsonString: string): string {
+    let result = '';
+    let inString = false;
+    let escapeNext = false;
+    
+    for (let i = 0; i < jsonString.length; i++) {
+        const char = jsonString[i];
+        
+        // Track if we're inside a string
+        if (char === '"' && !escapeNext) {
+            inString = !inString;
+            result += char;
+        } else if (char === '\\' && !escapeNext) {
+            escapeNext = true;
+            result += char;
+        } else if (char === '\n') {
+            // Replace literal newlines inside strings with \n
+            if (inString) {
+                result += '\\n';
+            } else {
+                // Keep newlines outside strings (for formatting)
+                result += char;
+            }
+            escapeNext = false;
+        } else if (char === '\r') {
+            // Replace literal carriage returns inside strings
+            if (inString) {
+                result += '\\r';
+            } else {
+                result += char;
+            }
+            escapeNext = false;
+        } else {
+            result += char;
+            escapeNext = false;
+        }
+    }
+    
+    return result;
+}
 
 /**
  * Extracts JSON from LLM responses that may be wrapped in markdown code blocks or be plain JSON.
@@ -51,7 +98,9 @@ export function extractJsonFromLLMResponse(text: string): any | null {
             
             if (jsonContent) {
                 try {
-                    const parsed = JSON.parse(jsonContent);
+                    // Sanitize literal newlines in string values
+                    const sanitizedContent = sanitizeJsonNewlines(jsonContent);
+                    const parsed = JSON.parse(sanitizedContent);
                     console.log('extractJsonFromLLMResponse - Successfully parsed JSON from code block:', {
                         contentLength: jsonContent.length,
                         hasExtractionQuery: !!parsed.extraction_query,
@@ -68,7 +117,8 @@ export function extractJsonFromLLMResponse(text: string): any | null {
 
     // Strategy 2: Try to parse the entire text as JSON (for plain JSON responses)
     try {
-        const parsed = JSON.parse(trimmedText);
+        const sanitizedText = sanitizeJsonNewlines(trimmedText);
+        const parsed = JSON.parse(sanitizedText);
         console.log('extractJsonFromLLMResponse - Successfully parsed plain JSON:', {
             contentLength: trimmedText.length,
             hasExtractionQuery: !!parsed.extraction_query,
@@ -106,7 +156,8 @@ export function extractJsonFromLLMResponse(text: string): any | null {
     if (startIdx !== -1 && endIdx !== -1) {
         const jsonCandidate = trimmedText.substring(startIdx, endIdx + 1);
         try {
-            const parsed = JSON.parse(jsonCandidate);
+            const sanitizedCandidate = sanitizeJsonNewlines(jsonCandidate);
+            const parsed = JSON.parse(sanitizedCandidate);
             console.log('extractJsonFromLLMResponse - Successfully parsed JSON using brace counting:', {
                 contentLength: jsonCandidate.length,
                 hasExtractionQuery: !!parsed.extraction_query,

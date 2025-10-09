@@ -9,10 +9,12 @@ import * as fs from 'fs';
 import { randomUUID } from 'crypto';
 import { GlobalSettings } from '../common/models/settings-models';
 import { ApiResponse, ResponseType } from '../common/models/response-models';
+import { TelemetryService } from '../services/TelemetryService';
 
 export class GlobalDataStore {
     private globalConfigDir: string;
     private globalSettingsFile: string;
+    private telemetryService?: TelemetryService;
     
     constructor() {
         // Determine user-specific config directory based on platform
@@ -157,6 +159,18 @@ export class GlobalDataStore {
             // Ensure config directory exists
             this.ensureConfigDirectory();
             
+            // Load old settings to detect API key changes
+            let oldSettings: GlobalSettings | null = null;
+            try {
+                const loadResponse = this.loadGlobalSettings();
+                if (loadResponse.type === 'success' && loadResponse.payload) {
+                    oldSettings = loadResponse.payload;
+                }
+            } catch (error) {
+                // If loading fails, treat as first save (no old settings)
+                console.log('GlobalDataStore: Could not load old settings for comparison:', error);
+            }
+            
             // Update timestamps
             const now = new Date();
             const updatedSettings: GlobalSettings = {
@@ -164,6 +178,9 @@ export class GlobalDataStore {
                 updatedAt: now,
                 createdAt: settings.createdAt || now
             };
+            
+            // Detect and track LLM API key changes before saving
+            this.detectAndTrackLLMKeyChanges(oldSettings, updatedSettings);
             
             // Write to file
             fs.writeFileSync(this.globalSettingsFile, JSON.stringify(updatedSettings, null, 2));
@@ -176,6 +193,15 @@ export class GlobalDataStore {
     }
     
     /**
+     * Sets the telemetry service for tracking API key changes
+     * This must be called after both GlobalDataStore and TelemetryService are initialized
+     * to avoid circular dependency issues
+     */
+    public setTelemetryService(telemetryService: TelemetryService): void {
+        this.telemetryService = telemetryService;
+    }
+
+    /**
      * Gets the path to the global settings file (for debugging/testing)
      */
     public getGlobalSettingsPath(): string {
@@ -187,5 +213,80 @@ export class GlobalDataStore {
      */
     public getGlobalConfigDir(): string {
         return this.globalConfigDir;
+    }
+
+    /**
+     * Detects changes in LLM API keys and tracks them via telemetry
+     * @param oldSettings - Previous global settings (null if first save)
+     * @param newSettings - New global settings being saved
+     */
+    private detectAndTrackLLMKeyChanges(
+        oldSettings: GlobalSettings | null,
+        newSettings: GlobalSettings
+    ): void {
+        if (!this.telemetryService) {
+            return;
+        }
+
+        // Define the LLM provider key mappings (property name -> provider identifier)
+        const providerKeyMappings: Array<{ key: keyof GlobalSettings; provider: string }> = [
+            { key: 'openaiApiKey', provider: 'openai' },
+            { key: 'geminiApiKey', provider: 'gemini' },
+            { key: 'claudeApiKey', provider: 'claude' }
+        ];
+
+        try {
+            for (const { key, provider } of providerKeyMappings) {
+                const oldKey = oldSettings?.[key] as string | undefined;
+                const newKey = newSettings[key] as string | undefined;
+
+                const changeDetails = this.detectKeyChange(oldKey, newKey);
+                
+                if (changeDetails) {
+                    console.log(`GlobalDataStore: Tracking ${provider} API key change: ${changeDetails.changeType}`);
+                    this.telemetryService.trackLLMKeyStatusChange(
+                        provider,
+                        changeDetails.changeType,
+                        changeDetails.hadKeyPreviously,
+                        changeDetails.hasKeyNow
+                    );
+                }
+            }
+        } catch (error) {
+            // Errors during telemetry should not prevent settings from being saved
+            console.error('GlobalDataStore: Error detecting/tracking LLM key changes:', error);
+        }
+    }
+
+    /**
+     * Detects if an API key has changed and determines the change type
+     * @param oldKey - Previous API key value
+     * @param newKey - New API key value
+     * @returns Change details if a change was detected, null otherwise
+     */
+    private detectKeyChange(
+        oldKey: string | undefined,
+        newKey: string | undefined
+    ): { changeType: 'added' | 'updated' | 'removed'; hadKeyPreviously: boolean; hasKeyNow: boolean } | null {
+        // An API key is considered 'empty' if it's null, undefined, or empty string
+        // A string with only whitespace is considered 'present'
+        const hadKeyPreviously = oldKey !== null && oldKey !== undefined && oldKey !== '';
+        const hasKeyNow = newKey !== null && newKey !== undefined && newKey !== '';
+
+        // No change if both states are the same (both empty or both present with same value)
+        if (!hadKeyPreviously && !hasKeyNow) {
+            return null; // Both empty, no change
+        }
+
+        // Determine change type
+        if (!hadKeyPreviously && hasKeyNow) {
+            return { changeType: 'added', hadKeyPreviously: false, hasKeyNow: true };
+        } else if (hadKeyPreviously && !hasKeyNow) {
+            return { changeType: 'removed', hadKeyPreviously: true, hasKeyNow: false };
+        } else if (hadKeyPreviously && hasKeyNow && oldKey !== newKey) {
+            return { changeType: 'updated', hadKeyPreviously: true, hasKeyNow: true };
+        }
+
+        return null; // No change detected
     }
 }

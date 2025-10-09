@@ -191,14 +191,15 @@ describe('llmResponseParser', () => {
         expect(result).toBeNull();
       });
 
-      it('should return null when json markers are incomplete', () => {
+      it('should handle incomplete json markers by falling back to plain JSON parsing', () => {
         const input = `\`\`\`json
 {
   "test": "value"
 `;
         
         const result = extractJsonFromLLMResponse(input);
-        expect(result).toBeNull();
+        // The parser should still extract valid JSON even if markdown markers are incomplete
+        expect(result).toEqual({ "test": "value" });
       });
 
       it('should return null for empty content between markers', () => {
@@ -276,6 +277,97 @@ Let me know if you need any clarification on these selections.`;
         expect(result?.files['src/国际化.ts']).toEqual(['I18nService', 'TranslationManager']);
         expect(result?.files['src/组件/按钮.tsx']).toEqual(['Button', 'IconButton']);
         expect(result?.reasoning).toContain('internationalization');
+      });
+
+      it('should handle spec with literal newlines in description string', () => {
+        const input = `\`\`\`json
+[
+  {
+    "title": "Integrate PostHog API Key into Global Settings",
+    "description": "Context: The discussion identified that PostHog telemetry is disabled.
+Implementation Steps:
+- Step 1: Update GlobalSettings interface.
+- Step 2: Modify GlobalDataStore to load and save.
+Backend Feature Spec:
+- Feature/Behavior: The PostHog API key will be stored in GlobalSettings.",
+    "parent_spec_id": null
+  }
+]
+\`\`\``;
+        
+        const result = extractJsonFromLLMResponse(input);
+        expect(result).toBeTruthy();
+        expect(Array.isArray(result)).toBe(true);
+        expect(result?.length).toBe(1);
+        expect(result?.[0].title).toBe("Integrate PostHog API Key into Global Settings");
+        expect(result?.[0].description).toContain("Implementation Steps");
+        expect(result?.[0].description).toContain("Backend Feature Spec");
+        expect(result?.[0].parent_spec_id).toBeNull();
+      });
+
+      it('should handle the exact PostHog spec with full literal newlines (user reported case)', () => {
+        // This is the EXACT output that failed for the user - with actual newlines in the JSON string value
+        // The key issue is that LLMs sometimes generate JSON with literal line breaks inside string values
+        const input = `\`\`\`json
+[
+  {
+    "title": "Integrate PostHog API Key into Global Settings with Dynamic Update",
+    "description": "Context: The discussion identified that PostHog telemetry is disabled.
+Implementation Steps:
+- Step 1: Update GlobalSettings interface to include posthogApiKey.
+- Step 2: Modify GlobalDataStore to load and save the new posthogApiKey.
+- Step 3: Refactor TelemetryService to expose a public method for setting the API key.
+- Step 4: Extend DataStore.handleSaveGlobalSettings to detect changes.
+- Step 5: Update the Webview UI to include an input field for the PostHog API key.
+Backend Feature Spec:
+- Feature/Behavior: The PostHog API key will be stored in and loaded from GlobalSettings.
+- Inputs: GlobalSettings.posthogApiKey string (can be empty string).
+- Processing/Algorithms: Multiple service methods handle the lifecycle.
+- Outputs/Side Effects: TelemetryService.posthog instance is correctly updated.
+- Error Handling: TelemetryService logs if initialization fails.
+- Performance: Negligible impact. Settings operations are local file reads/writes.
+- Security: PostHog API key stored in global_user_settings.json follows existing pattern.
+- Edge Cases: Empty API key should disable PostHog telemetry gracefully.
+Frontend UI Spec:
+- Screens/Components: SamuraiAgentPanelWebviewViewProvider renders settings interface.
+- States & Data: The input field will bind to settingsState.globalSettings.posthogApiKey.
+- User Flows & Interactions: User enters/updates text in the PostHog API Key field.
+- Layout & Responsive: Add a new form group under Privacy Analytics or Advanced Settings.
+- Visual Spec: Label PostHog API Key, Input Type text, Placeholder Enter your PostHog API Key.
+- Accessibility: Standard input field accessibility considerations apply.
+- Error/Empty/Edge: Standard save success/error feedback will be shown.
+Code Changes:
+- Backend: Update settings models, globalDataStore, TelemetryService, and dataStore.
+- Frontend: Add HTML for a new input field in settings interface.
+Tests:
+- Unit Test: TelemetryService.test.ts Add tests for setPostHogApiKey.
+- Unit Test: GlobalDataStore.test.ts Add tests for loading and saving posthogApiKey.
+- Unit Test: DataStore.test.ts Add tests for notifyGlobalSettingsChanged.
+- E2E Test: Simulate entering a PostHog API key in settings and verifying telemetry.
+Acceptance Criteria:
+- The GlobalSettings interface includes posthogApiKey string.
+- The VS Code extension Settings UI contains an input field labeled PostHog API Key.
+- Changing and saving the PostHog API Key in the UI correctly updates global_user_settings.json.
+- When the PostHog API Key in settings is updated and saved the service reinitializes.
+- Telemetry events are successfully sent after a valid PostHog API key is provided.",
+    "parent_spec_id": null
+  }
+]
+\`\`\``;
+        
+        const result = extractJsonFromLLMResponse(input);
+        expect(result).toBeTruthy();
+        expect(Array.isArray(result)).toBe(true);
+        expect(result?.length).toBe(1);
+        expect(result?.[0].title).toBe("Integrate PostHog API Key into Global Settings with Dynamic Update");
+        expect(result?.[0].description).toContain("Context: The discussion identified");
+        expect(result?.[0].description).toContain("Implementation Steps:");
+        expect(result?.[0].description).toContain("Backend Feature Spec:");
+        expect(result?.[0].description).toContain("Frontend UI Spec:");
+        expect(result?.[0].description).toContain("Code Changes:");
+        expect(result?.[0].description).toContain("Tests:");
+        expect(result?.[0].description).toContain("Acceptance Criteria:");
+        expect(result?.[0].parent_spec_id).toBeNull();
       });
     });
   });

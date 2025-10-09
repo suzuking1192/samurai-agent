@@ -77,6 +77,9 @@ const TelemetryService_1 = require("./services/TelemetryService");
 function activate(context) {
     const globalDataStore = new globalDataStore_1.GlobalDataStore();
     const telemetryService = new TelemetryService_1.TelemetryService(context, globalDataStore);
+    // Set telemetry service on GlobalDataStore to enable LLM key change tracking
+    // This must be done after TelemetryService is initialized to avoid circular dependency
+    globalDataStore.setTelemetryService(telemetryService);
     const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     const dataStore = workspaceRoot ? new dataStore_1.DataStore(workspaceRoot, telemetryService) : undefined;
     // Initialize LLM Cost Storage

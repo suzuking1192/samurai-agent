@@ -63,7 +63,7 @@ export class TelemetryService {
     /**
      * Initialize or retrieve the anonymized distinct ID for this user
      */
-    private async initializeDistinctId(): Promise<void> {
+    private initializeDistinctId(): void {
         try {
             const settingsResponse = this.globalDataStore.loadGlobalSettings();
             if (settingsResponse.type === 'success' && settingsResponse.payload) {

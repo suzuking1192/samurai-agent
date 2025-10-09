@@ -3,7 +3,8 @@ import { LLMProviderService, ChatClient } from '../src/agent/llm/llmProviderServ
 import { GlobalDataStore } from '../src/persistence/globalDataStore';
 import { DataStore } from '../src/persistence/dataStore';
 import { ApiResponse, ResponseType } from '../src/common/models/response-models';
-import { LLMRequest, LLMResponse } from '../src/common/models/llm-models';
+import { LLMRequest, LLMResponse, LLMError } from '../src/common/models/llm-models';
+import { FREE_TIER_GEMINI_API_KEY } from '../src/common/constants/llm-constants';
 
 class MockGlobalDataStore extends GlobalDataStore {
     constructor(private readonly settings: any) {
@@ -199,6 +200,172 @@ describe('LLMProviderService', () => {
         });
 
         assert.strictEqual(client.lastRequest?.model, 'gpt-4-turbo');
+    });
+
+    describe('Free Tier Model', () => {
+        it('should use hardcoded API key for free tier model even when user has no Gemini API key', async () => {
+            const client = new MockChatClient();
+            const service = new LLMProviderService(
+                new MockGlobalDataStore({ ...baseGlobalSettings, geminiApiKey: '' }),
+                new MockDataStore(baseProjectSettings)
+            );
+            service.registerClient('google', client);
+
+            const response = await service.chat({
+                id: 'request-free-tier-0',
+                provider: 'google',
+                model: 'gemini-2.5-flash-free-tier',
+                messages: [{ role: 'user', content: 'hello' }],
+                metadata: {},
+                createdAt: new Date(),
+                updatedAt: new Date()
+            });
+
+            // Verify the request succeeds with hardcoded API key
+            assert.strictEqual(response.type, ResponseType.SUCCESS);
+            assert.strictEqual(client.lastRequest?.metadata?.apiKey, FREE_TIER_GEMINI_API_KEY);
+        });
+
+        it('should use hardcoded API key for free tier model when user has Gemini API key', async () => {
+            const client = new MockChatClient();
+            const service = new LLMProviderService(
+                new MockGlobalDataStore({ ...baseGlobalSettings, geminiApiKey: 'user-gemini-key' }),
+                new MockDataStore(baseProjectSettings)
+            );
+            service.registerClient('google', client);
+
+            await service.chat({
+                id: 'request-free-tier-1',
+                provider: 'google',
+                model: 'gemini-2.5-flash-free-tier',
+                messages: [{ role: 'user', content: 'hello' }],
+                metadata: {},
+                createdAt: new Date(),
+                updatedAt: new Date()
+            });
+
+            // Verify the hardcoded API key is used instead of user's key
+            assert.strictEqual(client.lastRequest?.metadata?.apiKey, FREE_TIER_GEMINI_API_KEY);
+            assert.notStrictEqual(client.lastRequest?.metadata?.apiKey, 'user-gemini-key');
+        });
+
+        it('should use user API key for non-free-tier Gemini models', async () => {
+            const client = new MockChatClient();
+            const service = new LLMProviderService(
+                new MockGlobalDataStore({ ...baseGlobalSettings, geminiApiKey: 'user-gemini-key' }),
+                new MockDataStore(baseProjectSettings)
+            );
+            service.registerClient('google', client);
+
+            await service.chat({
+                id: 'request-paid-tier-1',
+                provider: 'google',
+                model: 'gemini-2.5-flash',
+                messages: [{ role: 'user', content: 'hello' }],
+                metadata: {},
+                createdAt: new Date(),
+                updatedAt: new Date()
+            });
+
+            // Verify the user's API key is used for non-free-tier models
+            assert.strictEqual(client.lastRequest?.metadata?.apiKey, 'user-gemini-key');
+            assert.notStrictEqual(client.lastRequest?.metadata?.apiKey, FREE_TIER_GEMINI_API_KEY);
+        });
+
+        it('should customize error message for free tier rate limit', async () => {
+            class MockChatClientWithRateLimit implements ChatClient {
+                async chat(request: LLMRequest): Promise<ApiResponse<LLMResponse | LLMError>> {
+                    const timestamp = new Date();
+                    return {
+                        type: ResponseType.ERROR,
+                        error: 'Rate limit exceeded',
+                        payload: {
+                            id: 'error-id',
+                            requestId: request.id,
+                            provider: request.provider,
+                            model: request.model,
+                            error: 'Rate limit exceeded',
+                            errorCode: 'RATE_LIMIT_EXCEEDED',
+                            retryable: false,
+                            metadata: {},
+                            createdAt: timestamp,
+                            updatedAt: timestamp
+                        },
+                        timestamp
+                    };
+                }
+            }
+
+            const client = new MockChatClientWithRateLimit();
+            const service = new LLMProviderService(
+                new MockGlobalDataStore({ ...baseGlobalSettings, geminiApiKey: '' }),
+                new MockDataStore(baseProjectSettings)
+            );
+            service.registerClient('google', client);
+
+            const response = await service.chat({
+                id: 'request-rate-limit-1',
+                provider: 'google',
+                model: 'gemini-2.5-flash-free-tier',
+                messages: [{ role: 'user', content: 'hello' }],
+                metadata: {},
+                createdAt: new Date(),
+                updatedAt: new Date()
+            });
+
+            // Verify the custom error message for free tier rate limit
+            assert.strictEqual(response.type, ResponseType.ERROR);
+            const expectedMessage = 'free tier daily limit is reached, please set your own LLM API key and select different model';
+            assert.strictEqual(response.error, expectedMessage);
+            assert.strictEqual((response.payload as LLMError).error, expectedMessage);
+        });
+
+        it('should not customize error message for rate limit on non-free-tier models', async () => {
+            class MockChatClientWithRateLimit implements ChatClient {
+                async chat(request: LLMRequest): Promise<ApiResponse<LLMResponse | LLMError>> {
+                    const timestamp = new Date();
+                    return {
+                        type: ResponseType.ERROR,
+                        error: 'Rate limit exceeded',
+                        payload: {
+                            id: 'error-id',
+                            requestId: request.id,
+                            provider: request.provider,
+                            model: request.model,
+                            error: 'Rate limit exceeded',
+                            errorCode: 'RATE_LIMIT_EXCEEDED',
+                            retryable: false,
+                            metadata: {},
+                            createdAt: timestamp,
+                            updatedAt: timestamp
+                        },
+                        timestamp
+                    };
+                }
+            }
+
+            const client = new MockChatClientWithRateLimit();
+            const service = new LLMProviderService(
+                new MockGlobalDataStore({ ...baseGlobalSettings, geminiApiKey: 'user-gemini-key' }),
+                new MockDataStore(baseProjectSettings)
+            );
+            service.registerClient('google', client);
+
+            const response = await service.chat({
+                id: 'request-rate-limit-2',
+                provider: 'google',
+                model: 'gemini-2.5-flash',
+                messages: [{ role: 'user', content: 'hello' }],
+                metadata: {},
+                createdAt: new Date(),
+                updatedAt: new Date()
+            });
+
+            // Verify the original error message is preserved for non-free-tier models
+            assert.strictEqual(response.type, ResponseType.ERROR);
+            assert.strictEqual(response.error, 'Rate limit exceeded');
+            assert.strictEqual((response.payload as LLMError).error, 'Rate limit exceeded');
+        });
     });
 });
 
