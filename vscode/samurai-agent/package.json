@@ -1,7 +1,7 @@
 {
   "name": "samurai-agent",
   "displayName": "Samurai Agent",
-  "description": "AI tool for spec-driven development: debugs requirements to prevent messy AI-generated code",
+  "description": "Generate codebase-aware specs for complex features, refactoring, and hard bugs",
   "version": "0.0.14",
   "publisher": "SamuraiAgent",
   "engines": {
