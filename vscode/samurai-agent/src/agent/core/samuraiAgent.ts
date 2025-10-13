@@ -73,6 +73,42 @@ export class SamuraiAgent {
         initialCodeContexts = await this.dataStore.loadAllCodeContextForSession(session.id, session.metadata.projectId);
       }
       
+      // Check if we should route based on session mode (for deep bug analysis mode)
+      const sessionMode = session.metadata?.mode;
+      if (sessionMode === 'deep_bug_analysis') {
+        // Route directly to deep bug analysis handler
+        this.logInvocation("execute", "Routing to deep bug analysis mode based on session mode");
+        
+        // Load code contexts for the session
+        let codeContexts: ExtractCodeToolResultPayload[] = [];
+        if (session.codeContextIds && session.codeContextIds.length > 0) {
+          codeContexts = await this.dataStore.loadAllCodeContextForSession(session.id, session.metadata.projectId);
+        }
+        
+        // Call the deep bug analysis handler directly
+        const agentResponse = await this.handleDeepBugAnalysis(userMessage, chatHistory, projectDetails, codeContexts, session);
+        
+        // TODO: Implement message persistence
+        // For now, we'll just return the response without persisting messages
+        // This will be implemented when the DataStore has proper public methods for chat message persistence
+        
+        // Update session with new message count
+        await this.dataStore.updateSession(session.id, {
+          messageCount: (session.messageCount || 0) + 2 // User message + agent response
+        });
+        
+        console.log('[COST DEBUG] SamuraiAgent - Deep bug analysis execution cost:', this.currentExecutionCost);
+        
+        return {
+          success: true,
+          message: agentResponse,
+          metadata: {
+            userIntent: 'deep_bug_analysis',
+            cost: this.currentExecutionCost
+          }
+        };
+      }
+      
       // Analyze user intent with loaded context
       const userIntent = await this.analyzeUserIntent(chatHistory, userMessage, projectDetails, session);
       
@@ -600,6 +636,58 @@ export class SamuraiAgent {
       });
       
       return "That's an interesting feature idea! Tell me more about what you have in mind.";
+    }
+  }
+
+  public async handleDeepBugAnalysis(
+    userMessage: ChatMessage, 
+    chatHistory: LLMMessage[], 
+    projectDetails: string, 
+    codeContexts: ExtractCodeToolResultPayload[],
+    session: Session
+  ): Promise<string> {
+    this.logInvocation("handleDeepBugAnalysis", userMessage.content);
+    
+    try {
+      // Format code contexts for prompt injection
+      const formattedCodeContexts = this._formatCodeContextsForPrompt(codeContexts);
+      
+      // Build conversation summary
+      const conversationSummary = this._buildConversationSummary(chatHistory) + `\n\nLatest user request: ${userMessage.content}`;
+      
+      // For now, return a placeholder response
+      // In the future, this will load a specialized deep bug analysis prompt
+      // and perform comprehensive bug analysis
+      const placeholderResponse = `🔍 **Deep Bug Analysis Mode** (Under Development)
+
+I'm analyzing your request: "${userMessage.content}"
+
+This mode will provide:
+- Comprehensive root cause analysis
+- Stack trace interpretation
+- Cross-file dependency analysis
+- Potential fix suggestions with code examples
+- Impact assessment of proposed changes
+
+**Current Context:**
+- Project: ${projectDetails ? 'Loaded' : 'Not available'}
+- Code Contexts: ${codeContexts.length} file(s) analyzed
+- Conversation History: ${chatHistory.length} message(s)
+
+For now, I can help you debug issues using the standard discussion mode. Please describe the bug you're experiencing, and I'll do my best to assist!`;
+      
+      return placeholderResponse;
+      
+    } catch (error) {
+      console.error('Error in handleDeepBugAnalysis:', error);
+      
+      // Capture error to PostHog for monitoring
+      this.telemetryService.captureError(error as Error, { 
+        service: 'SamuraiAgent', 
+        function: 'handleDeepBugAnalysis' 
+      });
+      
+      return "Deep bug analysis mode is under development. I'm here to help debug your issues! Please describe what you're experiencing.";
     }
   }
 

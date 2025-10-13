@@ -40,6 +40,11 @@
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
+      {
+        "command": "samurai-agent.openPanel",
+        "title": "Open Samurai Agent Panel",
+        "category": "Samurai Agent"
+      }
     ],
     "configuration": {
       "title": "Samurai Agent",

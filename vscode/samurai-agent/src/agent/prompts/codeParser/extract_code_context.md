@@ -52,6 +52,8 @@ Instructions:
 
 10. **Provide clear reasoning**: Explain which elements were selected, why they're relevant to the user's request, and which dependencies were added (even if not in current context) to ensure comprehensive code coverage.
 
+11. If the project contains multiple folders or versions (e.g., v1/, v2/, backend/, frontend/, web/), identify which version or component the user’s question most likely refers to based on semantic relevance. Prioritize the folder whose code aligns best with the described functionality, current context, or dependencies in recent messages. If uncertain, analyze all versions and summarize differences before selecting the most relevant one.
+
 STRICT OUTPUT FORMAT (RETURN JSON ONLY — NO EXTRA TEXT):
 
 ```json

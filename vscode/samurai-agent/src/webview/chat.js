@@ -639,11 +639,14 @@
             return null;
         }
 
+        const modeSelect = safeGetDocumentElement('mode-select');
+        const currentMode = modeSelect?.value || chatState.projectSettings.defaultMode || 'deep_bug_analysis';
+
         const request = {
             title,
             projectId: chatState.projectSettings.projectId,
             model: chatState.projectSettings.primaryLLMModel || undefined,
-            mode: chatState.projectSettings.defaultMode || undefined
+            mode: currentMode
         };
 
         const session = await globalScope.WebviewApi.persistence.createSession(request);
@@ -653,6 +656,7 @@
                 currentSessionId: session.id
             };
             chatState.currentSessionId = session.id;
+            chatState.currentSession = session;
             await globalScope.WebviewApi.persistence.saveProjectSettings(chatState.projectSettings);
             return session.id;
         }
@@ -1146,6 +1150,13 @@
                 });
             }
 
+            const modeSelect = safeGetDocumentElement('mode-select');
+            if (modeSelect) {
+                modeSelect.addEventListener('change', function onChange() {
+                    handleModeChange(this.value);
+                });
+            }
+
             const chatTab = safeGetDocumentElement('chat-tab');
             if (chatTab) {
                 chatTab.addEventListener('click', async () => {
@@ -1196,6 +1207,12 @@
             llmModelSelect.value = primaryModel;
         }
 
+        const defaultMode = chatState.projectSettings?.defaultMode;
+        const modeSelect = safeGetDocumentElement('mode-select');
+        if (defaultMode && modeSelect) {
+            modeSelect.value = defaultMode;
+        }
+
         void initializeChatSession();
     }
 
@@ -1239,6 +1256,25 @@
             console.log('LLM model changed to:', selectedModelId);
         } catch (error) {
             console.error('Error saving LLM model selection:', error);
+        }
+    }
+
+    async function handleModeChange(selectedMode) {
+        if (!selectedMode || !chatState.projectSettings || !globalScope?.WebviewApi) {
+            return;
+        }
+
+        try {
+            const updatedProjectSettings = {
+                ...chatState.projectSettings,
+                defaultMode: selectedMode
+            };
+
+            await globalScope.WebviewApi.persistence.saveProjectSettings(updatedProjectSettings);
+            chatState.projectSettings = updatedProjectSettings;
+            console.log('Mode changed to:', selectedMode);
+        } catch (error) {
+            console.error('Error saving mode selection:', error);
         }
     }
 

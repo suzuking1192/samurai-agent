@@ -426,10 +426,10 @@ body {
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
-/* Hide Mode dropdown - Hide the dropdown container that contains the mode select element */
-.dropdown-container:has(select#mode-select) {
+/* Mode dropdown is now visible for deep bug analysis and spec planning modes */
+/* .dropdown-container:has(select#mode-select) {
     display: none !important;
-}
+} */
 
 /* Responsive adjustments for smaller screens */
 @media (max-width: 500px) {

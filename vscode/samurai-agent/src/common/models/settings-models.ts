@@ -21,10 +21,8 @@ export enum LLMProvider {
  * Chat modes available in the application
  */
 export enum ChatMode {
-    DEFAULT = 'default',
-    DEVELOPER = 'developer',
-    CREATIVE = 'creative',
-    ANALYTICAL = 'analytical'
+    DEEP_BUG_ANALYSIS = 'deep_bug_analysis',
+    SPEC_PLANNING = 'spec_planning'
 }
 
 /**

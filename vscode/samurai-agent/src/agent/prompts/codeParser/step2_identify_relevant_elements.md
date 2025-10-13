@@ -35,6 +35,7 @@ CRITICAL INSTRUCTIONS:
 12. Be generous in your selection—include helper or supporting elements whose names suggest they may contribute to the user request
 13. Order files and their elements by relevance (most relevant first)
 14. If no elements seem relevant based on their names and metadata, return an empty files object
+15. If the project contains multiple folders or versions (e.g., v1/, v2/, backend/, frontend/, web/), identify which version or component the user’s question most likely refers to based on semantic relevance. Prioritize the folder whose code aligns best with the described functionality, current context, or dependencies in recent messages. If uncertain, analyze all versions and summarize differences before selecting the most relevant one.
 
 STRICT OUTPUT FORMAT (RETURN JSON ONLY — NO EXTRA TEXT):
 ```json

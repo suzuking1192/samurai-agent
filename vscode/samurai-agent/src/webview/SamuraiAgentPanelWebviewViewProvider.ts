@@ -682,10 +682,8 @@ export class SamuraiAgentPanelWebviewViewProvider
                                     <div class="dropdown-container">
                                         <label for="mode-select">Mode:</label>
                                         <select id="mode-select" class="dropdown">
-                                            <option value="default">Default Mode</option>
-                                            <option value="developer">Developer Mode</option>
-                                            <option value="creative">Creative Mode</option>
-                                            <option value="analytical">Analytical Mode</option>
+                                            <option value="deep_bug_analysis" selected>Deep Bug Analysis</option>
+                                            <option value="spec_planning">Spec Planning</option>
                                         </select>
                                     </div>
                                 </div>

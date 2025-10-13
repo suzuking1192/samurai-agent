@@ -44,95 +44,165 @@ import { TelemetryService } from "./services/TelemetryService";
  * Registers all commands, webview providers, and initializes the agent system
  */
 export function activate(context: vscode.ExtensionContext) {
-  const globalDataStore = new GlobalDataStore();
-  const telemetryService = new TelemetryService(context, globalDataStore);
+  console.log('[Samurai Agent] 🚀 Extension activation starting...');
   
-  // Set telemetry service on GlobalDataStore to enable LLM key change tracking
-  // This must be done after TelemetryService is initialized to avoid circular dependency
-  globalDataStore.setTelemetryService(telemetryService);
-  
-  const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-  const dataStore = workspaceRoot ? new DataStore(workspaceRoot, telemetryService) : undefined;
+  try {
+    const globalDataStore = new GlobalDataStore();
+    console.log('[Samurai Agent] ✓ GlobalDataStore initialized');
+    
+    const telemetryService = new TelemetryService(context, globalDataStore);
+    console.log('[Samurai Agent] ✓ TelemetryService initialized');
+    
+    // Set telemetry service on GlobalDataStore to enable LLM key change tracking
+    // This must be done after TelemetryService is initialized to avoid circular dependency
+    globalDataStore.setTelemetryService(telemetryService);
+    
+    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    console.log('[Samurai Agent] Workspace root:', workspaceRoot || 'No workspace folder open');
+    
+    const dataStore = workspaceRoot ? new DataStore(workspaceRoot, telemetryService) : undefined;
+    console.log('[Samurai Agent] ✓ DataStore initialized:', dataStore ? 'available' : 'not available (no workspace)');
 
-  // Initialize LLM Cost Storage
-  const llmCostStorage = new LLMCostStorage(context);
-  
-  // Create status bar item for cost display
-  const costStatusBarItem = vscode.window.createStatusBarItem(
-    vscode.StatusBarAlignment.Right,
-    100
-  );
-  costStatusBarItem.command = 'samurai-agent.showCostDetails';
-  context.subscriptions.push(costStatusBarItem);
-  
-  // Update status bar with initial cost
-  updateCostStatusBar(costStatusBarItem, llmCostStorage);
-  costStatusBarItem.show();
+    // Initialize LLM Cost Storage
+    const llmCostStorage = new LLMCostStorage(context);
+    console.log('[Samurai Agent] ✓ LLMCostStorage initialized');
+    
+    // Create status bar item for cost display
+    const costStatusBarItem = vscode.window.createStatusBarItem(
+      vscode.StatusBarAlignment.Right,
+      100
+    );
+    costStatusBarItem.command = 'samurai-agent.showCostDetails';
+    context.subscriptions.push(costStatusBarItem);
+    
+    // Update status bar with initial cost
+    updateCostStatusBar(costStatusBarItem, llmCostStorage);
+    costStatusBarItem.show();
 
-  // Track extension activation
-  telemetryService.trackExtensionActivation();
+    // Track extension activation
+    telemetryService.trackExtensionActivation();
+    console.log('[Samurai Agent] ✓ Extension activation tracked');
 
-  const llmProviderService = new LLMProviderService(globalDataStore, dataStore);
+    const llmProviderService = new LLMProviderService(globalDataStore, dataStore);
+    console.log('[Samurai Agent] ✓ LLMProviderService initialized');
 
-  llmProviderService.registerClient("openai", new OpenAIChatClient());
-  llmProviderService.registerClient("google", new GeminiChatClient());
-  llmProviderService.registerClient("anthropic", new AnthropicChatClient());
-  
-  // Initialize TreeSitterLoaderService
-  const treeSitterLoaderService = new TreeSitterLoaderService(context.globalStorageUri);
-  
-  // Initialize CodeParserService and ExtractCodeTool
-  const codeParserService = new CodeParserService(context.extensionUri.fsPath);
-  const extractCodeTool = new ExtractCodeTool(llmProviderService, codeParserService, telemetryService);
-  
-  // Initialize CreateSpecTool
-  const createSpecTool = dataStore ? new CreateSpecTool(dataStore) : undefined;
-  
-  const projectDetailService = dataStore
-    ? new ProjectDetailService(
+    llmProviderService.registerClient("openai", new OpenAIChatClient());
+    llmProviderService.registerClient("google", new GeminiChatClient());
+    llmProviderService.registerClient("anthropic", new AnthropicChatClient());
+    console.log('[Samurai Agent] ✓ LLM clients registered');
+    
+    // Initialize TreeSitterLoaderService
+    const treeSitterLoaderService = new TreeSitterLoaderService(context.globalStorageUri);
+    console.log('[Samurai Agent] ✓ TreeSitterLoaderService initialized');
+    
+    // Initialize CodeParserService and ExtractCodeTool
+    const codeParserService = new CodeParserService(context.extensionUri.fsPath);
+    const extractCodeTool = new ExtractCodeTool(llmProviderService, codeParserService, telemetryService);
+    console.log('[Samurai Agent] ✓ CodeParserService and ExtractCodeTool initialized');
+    
+    // Initialize CreateSpecTool
+    const createSpecTool = dataStore ? new CreateSpecTool(dataStore) : undefined;
+    console.log('[Samurai Agent] ✓ CreateSpecTool initialized:', createSpecTool ? 'available' : 'not available');
+    
+    const projectDetailService = dataStore
+      ? new ProjectDetailService(
+          llmProviderService,
+          dataStore,
+          context.extensionUri.fsPath,
+        )
+      : undefined;
+    console.log('[Samurai Agent] ✓ ProjectDetailService initialized:', projectDetailService ? 'available' : 'not available');
+
+    // Initialize SamuraiAgent
+    const samuraiAgent = dataStore && projectDetailService && createSpecTool
+      ? new SamuraiAgent(
+          llmProviderService,
+          dataStore,
+          projectDetailService,
+          extractCodeTool,
+          createSpecTool,
+          telemetryService
+        )
+      : undefined;
+    console.log('[Samurai Agent] ✓ SamuraiAgent initialized:', samuraiAgent ? 'available' : 'not available');
+
+    const agentPanelProvider = new SamuraiAgentPanelWebviewViewProvider(
+      context.extensionUri,
+      {
         llmProviderService,
-        dataStore,
-        context.extensionUri.fsPath,
-      )
-    : undefined;
-
-  // Initialize SamuraiAgent
-  const samuraiAgent = dataStore && projectDetailService && createSpecTool
-    ? new SamuraiAgent(
-        llmProviderService,
-        dataStore,
         projectDetailService,
+        dataStore,
+        globalDataStore,
+        treeSitterLoaderService,
         extractCodeTool,
-        createSpecTool,
-        telemetryService
-      )
-    : undefined;
+        samuraiAgent,
+        llmCostStorage,
+      },
+    );
+    console.log('[Samurai Agent] ✓ SamuraiAgentPanelWebviewViewProvider created');
 
-  const agentPanelProvider = new SamuraiAgentPanelWebviewViewProvider(
-    context.extensionUri,
-    {
-      llmProviderService,
-      projectDetailService,
-      dataStore,
-      globalDataStore,
-      treeSitterLoaderService,
-      extractCodeTool,
-      samuraiAgent,
-      llmCostStorage,
-    },
-  );
-
-  context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider(
+    // Register the webview view provider with explicit options
+    const disposable = vscode.window.registerWebviewViewProvider(
       SamuraiAgentPanelWebviewViewProvider.viewType,
       agentPanelProvider,
-    ),
-  );
+      {
+        webviewOptions: {
+          retainContextWhenHidden: true
+        }
+      }
+    );
+    
+    context.subscriptions.push(disposable);
+    
+    console.log('[Samurai Agent] ✅ Webview provider registered successfully!');
+    console.log('[Samurai Agent]    - ViewType:', SamuraiAgentPanelWebviewViewProvider.viewType);
+    console.log('[Samurai Agent]    - Provider instance:', agentPanelProvider.constructor.name);
+    console.log('[Samurai Agent]    - Disposable created:', !!disposable);
+    console.log('[Samurai Agent]    - Registration options: retainContextWhenHidden=true');
+    console.log('[Samurai Agent] 💡 To open the webview, click the Samurai Agent icon in the Activity Bar (left sidebar)');
 
-  // Note: samurai-agent.llm.chat command removed - all chat now uses samurai-agent.execute for consistency
-
-  if (projectDetailService) {
+    // Register a command to open the panel programmatically (as a workaround)
     context.subscriptions.push(
+      vscode.commands.registerCommand('samurai-agent.openPanel', async () => {
+        console.log('[Samurai Agent] 📱 Command: samurai-agent.openPanel invoked');
+        console.log('[Samurai Agent] Attempting to focus view:', SamuraiAgentPanelWebviewViewProvider.viewType);
+        try {
+          await vscode.commands.executeCommand(`${SamuraiAgentPanelWebviewViewProvider.viewType}.focus`);
+          console.log('[Samurai Agent] ✓ View focus command executed');
+        } catch (error) {
+          console.error('[Samurai Agent] ❌ Failed to focus view:', error);
+          vscode.window.showErrorMessage(`Failed to open Samurai Agent panel: ${error}`);
+        }
+      })
+    );
+    console.log('[Samurai Agent] ✓ Command "samurai-agent.openPanel" registered');
+
+    // Try to verify the view exists after a short delay
+    setTimeout(async () => {
+      console.log('[Samurai Agent] 🔍 Verifying view registration...');
+      try {
+        // Try to execute the view's focus command
+        const commands = await vscode.commands.getCommands(true);
+        const viewCommands = commands.filter(cmd => cmd.includes('samurai-agent'));
+        console.log('[Samurai Agent] Available Samurai Agent commands:', viewCommands);
+        
+        // Check if our view's focus command exists
+        const focusCommand = `${SamuraiAgentPanelWebviewViewProvider.viewType}.focus`;
+        if (commands.includes(focusCommand)) {
+          console.log('[Samurai Agent] ✓ View focus command exists:', focusCommand);
+        } else {
+          console.error('[Samurai Agent] ❌ View focus command NOT found:', focusCommand);
+          console.error('[Samurai Agent] This suggests the view was not properly registered with VS Code');
+        }
+      } catch (error) {
+        console.error('[Samurai Agent] Error verifying view registration:', error);
+      }
+    }, 1000);
+
+    // Note: samurai-agent.llm.chat command removed - all chat now uses samurai-agent.execute for consistency
+
+    if (projectDetailService) {
+      context.subscriptions.push(
       vscode.commands.registerCommand(
         "samurai-agent.projectDetail.ingest",
         async (args) => {
@@ -168,10 +238,10 @@ export function activate(context: vscode.ExtensionContext) {
         },
       ),
     );
-  }
+    }
 
-  if (samuraiAgent) {
-    context.subscriptions.push(
+    if (samuraiAgent) {
+      context.subscriptions.push(
       vscode.commands.registerCommand(
         "samurai-agent.execute",
         async (args) => {
@@ -205,10 +275,10 @@ export function activate(context: vscode.ExtensionContext) {
         },
       ),
     );
-  }
+    }
 
-  // Register command to show cost details
-  context.subscriptions.push(
+    // Register command to show cost details
+    context.subscriptions.push(
     vscode.commands.registerCommand(
       'samurai-agent.showCostDetails',
       () => {
@@ -227,20 +297,20 @@ Click to see details in the Samurai Agent panel.
         vscode.window.showInformationMessage(message);
       }
     )
-  );
+    );
 
-  // Register command to get cost statistics
-  context.subscriptions.push(
+    // Register command to get cost statistics
+    context.subscriptions.push(
     vscode.commands.registerCommand(
       'samurai-agent.getCostStatistics',
       () => {
         return llmCostStorage.getStatistics();
       }
     )
-  );
+    );
 
-  // Register command to get monthly cost from local storage
-  context.subscriptions.push(
+    // Register command to get monthly cost from local storage
+    context.subscriptions.push(
     vscode.commands.registerCommand(
       'samurai-agent.getBackendMonthlyCost',
       () => {
@@ -258,10 +328,10 @@ Click to see details in the Samurai Agent panel.
         }
       }
     )
-  );
+    );
 
-  // Register command to clear cost history
-  context.subscriptions.push(
+    // Register command to clear cost history
+    context.subscriptions.push(
     vscode.commands.registerCommand(
       'samurai-agent.clearCostHistory',
       async () => {
@@ -278,13 +348,13 @@ Click to see details in the Samurai Agent panel.
         }
       }
     )
-  );
+    );
 
-  // Note: samurai-agent.ui.sendAssistantMessageToChat is now handled as a webview message
-  // in SamuraiAgentPanelWebviewViewProvider.handleSendAssistantMessageToChat()
+    // Note: samurai-agent.ui.sendAssistantMessageToChat is now handled as a webview message
+    // in SamuraiAgentPanelWebviewViewProvider.handleSendAssistantMessageToChat()
 
-  // Listen for telemetry setting changes
-  context.subscriptions.push(
+    // Listen for telemetry setting changes
+    context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (event.affectsConfiguration('samurai-agent.enableTelemetry')) {
         const config = vscode.workspace.getConfiguration('samurai-agent');
@@ -292,12 +362,22 @@ Click to see details in the Samurai Agent panel.
         telemetryService.trackTelemetrySettingChange(isEnabled);
       }
     })
-  );
+    );
 
-  // Clean up telemetry service on deactivation
-  context.subscriptions.push({
-    dispose: () => telemetryService.dispose()
-  });
+    // Clean up telemetry service on deactivation
+    context.subscriptions.push({
+      dispose: () => telemetryService.dispose()
+    });
+    
+    console.log('[Samurai Agent] 🎉 Extension activation completed successfully!');
+    
+  } catch (error) {
+    console.error('[Samurai Agent] ❌ FATAL: Extension activation failed:', error);
+    vscode.window.showErrorMessage(
+      `Samurai Agent failed to activate: ${error instanceof Error ? error.message : String(error)}`
+    );
+    throw error;
+  }
 }
 
 /**
