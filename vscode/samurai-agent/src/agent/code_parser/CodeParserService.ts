@@ -1389,4 +1389,47 @@ export class CodeParserService {
         
         return lines[startLine] || '';
     }
+
+    /**
+     * Extract import statements from file content
+     * Returns array of import paths (relative or absolute within project)
+     */
+    public extractImportsFromContent(fileContent: string, language: string): string[] {
+        const imports: string[] = [];
+        
+        switch(language.toLowerCase()) {
+            case 'typescript':
+            case 'tsx':
+            case 'javascript':
+            case 'jsx':
+                // Static imports: import X from 'path'
+                const staticImports = fileContent.matchAll(/import\s+(?:[\w{},\s*]+)\s+from\s+['"]([^'"]+)['"]/g);
+                for (const match of staticImports) {
+                    imports.push(match[1]);
+                }
+                // Dynamic imports: import('path')
+                const dynamicImports = fileContent.matchAll(/import\s*\(\s*['"]([^'"]+)['"]\s*\)/g);
+                for (const match of dynamicImports) {
+                    imports.push(match[1]);
+                }
+                // Require statements: require('path')
+                const requires = fileContent.matchAll(/require\s*\(\s*['"]([^'"]+)['"]\s*\)/g);
+                for (const match of requires) {
+                    imports.push(match[1]);
+                }
+                break;
+                
+            case 'python':
+                // import module or from module import X
+                const pyImports = fileContent.matchAll(/^(?:import|from)\s+([\w.]+)/gm);
+                for (const match of pyImports) {
+                    imports.push(match[1]);
+                }
+                break;
+                
+            // Add other languages as needed
+        }
+        
+        return imports;
+    }
 }

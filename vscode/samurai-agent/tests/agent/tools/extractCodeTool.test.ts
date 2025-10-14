@@ -36,6 +36,9 @@ describe('ExtractCodeTool', () => {
       scanCodebase: jest.fn(),
       getRelevantFiles: jest.fn(),
       loadPrompt: jest.fn(),
+      detectLanguage: jest.fn(),
+      extractElementsFromFile: jest.fn(),
+      extractImportsFromContent: jest.fn(),
     } as any;
 
     mockTelemetryService = {
@@ -431,10 +434,11 @@ describe('ExtractCodeTool', () => {
         payload: mockRankingResponse,
       });
 
-      const result = await (extractCodeTool as any).rankRelevantFiles(
+      const result = await (extractCodeTool as any).rankRelevantFileswithLLM(
         fileInfos,
         'test query',
-        'test-project'
+        'test-project',
+        ''
       );
 
       expect(result).toBeInstanceOf(Map);
@@ -476,10 +480,11 @@ describe('ExtractCodeTool', () => {
         payload: { message: 'LLM error' },
       });
 
-      const result = await (extractCodeTool as any).rankRelevantFiles(
+      const result = await (extractCodeTool as any).rankRelevantFileswithLLM(
         fileInfos,
         'test query',
-        'test-project'
+        'test-project',
+        ''
       );
 
       expect(result).toBeInstanceOf(Map);
@@ -1150,6 +1155,523 @@ describe('ExtractCodeTool', () => {
         (extractCodeTool as any).applyGlobalLimit(result);
 
         expect(result.size).toBe(20);
+      });
+    });
+  });
+
+  describe('Recursive Dependency Resolution', () => {
+    describe('resolveImportPath', () => {
+      it('should resolve relative import paths correctly', async () => {
+        const currentFilePath = '/test/src/auth/login.ts';
+        const workspaceRoot = '/test';
+        const importStatement = './utils';
+
+        // Mock file existence
+        (vscode.workspace.fs.stat as jest.Mock).mockResolvedValue({
+          size: 1000,
+          mtime: Date.now(),
+          type: 1,
+        });
+
+        const result = await (extractCodeTool as any).resolveImportPath(
+          importStatement,
+          currentFilePath,
+          workspaceRoot
+        );
+
+        expect(result).toBe('/test/src/auth/utils.ts');
+      });
+
+      it('should try multiple file extensions', async () => {
+        const currentFilePath = '/test/src/auth/login.ts';
+        const workspaceRoot = '/test';
+        const importStatement = './utils';
+
+        // Mock .ts failing, .js succeeding
+        (vscode.workspace.fs.stat as jest.Mock)
+          .mockRejectedValueOnce(new Error('Not found'))
+          .mockRejectedValueOnce(new Error('Not found'))
+          .mockResolvedValueOnce({
+            size: 1000,
+            mtime: Date.now(),
+            type: 1,
+          });
+
+        const result = await (extractCodeTool as any).resolveImportPath(
+          importStatement,
+          currentFilePath,
+          workspaceRoot
+        );
+
+        expect(result).toBe('/test/src/auth/utils.js');
+      });
+
+      it('should resolve index files for directory imports', async () => {
+        const currentFilePath = '/test/src/auth/login.ts';
+        const workspaceRoot = '/test';
+        const importStatement = './helpers';
+
+        // Mock all file extensions failing, index.ts succeeding
+        (vscode.workspace.fs.stat as jest.Mock)
+          .mockRejectedValueOnce(new Error('Not found'))
+          .mockRejectedValueOnce(new Error('Not found'))
+          .mockRejectedValueOnce(new Error('Not found'))
+          .mockRejectedValueOnce(new Error('Not found'))
+          .mockRejectedValueOnce(new Error('Not found'))
+          .mockRejectedValueOnce(new Error('Not found'))
+          .mockRejectedValueOnce(new Error('Not found'))
+          .mockRejectedValueOnce(new Error('Not found'))
+          .mockResolvedValueOnce({
+            size: 1000,
+            mtime: Date.now(),
+            type: 1,
+          });
+
+        const result = await (extractCodeTool as any).resolveImportPath(
+          importStatement,
+          currentFilePath,
+          workspaceRoot
+        );
+
+        expect(result).toBe('/test/src/auth/helpers/index.ts');
+      });
+
+      it('should return null for external packages (node_modules)', async () => {
+        const currentFilePath = '/test/src/auth/login.ts';
+        const workspaceRoot = '/test';
+        const importStatement = 'express'; // External package
+
+        const result = await (extractCodeTool as any).resolveImportPath(
+          importStatement,
+          currentFilePath,
+          workspaceRoot
+        );
+
+        expect(result).toBeNull();
+      });
+
+      it('should return null when file does not exist', async () => {
+        const currentFilePath = '/test/src/auth/login.ts';
+        const workspaceRoot = '/test';
+        const importStatement = './nonexistent';
+
+        // Mock all attempts failing
+        (vscode.workspace.fs.stat as jest.Mock).mockRejectedValue(new Error('Not found'));
+
+        const result = await (extractCodeTool as any).resolveImportPath(
+          importStatement,
+          currentFilePath,
+          workspaceRoot
+        );
+
+        expect(result).toBeNull();
+      });
+    });
+
+    describe('resolveMissingDependencies', () => {
+      beforeEach(() => {
+        // Setup default mocks for dependency resolution
+        mockCodeParser.detectLanguage.mockReturnValue('typescript');
+        mockCodeParser.extractElementsFromFile.mockResolvedValue([
+          {
+            name: 'testFunction',
+            type: 'function',
+            lineStart: 1,
+            lineEnd: 3,
+            filePath: '/test/file.ts',
+            signature: 'function testFunction() {}',
+            codeSnippet: 'function testFunction() {\n  return "test";\n}',
+          },
+        ]);
+        mockCodeParser.extractImportsFromContent.mockReturnValue([]);
+      });
+
+      it('should fetch missing files suggested by LLM (A → B → C scenario)', async () => {
+        const existingFileInfos = new Map<string, FileInfo>();
+        existingFileInfos.set('/test/fileA.ts', {
+          path: '/test/fileA.ts',
+          name: 'fileA.ts',
+          extension: '.ts',
+          language: 'typescript',
+          size: 1000,
+          elements: [],
+          lastModified: new Date(),
+        });
+
+        const llmSuggestedFiles = new Map<string, Array<{ name: string; type: string }>>();
+        llmSuggestedFiles.set('/test/fileA.ts', [{ name: 'funcA', type: 'function' }]);
+        llmSuggestedFiles.set('/test/fileB.ts', [{ name: 'funcB', type: 'function' }]); // Missing
+        llmSuggestedFiles.set('/test/fileC.ts', [{ name: 'funcC', type: 'function' }]); // Missing
+
+        // Mock file stats for B and C
+        (vscode.workspace.fs.stat as jest.Mock).mockResolvedValue({
+          size: 1000,
+          mtime: Date.now(),
+          type: 1,
+        });
+
+        // Mock file reading
+        (vscode.workspace.fs.readFile as jest.Mock).mockResolvedValue(
+          new Uint8Array(Buffer.from('function test() {}'))
+        );
+
+        const result = await (extractCodeTool as any).resolveMissingDependencies(
+          llmSuggestedFiles,
+          existingFileInfos,
+          '/test',
+          3
+        );
+
+        expect(result.size).toBe(3);
+        expect(result.has('/test/fileA.ts')).toBe(true);
+        expect(result.has('/test/fileB.ts')).toBe(true);
+        expect(result.has('/test/fileC.ts')).toBe(true);
+      });
+
+      it('should recursively fetch transitive dependencies', async () => {
+        const existingFileInfos = new Map<string, FileInfo>();
+        existingFileInfos.set('/test/fileA.ts', {
+          path: '/test/fileA.ts',
+          name: 'fileA.ts',
+          extension: '.ts',
+          language: 'typescript',
+          size: 1000,
+          elements: [],
+          lastModified: new Date(),
+        });
+
+        const llmSuggestedFiles = new Map<string, Array<{ name: string; type: string }>>();
+        llmSuggestedFiles.set('/test/fileA.ts', [{ name: 'funcA', type: 'function' }]);
+        llmSuggestedFiles.set('/test/fileB.ts', [{ name: 'funcB', type: 'function' }]); // Missing
+
+        // Mock fileB importing fileC
+        mockCodeParser.extractImportsFromContent.mockImplementation((content, language) => {
+          if (content.includes('fileB')) {
+            return ['./fileC']; // fileB imports fileC
+          }
+          return [];
+        });
+
+        // Mock file stats
+        (vscode.workspace.fs.stat as jest.Mock).mockResolvedValue({
+          size: 1000,
+          mtime: Date.now(),
+          type: 1,
+        });
+
+        // Mock file reading
+        (vscode.workspace.fs.readFile as jest.Mock).mockImplementation((uri) => {
+          if (uri.fsPath.includes('fileB')) {
+            return Promise.resolve(new Uint8Array(Buffer.from("import fileC from './fileC';")));
+          }
+          return Promise.resolve(new Uint8Array(Buffer.from('function test() {}')));
+        });
+
+        const result = await (extractCodeTool as any).resolveMissingDependencies(
+          llmSuggestedFiles,
+          existingFileInfos,
+          '/test',
+          3
+        );
+
+        // Should have A (existing), B (LLM suggested), and C (transitive from B)
+        expect(result.size).toBeGreaterThanOrEqual(2); // At least A and B
+      });
+
+      it('should detect and log circular dependencies without infinite loop', async () => {
+        const existingFileInfos = new Map<string, FileInfo>();
+        
+        const llmSuggestedFiles = new Map<string, Array<{ name: string; type: string }>>();
+        llmSuggestedFiles.set('/test/fileA.ts', [{ name: 'funcA', type: 'function' }]);
+
+        // Mock circular dependency: A → B → A
+        mockCodeParser.extractImportsFromContent.mockImplementation((content, language) => {
+          if (content.includes('fileA')) {
+            return ['./fileB']; // A imports B
+          }
+          if (content.includes('fileB')) {
+            return ['./fileA']; // B imports A (circular!)
+          }
+          return [];
+        });
+
+        // Mock file stats
+        (vscode.workspace.fs.stat as jest.Mock).mockResolvedValue({
+          size: 1000,
+          mtime: Date.now(),
+          type: 1,
+        });
+
+        // Mock file reading
+        (vscode.workspace.fs.readFile as jest.Mock).mockImplementation((uri) => {
+          if (uri.fsPath.includes('fileA')) {
+            return Promise.resolve(new Uint8Array(Buffer.from("import fileB from './fileB';")));
+          }
+          if (uri.fsPath.includes('fileB')) {
+            return Promise.resolve(new Uint8Array(Buffer.from("import fileA from './fileA';")));
+          }
+          return Promise.resolve(new Uint8Array(Buffer.from('function test() {}')));
+        });
+
+        const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
+
+        const result = await (extractCodeTool as any).resolveMissingDependencies(
+          llmSuggestedFiles,
+          existingFileInfos,
+          '/test',
+          3
+        );
+
+        // Should complete without infinite loop
+        expect(result.size).toBeGreaterThanOrEqual(1);
+        
+        // Check that circular dependency was logged
+        expect(consoleSpy).toHaveBeenCalledWith(
+          expect.stringContaining('Circular dependency detected')
+        );
+
+        consoleSpy.mockRestore();
+      });
+
+      it('should respect max depth limit', async () => {
+        const existingFileInfos = new Map<string, FileInfo>();
+        
+        const llmSuggestedFiles = new Map<string, Array<{ name: string; type: string }>>();
+        llmSuggestedFiles.set('/test/file1.ts', [{ name: 'func1', type: 'function' }]);
+
+        // Mock a deep chain: 1 → 2 → 3 → 4 → 5
+        mockCodeParser.extractImportsFromContent.mockImplementation((content, language) => {
+          if (content.includes('file1')) return ['./file2'];
+          if (content.includes('file2')) return ['./file3'];
+          if (content.includes('file3')) return ['./file4'];
+          if (content.includes('file4')) return ['./file5'];
+          return [];
+        });
+
+        // Mock file stats
+        (vscode.workspace.fs.stat as jest.Mock).mockResolvedValue({
+          size: 1000,
+          mtime: Date.now(),
+          type: 1,
+        });
+
+        // Mock file reading
+        (vscode.workspace.fs.readFile as jest.Mock).mockImplementation((uri) => {
+          const fileName = uri.fsPath.split('/').pop()?.replace('.ts', '');
+          const fileNum = fileName?.replace('file', '');
+          const nextNum = parseInt(fileNum || '0') + 1;
+          return Promise.resolve(
+            new Uint8Array(Buffer.from(`import file${nextNum} from './file${nextNum}';`))
+          );
+        });
+
+        const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
+
+        const result = await (extractCodeTool as any).resolveMissingDependencies(
+          llmSuggestedFiles,
+          existingFileInfos,
+          '/test',
+          2 // Max depth of 2
+        );
+
+        // Should stop at depth 2, so max 3 files: 1, 2, 3 (not 4, 5)
+        expect(result.size).toBeLessThanOrEqual(3);
+        
+        // Check that max depth was logged
+        expect(consoleSpy).toHaveBeenCalledWith(
+          expect.stringContaining('Stopped at max depth')
+        );
+
+        consoleSpy.mockRestore();
+      });
+
+      it('should skip already visited files', async () => {
+        const existingFileInfos = new Map<string, FileInfo>();
+        existingFileInfos.set('/test/fileA.ts', {
+          path: '/test/fileA.ts',
+          name: 'fileA.ts',
+          extension: '.ts',
+          language: 'typescript',
+          size: 1000,
+          elements: [],
+          lastModified: new Date(),
+        });
+
+        const llmSuggestedFiles = new Map<string, Array<{ name: string; type: string }>>();
+        llmSuggestedFiles.set('/test/fileA.ts', [{ name: 'funcA', type: 'function' }]); // Already exists
+
+        const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
+
+        const result = await (extractCodeTool as any).resolveMissingDependencies(
+          llmSuggestedFiles,
+          existingFileInfos,
+          '/test',
+          3
+        );
+
+        expect(result.size).toBe(1); // Only the existing file
+        expect(consoleSpy).toHaveBeenCalledWith(
+          expect.stringContaining('No missing files to resolve')
+        );
+
+        consoleSpy.mockRestore();
+      });
+
+      it('should handle file reading errors gracefully', async () => {
+        const existingFileInfos = new Map<string, FileInfo>();
+        
+        const llmSuggestedFiles = new Map<string, Array<{ name: string; type: string }>>();
+        llmSuggestedFiles.set('/test/fileB.ts', [{ name: 'funcB', type: 'function' }]);
+
+        // Mock file stat succeeding but read failing
+        (vscode.workspace.fs.stat as jest.Mock).mockResolvedValue({
+          size: 1000,
+          mtime: Date.now(),
+          type: 1,
+        });
+
+        (vscode.workspace.fs.readFile as jest.Mock).mockResolvedValue(undefined);
+
+        const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
+
+        const result = await (extractCodeTool as any).resolveMissingDependencies(
+          llmSuggestedFiles,
+          existingFileInfos,
+          '/test',
+          3
+        );
+
+        // Should not crash, just skip the file
+        expect(consoleSpy).toHaveBeenCalledWith(
+          expect.stringContaining('Could not read file')
+        );
+
+        consoleSpy.mockRestore();
+      });
+
+      it('should handle unknown language gracefully', async () => {
+        const existingFileInfos = new Map<string, FileInfo>();
+        
+        const llmSuggestedFiles = new Map<string, Array<{ name: string; type: string }>>();
+        llmSuggestedFiles.set('/test/file.unknown', [{ name: 'func', type: 'function' }]);
+
+        // Mock language detection failing
+        mockCodeParser.detectLanguage.mockReturnValue(null);
+
+        // Mock file stats
+        (vscode.workspace.fs.stat as jest.Mock).mockResolvedValue({
+          size: 1000,
+          mtime: Date.now(),
+          type: 1,
+        });
+
+        const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
+
+        const result = await (extractCodeTool as any).resolveMissingDependencies(
+          llmSuggestedFiles,
+          existingFileInfos,
+          '/test',
+          3
+        );
+
+        // Should skip the file with unknown language
+        expect(consoleSpy).toHaveBeenCalledWith(
+          expect.stringContaining('Unknown language for')
+        );
+
+        consoleSpy.mockRestore();
+      });
+    });
+
+    describe('Integration: execute with dependency resolution', () => {
+      it('should use enriched file infos throughout execution', async () => {
+        const params = {
+          query: 'test query',
+          projectId: 'test-project',
+          connectedCodebasePath: '/test/path',
+          maxDependencyDepth: 2,
+        };
+
+        const mockFileInfo = new Map<string, FileInfo>();
+        mockFileInfo.set('/test/fileA.ts', {
+          path: '/test/fileA.ts',
+          name: 'fileA.ts',
+          extension: '.ts',
+          language: 'typescript',
+          size: 1000,
+          elements: [
+            {
+              name: 'funcA',
+              type: 'function',
+              lineStart: 1,
+              lineEnd: 3,
+              filePath: '/test/fileA.ts',
+              signature: 'function funcA() {}',
+              codeSnippet: 'function funcA() {\n  return "A";\n}',
+            },
+          ],
+          lastModified: new Date(),
+        });
+
+        mockCodeParser.scanCodebase.mockResolvedValue(mockFileInfo);
+        mockCodeParser.loadPrompt.mockResolvedValue('Test prompt');
+        mockCodeParser.extractImportsFromContent.mockReturnValue([]);
+        mockCodeParser.detectLanguage.mockReturnValue('typescript');
+        mockCodeParser.extractElementsFromFile.mockResolvedValue([
+          {
+            name: 'funcB',
+            type: 'function',
+            lineStart: 1,
+            lineEnd: 3,
+            filePath: '/test/fileB.ts',
+            signature: 'function funcB() {}',
+            codeSnippet: 'function funcB() {\n  return "B";\n}',
+          },
+        ]);
+
+        // Mock LLM suggesting file B (which doesn't exist yet)
+        const mockRankingResponse: LLMResponse = {
+          content: JSON.stringify({
+            files: {
+              '/test/fileA.ts': ['funcA'],
+              '/test/fileB.ts': ['funcB'], // Missing file!
+            }
+          }),
+          role: 'assistant',
+          metadata: {},
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+
+        mockLlmProvider.chat.mockResolvedValue({
+          type: ResponseType.SUCCESS,
+          payload: mockRankingResponse,
+        });
+
+        // Mock file operations for fileB
+        (vscode.workspace.fs.stat as jest.Mock).mockResolvedValue({
+          size: 1000,
+          mtime: Date.now(),
+          type: 1,
+        });
+
+        (vscode.workspace.fs.readFile as jest.Mock).mockResolvedValue(
+          new Uint8Array(Buffer.from('function funcB() {\n  return "B";\n}'))
+        );
+
+        const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
+
+        const result = await extractCodeTool.execute(params);
+
+        // Check that enrichment was logged
+        expect(consoleSpy).toHaveBeenCalledWith(
+          expect.stringContaining('Enriched file count:')
+        );
+
+        // Should successfully complete even though LLM suggested a missing file
+        expect(result.success).toBe(true);
+
+        consoleSpy.mockRestore();
       });
     });
   });

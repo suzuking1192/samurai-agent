@@ -59,6 +59,10 @@ When you need to ask questions to the user, phrase them in a way that can be pro
 - List options with "or" between them
 - Examples: "Choose A or B or C", "Select option 1, 2, or 3", "Choose approach A or approach B or approach C"
 
+# LANGUAGE HANDLING
+
+Respond in the same language as the user's last message, keeping technical terms and code in English but translating all explanations and comments.
+
 This formatting enables the system to provide interactive buttons for user responses.
 
 Your response:

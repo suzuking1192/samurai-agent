@@ -564,4 +564,179 @@ class TestClass {
       }
     });
   });
+
+  describe('extractImportsFromContent', () => {
+    it('should extract static imports from TypeScript', () => {
+      const fileContent = `import { func1, func2 } from './utils';
+import DefaultExport from '../helpers';
+import * as Utils from '@/shared/utils';
+
+function test() {
+  return "test";
+}`;
+
+      const result = codeParserService.extractImportsFromContent(fileContent, 'typescript');
+
+      expect(result).toContain('./utils');
+      expect(result).toContain('../helpers');
+      expect(result).toContain('@/shared/utils'); // Extracts all imports, filtering happens in resolveImportPath
+      expect(result.length).toBe(3);
+    });
+
+    it('should extract dynamic imports from TypeScript', () => {
+      const fileContent = `const module1 = import('./module1');
+const module2 = import( './module2' );
+
+function test() {
+  return "test";
+}`;
+
+      const result = codeParserService.extractImportsFromContent(fileContent, 'typescript');
+
+      expect(result).toContain('./module1');
+      expect(result).toContain('./module2');
+      expect(result.length).toBe(2);
+    });
+
+    it('should extract require statements from JavaScript', () => {
+      const fileContent = `const utils = require('./utils');
+const helpers = require('../helpers');
+const express = require('express');
+
+function test() {
+  return "test";
+}`;
+
+      const result = codeParserService.extractImportsFromContent(fileContent, 'javascript');
+
+      expect(result).toContain('./utils');
+      expect(result).toContain('../helpers');
+      expect(result).toContain('express');
+      expect(result.length).toBe(3);
+    });
+
+    it('should extract imports from Python', () => {
+      const fileContent = `import os
+import sys
+from utils import helper
+from .helpers import auth
+
+def test():
+    return "test"`;
+
+      const result = codeParserService.extractImportsFromContent(fileContent, 'python');
+
+      expect(result).toContain('os');
+      expect(result).toContain('sys');
+      expect(result).toContain('utils');
+      expect(result).toContain('.helpers');
+      expect(result.length).toBe(4);
+    });
+
+    it('should handle JSX imports', () => {
+      const fileContent = `import React from 'react';
+import { Component1 } from './components/Component1';
+import Component2 from '../Component2.tsx';
+
+export default function App() {
+  return <div>Test</div>;
+}`;
+
+      const result = codeParserService.extractImportsFromContent(fileContent, 'jsx');
+
+      expect(result).toContain('./components/Component1');
+      expect(result).toContain('../Component2.tsx');
+      expect(result).toContain('react'); // Extracts all imports, filtering happens in resolveImportPath
+    });
+
+    it('should handle TSX imports', () => {
+      const fileContent = `import React, { FC } from 'react';
+import { Props } from './types';
+import styles from './styles.module.css';
+
+const Component: FC<Props> = () => {
+  return <div>Test</div>;
+};`;
+
+      const result = codeParserService.extractImportsFromContent(fileContent, 'tsx');
+
+      expect(result).toContain('./types');
+      expect(result).toContain('./styles.module.css');
+    });
+
+    it('should return empty array for unsupported languages', () => {
+      const fileContent = `some random content`;
+
+      const result = codeParserService.extractImportsFromContent(fileContent, 'unknown');
+
+      expect(result).toEqual([]);
+    });
+
+    it('should return empty array for empty content', () => {
+      const fileContent = '';
+
+      const result = codeParserService.extractImportsFromContent(fileContent, 'typescript');
+
+      expect(result).toEqual([]);
+    });
+
+    it('should handle mixed import types in TypeScript', () => {
+      const fileContent = `import DefaultExport from './default';
+import { named1, named2 } from './named';
+import * as Namespace from './namespace';
+const dynamic = import('./dynamic');
+const required = require('./required');
+
+function test() {
+  return "test";
+}`;
+
+      const result = codeParserService.extractImportsFromContent(fileContent, 'typescript');
+
+      expect(result).toContain('./default');
+      expect(result).toContain('./named');
+      expect(result).toContain('./namespace');
+      expect(result).toContain('./dynamic');
+      expect(result).toContain('./required');
+      expect(result.length).toBe(5);
+    });
+
+    it('should handle imports with quotes correctly', () => {
+      const fileContent = `import single from './single';
+import double from "../double";
+import backtick from \`./backtick\`;
+
+function test() {
+  return "test";
+}`;
+
+      const result = codeParserService.extractImportsFromContent(fileContent, 'typescript');
+
+      expect(result).toContain('./single');
+      expect(result).toContain('../double');
+      // Backticks are not standard import syntax, should not be captured
+    });
+
+    it('should handle Python multiline imports', () => {
+      const fileContent = `import os, sys, json
+from collections import (
+    OrderedDict,
+    defaultdict
+)
+from .utils import (
+    helper1,
+    helper2,
+    helper3
+)
+
+def test():
+    pass`;
+
+      const result = codeParserService.extractImportsFromContent(fileContent, 'python');
+
+      expect(result).toContain('os');
+      expect(result).toContain('collections');
+      expect(result).toContain('.utils');
+    });
+  });
 });

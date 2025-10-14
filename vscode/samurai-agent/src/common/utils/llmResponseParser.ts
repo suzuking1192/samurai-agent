@@ -62,6 +62,97 @@ function sanitizeJsonNewlines(jsonString: string): string {
 }
 
 /**
+ * Helper function to get a snippet of text around a specific position for error reporting
+ */
+function getTextSnippet(text: string, position: number, context: number = 100): string {
+    const start = Math.max(0, position - context);
+    const end = Math.min(text.length, position + context);
+    return text.substring(start, end);
+}
+
+/**
+ * Advanced JSON repair function that analyzes the specific error and applies targeted fixes
+ */
+function repairJsonByError(jsonString: string, error: any): string | null {
+    const errorMessage = error.message || '';
+    const positionMatch = errorMessage.match(/position (\d+)/);
+    
+    if (!positionMatch) {
+        return null;
+    }
+    
+    const errorPosition = parseInt(positionMatch[1], 10);
+    
+    console.log(`[JSON Repair] Analyzing error at position ${errorPosition}:`, {
+        errorMessage,
+        snippet: getTextSnippet(jsonString, errorPosition, 50)
+    });
+    
+    // Strategy 1: Handle incomplete array elements
+    if (errorMessage.includes("after array element")) {
+        // Find the problematic array element and try to fix it
+        const repairAttempts = [
+            // Remove trailing comma and incomplete element
+            jsonString.substring(0, errorPosition).replace(/,\s*$/, '') + jsonString.substring(errorPosition).replace(/^[^\]\}]*/, ''),
+            // Close the array at the error position
+            jsonString.substring(0, errorPosition) + ']' + jsonString.substring(errorPosition).replace(/^[^\}\]]*/, ''),
+            // Remove incomplete string at error position
+            jsonString.substring(0, errorPosition).replace(/"[^"]*$/, ''),
+        ];
+        
+        for (const attempt of repairAttempts) {
+            try {
+                // Try to complete the structure
+                let completed = attempt;
+                const openBraces = (completed.match(/{/g) || []).length;
+                const closeBraces = (completed.match(/}/g) || []).length;
+                const openBrackets = (completed.match(/\[/g) || []).length;
+                const closeBrackets = (completed.match(/\]/g) || []).length;
+                
+                // Add missing closing brackets/braces
+                completed += ']'.repeat(Math.max(0, openBrackets - closeBrackets));
+                completed += '}'.repeat(Math.max(0, openBraces - closeBraces));
+                
+                JSON.parse(completed);
+                return completed;
+            } catch {
+                continue;
+            }
+        }
+    }
+    
+    // Strategy 2: Handle incomplete strings
+    if (errorMessage.includes("string") || errorMessage.includes("Unexpected")) {
+        try {
+            // Try to close incomplete string and complete structure
+            let repaired = jsonString.substring(0, errorPosition);
+            
+            // If we're in an incomplete string, close it
+            const openQuotes = (repaired.match(/"/g) || []).length;
+            if (openQuotes % 2 !== 0) {
+                repaired += '"';
+            }
+            
+            // Complete the structure
+            const openBraces = (repaired.match(/{/g) || []).length;
+            const closeBraces = (repaired.match(/}/g) || []).length;
+            const openBrackets = (repaired.match(/\[/g) || []).length;
+            const closeBrackets = (repaired.match(/\]/g) || []).length;
+            
+            repaired += ']'.repeat(Math.max(0, openBrackets - closeBrackets));
+            repaired += '}'.repeat(Math.max(0, openBraces - closeBraces));
+            
+            JSON.parse(repaired);
+            return repaired;
+        } catch {
+            // Continue to next strategy
+        }
+    }
+    
+    return null;
+}
+
+/**
  * Extracts JSON from LLM responses that may be wrapped in markdown code blocks or be plain JSON.
  * This function handles multiple formats:
  * 1. JSON wrapped in ```json``` code blocks
@@ -73,19 +164,24 @@ function sanitizeJsonNewlines(jsonString: string): string {
  */
 export function extractJsonFromLLMResponse(text: string): any | null {
     if (!text || typeof text !== 'string') {
+        console.error('[JSON Parser] Invalid input: text is not a string');
         return null;
     }
 
     const trimmedText = text.trim();
     if (!trimmedText) {
+        console.error('[JSON Parser] Invalid input: text is empty after trimming');
         return null;
     }
+
+    console.log('[JSON Parser] Starting JSON extraction, text length:', trimmedText.length);
 
     // Strategy 1: Try to find JSON wrapped in markdown code blocks
     const jsonStartMarker = '```json';
     const startIndex = trimmedText.indexOf(jsonStartMarker);
     
     if (startIndex !== -1) {
+        console.log('[JSON Parser] Found ```json marker at position:', startIndex);
         // Find the position after the ```json marker
         const contentStartIndex = startIndex + jsonStartMarker.length;
         
@@ -96,40 +192,76 @@ export function extractJsonFromLLMResponse(text: string): any | null {
             // Extract content between the markers
             const jsonContent = trimmedText.substring(contentStartIndex, lastEndIndex).trim();
             
+            console.log('[JSON Parser] Extracted JSON from code block:', {
+                contentLength: jsonContent.length,
+                startPos: contentStartIndex,
+                endPos: lastEndIndex,
+                firstChars: jsonContent.substring(0, 50),
+                lastChars: jsonContent.substring(Math.max(0, jsonContent.length - 50))
+            });
+            
             if (jsonContent) {
+                // Sanitize literal newlines in string values
+                const sanitizedContent = sanitizeJsonNewlines(jsonContent);
+                
                 try {
-                    // Sanitize literal newlines in string values
-                    const sanitizedContent = sanitizeJsonNewlines(jsonContent);
                     const parsed = JSON.parse(sanitizedContent);
-                    console.log('extractJsonFromLLMResponse - Successfully parsed JSON from code block:', {
+                    console.log('[JSON Parser] ✓ Successfully parsed JSON from code block:', {
                         contentLength: jsonContent.length,
                         hasExtractionQuery: !!parsed.extraction_query,
-                        extractionQueryLength: parsed.extraction_query?.length
+                        extractionQueryLength: parsed.extraction_query?.length,
+                        topLevelKeys: Object.keys(parsed)
                     });
                     return parsed;
-                } catch (error) {
-                    console.warn('Failed to parse JSON content from code block:', error);
+                } catch (error: any) {
+                    console.error('[JSON Parser] ✗ Failed to parse JSON content from code block:', {
+                        error: error.message,
+                        errorName: error.name,
+                        contentLength: jsonContent.length,
+                        snippet: error.message.includes('position') 
+                            ? getTextSnippet(jsonContent, parseInt((error.message.match(/position (\d+)/) || [])[1] || '0', 10), 100)
+                            : jsonContent.substring(0, 200)
+                    });
+                    
+                    // Try error-specific repair
+                    console.log('[JSON Parser] Attempting error-specific repair...');
+                    const repaired = repairJsonByError(sanitizedContent, error);
+                    if (repaired) {
+                        try {
+                            const parsed = JSON.parse(repaired);
+                            console.log('[JSON Parser] ✓ Successfully repaired and parsed JSON');
+                            return parsed;
+                        } catch (repairError) {
+                            console.error('[JSON Parser] ✗ Repair attempt failed:', repairError);
+                        }
+                    }
                     // Fall through to other strategies
                 }
             }
+        } else {
+            console.warn('[JSON Parser] Found ```json marker but no closing ``` or invalid range');
         }
     }
 
     // Strategy 2: Try to parse the entire text as JSON (for plain JSON responses)
+    console.log('[JSON Parser] Strategy 2: Attempting to parse entire text as JSON');
     try {
         const sanitizedText = sanitizeJsonNewlines(trimmedText);
         const parsed = JSON.parse(sanitizedText);
-        console.log('extractJsonFromLLMResponse - Successfully parsed plain JSON:', {
+        console.log('[JSON Parser] ✓ Successfully parsed plain JSON:', {
             contentLength: trimmedText.length,
             hasExtractionQuery: !!parsed.extraction_query,
-            extractionQueryLength: parsed.extraction_query?.length
+            extractionQueryLength: parsed.extraction_query?.length,
+            topLevelKeys: Object.keys(parsed)
         });
         return parsed;
-    } catch (error) {
+    } catch (error: any) {
+        console.log('[JSON Parser] ✗ Strategy 2 failed:', error.message);
         // Fall through to brace counting strategy
     }
 
     // Strategy 3: Use balanced brace counting to find JSON object/array
+    console.log('[JSON Parser] Strategy 3: Using balanced brace counting');
     let braceCount = 0;
     let startIdx = -1;
     let endIdx = -1;
@@ -153,30 +285,91 @@ export function extractJsonFromLLMResponse(text: string): any | null {
         }
     }
 
+    console.log('[JSON Parser] Brace counting result:', {
+        startIdx,
+        endIdx,
+        isArray,
+        finalBraceCount: braceCount
+    });
+
     if (startIdx !== -1 && endIdx !== -1) {
         const jsonCandidate = trimmedText.substring(startIdx, endIdx + 1);
+        const sanitizedCandidate = sanitizeJsonNewlines(jsonCandidate);
+        
         try {
-            const sanitizedCandidate = sanitizeJsonNewlines(jsonCandidate);
             const parsed = JSON.parse(sanitizedCandidate);
-            console.log('extractJsonFromLLMResponse - Successfully parsed JSON using brace counting:', {
+            console.log('[JSON Parser] ✓ Successfully parsed JSON using brace counting:', {
                 contentLength: jsonCandidate.length,
                 hasExtractionQuery: !!parsed.extraction_query,
-                extractionQueryLength: parsed.extraction_query?.length
+                extractionQueryLength: parsed.extraction_query?.length,
+                topLevelKeys: Object.keys(parsed)
             });
             return parsed;
-        } catch (error) {
-            console.warn('Failed to parse JSON using brace counting:', error);
+        } catch (error: any) {
+            console.error('[JSON Parser] ✗ Failed to parse JSON using brace counting:', {
+                error: error.message,
+                jsonLength: jsonCandidate.length,
+                snippet: error.message.includes('position') 
+                    ? getTextSnippet(jsonCandidate, parseInt((error.message.match(/position (\d+)/) || [])[1] || '0', 10), 100)
+                    : jsonCandidate.substring(0, 200)
+            });
+            
+            // Try error-specific repair
+            const repaired = repairJsonByError(sanitizedCandidate, error);
+            if (repaired) {
+                try {
+                    const parsed = JSON.parse(repaired);
+                    console.log('[JSON Parser] ✓ Successfully repaired and parsed JSON from brace counting');
+                    return parsed;
+                } catch (repairError) {
+                    console.error('[JSON Parser] ✗ Repair attempt failed for brace counting:', repairError);
+                }
+            }
         }
     }
 
     // Strategy 4: Handle truncated JSON responses (common with token limits)
     if (startIdx !== -1 && endIdx === -1) {
-        console.log('Detected potentially truncated JSON response, attempting to repair...');
+        console.log('[JSON Parser] Strategy 4: Detected potentially truncated JSON response');
         const truncatedJson = trimmedText.substring(startIdx);
+        
+        console.log('[JSON Parser] Truncated JSON info:', {
+            length: truncatedJson.length,
+            startsWith: truncatedJson.substring(0, 50),
+            endsWith: truncatedJson.substring(Math.max(0, truncatedJson.length - 100)),
+            openBraces: (truncatedJson.match(/{/g) || []).length,
+            closeBraces: (truncatedJson.match(/}/g) || []).length,
+            openBrackets: (truncatedJson.match(/\[/g) || []).length,
+            closeBrackets: (truncatedJson.match(/\]/g) || []).length
+        });
+        
+        // Calculate how many brackets/braces we need to close
+        const openBraces = (truncatedJson.match(/{/g) || []).length;
+        const closeBraces = (truncatedJson.match(/}/g) || []).length;
+        const openBrackets = (truncatedJson.match(/\[/g) || []).length;
+        const closeBrackets = (truncatedJson.match(/\]/g) || []).length;
+        const needCloseBraces = Math.max(0, openBraces - closeBraces);
+        const needCloseBrackets = Math.max(0, openBrackets - closeBrackets);
+        
+        console.log('[JSON Parser] Structure analysis:', {
+            needCloseBraces,
+            needCloseBrackets,
+            totalClosingsNeeded: needCloseBraces + needCloseBrackets
+        });
         
         // Try to repair common truncation patterns
         const repairAttempts = [
-            // Add missing closing braces/brackets
+            // Smart closing based on analysis
+            truncatedJson + ']'.repeat(needCloseBrackets) + '}'.repeat(needCloseBraces),
+            // Handle incomplete string at the end before closing
+            truncatedJson.replace(/"[^"]*$/, '""') + ']'.repeat(needCloseBrackets) + '}'.repeat(needCloseBraces),
+            // Handle trailing comma before closing
+            truncatedJson.replace(/,\s*$/, '') + ']'.repeat(needCloseBrackets) + '}'.repeat(needCloseBraces),
+            // Handle incomplete array element with ellipsis
+            truncatedJson.replace(/,\s*"[^"]*$/, '') + ']'.repeat(needCloseBrackets) + '}'.repeat(needCloseBraces),
+            truncatedJson.replace(/"[^"]*\.\.\.$/, '""') + ']'.repeat(needCloseBrackets) + '}'.repeat(needCloseBraces),
+            truncatedJson.replace(/,\s*"[^"]*\.\.\.$/, '') + ']'.repeat(needCloseBrackets) + '}'.repeat(needCloseBraces),
+            // Try basic closing patterns
             truncatedJson + '}',
             truncatedJson + ']}',
             truncatedJson + '}]}',
@@ -189,78 +382,79 @@ export function extractJsonFromLLMResponse(text: string): any | null {
             truncatedJson.replace(/,\s*$/, '') + '}',
             truncatedJson.replace(/,\s*$/, '') + ']}',
             truncatedJson.replace(/,\s*$/, '') + '}]}',
-            // Handle truncation in the middle of strings (like "Op...")
-            truncatedJson.replace(/"[^"]*\.\.\.$/, '""') + '}',
-            truncatedJson.replace(/"[^"]*\.\.\.$/, '""') + ']}',
-            truncatedJson.replace(/"[^"]*\.\.\.$/, '""') + '}]}',
-            // Handle truncation with ellipsis patterns
-            truncatedJson.replace(/"[^"]*\.\.\.$/, '""') + '}',
-            truncatedJson.replace(/"[^"]*\.\.\.$/, '""') + ']}',
-            truncatedJson.replace(/"[^"]*\.\.\.$/, '""') + '}]}',
-            // Handle incomplete array elements
-            truncatedJson.replace(/,\s*"[^"]*\.\.\.$/, '') + '}',
-            truncatedJson.replace(/,\s*"[^"]*\.\.\.$/, '') + ']}',
-            truncatedJson.replace(/,\s*"[^"]*\.\.\.$/, '') + '}]}',
         ];
 
         for (let i = 0; i < repairAttempts.length; i++) {
             try {
                 const repaired = repairAttempts[i];
-                const parsed = JSON.parse(repaired);
-                console.log(`extractJsonFromLLMResponse - Successfully repaired and parsed truncated JSON (attempt ${i + 1}):`, {
+                const sanitized = sanitizeJsonNewlines(repaired);
+                const parsed = JSON.parse(sanitized);
+                console.log(`[JSON Parser] ✓ Successfully repaired and parsed truncated JSON (attempt ${i + 1}/${repairAttempts.length}):`, {
                     originalLength: truncatedJson.length,
                     repairedLength: repaired.length,
                     hasExtractionQuery: !!parsed.extraction_query,
                     extractionQueryLength: parsed.extraction_query?.length,
                     hasFiles: !!parsed.files,
-                    filesCount: parsed.files ? Object.keys(parsed.files).length : 0
+                    filesCount: parsed.files ? Object.keys(parsed.files).length : 0,
+                    topLevelKeys: Object.keys(parsed)
                 });
                 return parsed;
-            } catch (error) {
-                // Continue to next repair attempt
+            } catch (error: any) {
+                // Log only the last few failed attempts to reduce noise
+                if (i >= repairAttempts.length - 3) {
+                    console.log(`[JSON Parser] Repair attempt ${i + 1} failed:`, error.message.substring(0, 100));
+                }
             }
         }
 
         // Strategy 5: Advanced repair for complex truncation patterns
-        console.log('Attempting advanced JSON repair for complex truncation patterns...');
+        console.log('[JSON Parser] Strategy 5: Attempting advanced JSON repair for complex truncation patterns');
         
         // Try to repair the specific pattern from the log: incomplete array elements
         const advancedRepairAttempts = [
-            // Remove incomplete array elements and close properly
+            // Remove incomplete array elements and close properly with smart closing
+            truncatedJson.replace(/,\s*"[^"]*\.\.\.$/, '') + ']'.repeat(needCloseBrackets) + '}'.repeat(needCloseBraces),
+            // Remove any incomplete element at the end
+            truncatedJson.replace(/,\s*[^,\}\]]*$/, '') + ']'.repeat(needCloseBrackets) + '}'.repeat(needCloseBraces),
+            // Handle nested truncation patterns
+            truncatedJson.replace(/,\s*"[^"]*\.\.\.$/, '') + '}',
             truncatedJson.replace(/,\s*"[^"]*\.\.\.$/, '') + ']}',
             truncatedJson.replace(/,\s*"[^"]*\.\.\.$/, '') + '}]}',
             truncatedJson.replace(/,\s*"[^"]*\.\.\.$/, '') + '}]}]}',
-            // Handle nested truncation patterns
-            truncatedJson.replace(/,\s*"[^"]*\.\.\.$/, '') + '}',
-            // Try to close arrays and objects systematically
-            truncatedJson.replace(/,\s*"[^"]*\.\.\.$/, '') + ']}',
-            truncatedJson.replace(/,\s*"[^"]*\.\.\.$/, '') + '}]}',
             // Handle the specific case where we have incomplete string values
             truncatedJson.replace(/"[^"]*\.\.\.$/, '""') + ']}',
             truncatedJson.replace(/"[^"]*\.\.\.$/, '""') + '}]}',
+            // Try to find the last complete element and close from there
+            truncatedJson.substring(0, truncatedJson.lastIndexOf('"')) + ']'.repeat(needCloseBrackets) + '}'.repeat(needCloseBraces),
         ];
 
         for (let i = 0; i < advancedRepairAttempts.length; i++) {
             try {
                 const repaired = advancedRepairAttempts[i];
-                const parsed = JSON.parse(repaired);
-                console.log(`extractJsonFromLLMResponse - Successfully repaired truncated JSON with advanced strategy (attempt ${i + 1}):`, {
+                const sanitized = sanitizeJsonNewlines(repaired);
+                const parsed = JSON.parse(sanitized);
+                console.log(`[JSON Parser] ✓ Successfully repaired truncated JSON with advanced strategy (attempt ${i + 1}/${advancedRepairAttempts.length}):`, {
                     originalLength: truncatedJson.length,
                     repairedLength: repaired.length,
                     hasExtractionQuery: !!parsed.extraction_query,
                     extractionQueryLength: parsed.extraction_query?.length,
                     hasFiles: !!parsed.files,
-                    filesCount: parsed.files ? Object.keys(parsed.files).length : 0
+                    filesCount: parsed.files ? Object.keys(parsed.files).length : 0,
+                    topLevelKeys: Object.keys(parsed)
                 });
                 return parsed;
-            } catch (error) {
-                // Continue to next repair attempt
+            } catch (error: any) {
+                // Log only the last few failed attempts to reduce noise
+                if (i >= advancedRepairAttempts.length - 2) {
+                    console.log(`[JSON Parser] Advanced repair attempt ${i + 1} failed:`, error.message.substring(0, 100));
+                }
             }
         }
 
-        console.warn('Failed to repair truncated JSON response after all attempts');
+        console.error('[JSON Parser] ✗ Failed to repair truncated JSON response after all attempts');
     }
 
     // All strategies failed
+    console.error('[JSON Parser] ✗ All parsing strategies exhausted, returning null');
     return null;
 }

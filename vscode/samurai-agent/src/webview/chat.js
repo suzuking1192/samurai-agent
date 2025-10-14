@@ -685,6 +685,34 @@
                 chatState.currentSession = currentSession;
             }
 
+            // Update session mode from dropdown before sending message
+            const modeSelect = safeGetDocumentElement('mode-select');
+            const currentMode = modeSelect?.value || 'deep_bug_analysis';
+            
+            // Ensure metadata exists
+            if (!currentSession.metadata) {
+                currentSession.metadata = {};
+            }
+            
+            // Update session metadata if mode has changed or is not set
+            if (currentSession.metadata.mode !== currentMode) {
+                console.log(`Chat: Updating session mode from ${currentSession.metadata.mode || 'not set'} to ${currentMode}`);
+                currentSession.metadata = {
+                    ...currentSession.metadata,
+                    mode: currentMode
+                };
+                
+                // Persist the mode update to the session
+                try {
+                    await globalScope.WebviewApi.persistence.updateSession(sessionId, {
+                        metadata: currentSession.metadata
+                    });
+                    chatState.currentSession = currentSession;
+                } catch (error) {
+                    console.error('Chat: Failed to update session mode:', error);
+                }
+            }
+
             const chatMessages = safeGetDocumentElement('chatMessages');
             const pendingIndicator = document.createElement('div');
             pendingIndicator.className = 'assistant-message pending';

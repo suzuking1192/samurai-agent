@@ -75,6 +75,13 @@ export class SamuraiAgent {
       
       // Check if we should route based on session mode (for deep bug analysis mode)
       const sessionMode = session.metadata?.mode;
+      console.log('[MODE DEBUG] Session mode check:', {
+        sessionMode,
+        hasMetadata: !!session.metadata,
+        metadata: session.metadata,
+        isDeepBugAnalysis: sessionMode === 'deep_bug_analysis'
+      });
+      
       if (sessionMode === 'deep_bug_analysis') {
         // Route directly to deep bug analysis handler
         this.logInvocation("execute", "Routing to deep bug analysis mode based on session mode");
@@ -649,34 +656,128 @@ export class SamuraiAgent {
     this.logInvocation("handleDeepBugAnalysis", userMessage.content);
     
     try {
-      // Format code contexts for prompt injection
-      const formattedCodeContexts = this._formatCodeContextsForPrompt(codeContexts);
-      
       // Build conversation summary
       const conversationSummary = this._buildConversationSummary(chatHistory) + `\n\nLatest user request: ${userMessage.content}`;
+      const bugDescription = userMessage.content;
       
-      // For now, return a placeholder response
-      // In the future, this will load a specialized deep bug analysis prompt
-      // and perform comprehensive bug analysis
-      const placeholderResponse = `🔍 **Deep Bug Analysis Mode** (Under Development)
-
-I'm analyzing your request: "${userMessage.content}"
-
-This mode will provide:
-- Comprehensive root cause analysis
-- Stack trace interpretation
-- Cross-file dependency analysis
-- Potential fix suggestions with code examples
-- Impact assessment of proposed changes
-
-**Current Context:**
-- Project: ${projectDetails ? 'Loaded' : 'Not available'}
-- Code Contexts: ${codeContexts.length} file(s) analyzed
-- Conversation History: ${chatHistory.length} message(s)
-
-For now, I can help you debug issues using the standard discussion mode. Please describe the bug you're experiencing, and I'll do my best to assist!`;
+      // Initialize iteration tracking
+      let iteration = 0;
+      const MAX_ITERATIONS = 2;
+      let accumulatedCodeContexts = [...codeContexts]; // Keep existing contexts
+      let currentAnalysis: any = null;
       
-      return placeholderResponse;
+      console.log(`[Deep Bug Analysis] Starting analysis with ${accumulatedCodeContexts.length} initial code contexts`);
+      
+      // Iterative analysis loop
+      while (iteration < MAX_ITERATIONS) {
+        iteration++;
+        console.log(`[Deep Bug Analysis] Starting iteration ${iteration}/${MAX_ITERATIONS}`);
+        
+        let bugContextAnalysis: any;
+        
+        // Step 1: Determine what code context we need
+        if (iteration === 1) {
+          // First iteration: Analyze bug context needs from scratch
+          bugContextAnalysis = await this.analyzeBugContextNeeds(
+            bugDescription,
+            conversationSummary,
+            projectDetails,
+            accumulatedCodeContexts,
+            iteration,
+            session
+          );
+        } else if (currentAnalysis?.additional_keywords && currentAnalysis?.search_description) {
+          // Second iteration: Use keywords from previous analysis
+          console.log(`[Deep Bug Analysis] Using additional keywords from previous analysis`);
+          bugContextAnalysis = {
+            new_code_context_necessary: true,
+            extraction_query: currentAnalysis.search_description,
+            filenameKeywords: currentAnalysis.additional_keywords.filenameKeywords || [],
+            methodNameKeywords: currentAnalysis.additional_keywords.methodNameKeywords || [],
+            codeKeywords: currentAnalysis.additional_keywords.codeKeywords || [],
+            reasoning: "Using additional keywords provided by previous analysis"
+          };
+        } else {
+          // Fallback: analyze again if no keywords provided
+          bugContextAnalysis = await this.analyzeBugContextNeeds(
+            bugDescription,
+            conversationSummary,
+            projectDetails,
+            accumulatedCodeContexts,
+            iteration,
+            session
+          );
+        }
+        
+        console.log(`[Deep Bug Analysis] Bug context analysis result:`, {
+          needsContext: bugContextAnalysis.new_code_context_necessary,
+          reasoning: bugContextAnalysis.reasoning
+        });
+        
+        // Step 2: Extract code if needed
+        if (bugContextAnalysis.new_code_context_necessary && bugContextAnalysis.extraction_query) {
+          try {
+            console.log(`[Deep Bug Analysis] Extracting code with query: ${bugContextAnalysis.extraction_query.substring(0, 100)}...`);
+            
+            const extractionResult = await this.extractCodeTool.execute({
+              query: bugContextAnalysis.extraction_query,
+              filePathPattern: bugContextAnalysis.filePathPattern,
+              projectId: session.metadata.projectId,
+              sessionId: session.id,
+              connectedCodebasePath: session.metadata.connectedCodebasePath,
+              model: session.metadata.model,
+              filenameKeywords: bugContextAnalysis.filenameKeywords || [],
+              methodNameKeywords: bugContextAnalysis.methodNameKeywords || [],
+              codeKeywords: bugContextAnalysis.codeKeywords || [],
+            });
+            
+            if (extractionResult.success && extractionResult.result) {
+              // Merge with accumulated contexts (don't overwrite)
+              accumulatedCodeContexts = this.mergeCodeContexts(
+                accumulatedCodeContexts,
+                extractionResult.result as ExtractCodeToolResultPayload
+              );
+              console.log(`[Deep Bug Analysis] Code extracted successfully. Total contexts: ${accumulatedCodeContexts.length}`);
+            } else {
+              console.warn(`[Deep Bug Analysis] Code extraction failed: ${extractionResult.error}`);
+            }
+          } catch (extractError) {
+            console.error('[Deep Bug Analysis] Error during code extraction:', extractError);
+            this.telemetryService.captureError(extractError as Error, {
+              service: 'SamuraiAgent',
+              function: 'handleDeepBugAnalysis_extraction',
+              iteration
+            });
+          }
+        }
+        
+        // Step 3: Perform root cause analysis
+        currentAnalysis = await this.performRootCauseAnalysis(
+          bugDescription,
+          conversationSummary,
+          projectDetails,
+          accumulatedCodeContexts,
+          iteration,
+          session
+        );
+        
+        console.log(`[Deep Bug Analysis] Root cause analysis complete:`, {
+          confidence: currentAnalysis.confidence,
+          needsMoreContext: currentAnalysis.needs_more_context,
+          iteration
+        });
+        
+        // Step 4: Check if we need another iteration
+        if (currentAnalysis.confidence >= 70 || !currentAnalysis.needs_more_context || iteration >= MAX_ITERATIONS) {
+          console.log(`[Deep Bug Analysis] Stopping iterations. Confidence: ${currentAnalysis.confidence}, Needs more: ${currentAnalysis.needs_more_context}`);
+          break;
+        }
+        
+        console.log(`[Deep Bug Analysis] Low confidence (${currentAnalysis.confidence}), proceeding to iteration ${iteration + 1}`);
+      }
+      
+      // Format and return the final response
+      return this.formatBugAnalysisResponse(currentAnalysis, accumulatedCodeContexts, iteration);
       
     } catch (error) {
       console.error('Error in handleDeepBugAnalysis:', error);
@@ -687,7 +788,7 @@ For now, I can help you debug issues using the standard discussion mode. Please 
         function: 'handleDeepBugAnalysis' 
       });
       
-      return "Deep bug analysis mode is under development. I'm here to help debug your issues! Please describe what you're experiencing.";
+      return "I encountered an error while analyzing the bug. Please try describing the issue again, and include any error messages or stack traces if available.";
     }
   }
 
@@ -1407,6 +1508,417 @@ For now, I can help you debug issues using the standard discussion mode. Please 
     return formattedSections.length > 0 
       ? formattedSections.join('\n') 
       : "No relevant code elements found in context.";
+  }
+
+  /**
+   * Analyzes what code context is needed to debug a bug
+   * @param bugDescription - Description of the bug from user message
+   * @param conversationSummary - Summary of conversation history
+   * @param projectDetails - Project details context
+   * @param existingCodeContexts - Currently loaded code contexts
+   * @param iteration - Current iteration number
+   * @param session - Current session
+   * @returns Analysis result with extraction query and keywords
+   */
+  private async analyzeBugContextNeeds(
+    bugDescription: string,
+    conversationSummary: string,
+    projectDetails: string,
+    existingCodeContexts: ExtractCodeToolResultPayload[],
+    iteration: number,
+    session: Session
+  ): Promise<{
+    new_code_context_necessary: boolean;
+    extraction_query: string | null;
+    filePathPattern?: string;
+    filenameKeywords?: string[];
+    methodNameKeywords?: string[];
+    codeKeywords?: string[];
+    reasoning: string;
+  }> {
+    this.logInvocation("analyzeBugContextNeeds", `Iteration ${iteration}`);
+    
+    try {
+      // Format existing code contexts
+      const formattedExistingContext = this._formatExistingCodeContextForLLM(existingCodeContexts);
+      
+      // Load and populate the prompt template
+      const promptTemplate = this.readPromptFile('bugAnalysis/analyze_bug_context_needs.md');
+      const populatedPrompt = promptTemplate
+        .replace('{bugDescription}', bugDescription)
+        .replace('{conversationSummary}', conversationSummary)
+        .replace('{projectDetails}', projectDetails || 'No project details available')
+        .replace('{existingCodeContext}', formattedExistingContext)
+        .replace('{iteration}', iteration.toString());
+      
+      // Make LLM call
+      const response = await this.llmProviderService.chat({
+        id: `bug-context-analysis-${Date.now()}`,
+        provider: "auto",
+        model: session.metadata.model || "",
+        messages: [
+          { role: "system", content: populatedPrompt }
+        ],
+        metadata: {
+          type: "bug_context_analysis"
+        },
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+      
+      if (response.type === "error" || !response.payload) {
+        throw new Error(response.error || "LLM request failed");
+      }
+      
+      const llmResponse = response.payload;
+      if (!llmResponse || 'error' in llmResponse) {
+        throw new Error('error' in llmResponse ? llmResponse.error : "LLM request failed");
+      }
+      
+      // Track cost
+      this.trackLLMCost(llmResponse, 'analyzeBugContextNeeds');
+      
+      const responseContent = llmResponse.content?.trim() || "";
+      const parsedResult = extractJsonFromLLMResponse(responseContent);
+      
+      if (!parsedResult || typeof parsedResult !== 'object') {
+        throw new Error(`Failed to parse JSON from LLM response`);
+      }
+      
+      return {
+        new_code_context_necessary: parsedResult.new_code_context_necessary || false,
+        extraction_query: parsedResult.extraction_query || null,
+        filePathPattern: parsedResult.filePathPattern,
+        filenameKeywords: parsedResult.filenameKeywords || [],
+        methodNameKeywords: parsedResult.methodNameKeywords || [],
+        codeKeywords: parsedResult.codeKeywords || [],
+        reasoning: parsedResult.reasoning || "No reasoning provided"
+      };
+      
+    } catch (error) {
+      console.error('Error in analyzeBugContextNeeds:', error);
+      this.telemetryService.captureError(error as Error, {
+        service: 'SamuraiAgent',
+        function: 'analyzeBugContextNeeds',
+        iteration
+      });
+      
+      // Return safe defaults
+      return {
+        new_code_context_necessary: false,
+        extraction_query: null,
+        reasoning: `Error analyzing bug context: ${error instanceof Error ? error.message : 'Unknown error'}`
+      };
+    }
+  }
+
+  /**
+   * Performs root cause analysis on the bug with available code context
+   * @param bugDescription - Description of the bug
+   * @param conversationSummary - Summary of conversation
+   * @param projectDetails - Project details
+   * @param codeContexts - Available code contexts
+   * @param iteration - Current iteration number
+   * @param session - Current session
+   * @returns Analysis result with confidence, root cause, and solutions
+   */
+  private async performRootCauseAnalysis(
+    bugDescription: string,
+    conversationSummary: string,
+    projectDetails: string,
+    codeContexts: ExtractCodeToolResultPayload[],
+    iteration: number,
+    session: Session
+  ): Promise<{
+    analysis_report: string;
+    confidence: number;
+    root_cause: string;
+    proposed_solutions: string[];
+    needs_more_context: boolean;
+    additional_keywords?: {
+      filenameKeywords: string[];
+      methodNameKeywords: string[];
+      codeKeywords: string[];
+    };
+    search_description?: string;
+  }> {
+    this.logInvocation("performRootCauseAnalysis", `Iteration ${iteration}`);
+    
+    try {
+      // Format code contexts
+      const formattedCodeContexts = this._formatCodeContextsForPrompt(codeContexts);
+      
+      // Load and populate the prompt template
+      const promptTemplate = this.readPromptFile('bugAnalysis/root_cause_analysis.md');
+      const populatedPrompt = promptTemplate
+        .replace('{bugDescription}', bugDescription)
+        .replace('{conversationSummary}', conversationSummary)
+        .replace('{projectDetails}', projectDetails || 'No project details available')
+        .replace('{codeContext}', formattedCodeContexts)
+        .replace('{iteration}', iteration.toString());
+      
+      // Make LLM call
+      const response = await this.llmProviderService.chat({
+        id: `root-cause-analysis-${Date.now()}`,
+        provider: "auto",
+        model: session.metadata.model || "",
+        messages: [
+          { role: "system", content: populatedPrompt }
+        ],
+        metadata: {
+          type: "root_cause_analysis"
+        },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        maxTokens: 20000
+      });
+      
+      if (response.type === "error" || !response.payload) {
+        throw new Error(response.error || "LLM request failed");
+      }
+      
+      const llmResponse = response.payload;
+      if (!llmResponse || 'error' in llmResponse) {
+        throw new Error('error' in llmResponse ? llmResponse.error : "LLM request failed");
+      }
+      
+      // Track cost
+      this.trackLLMCost(llmResponse, 'performRootCauseAnalysis');
+      
+      const responseContent = llmResponse.content?.trim() || "";
+      console.log('[performRootCauseAnalysis] Received LLM response:', {
+        contentLength: responseContent.length,
+        provider: llmResponse.provider,
+        model: llmResponse.model,
+        contentPreview: responseContent.substring(0, 200) + (responseContent.length > 200 ? '...' : ''),
+        contentEnd: responseContent.length > 200 ? '...' + responseContent.substring(responseContent.length - 200) : ''
+      });
+      
+      const parsedResult = extractJsonFromLLMResponse(responseContent);
+      
+      if (!parsedResult || typeof parsedResult !== 'object') {
+        console.error('[performRootCauseAnalysis] Failed to parse JSON from LLM response:', {
+          parsedResultType: typeof parsedResult,
+          parsedResult,
+          responseLength: responseContent.length,
+          responsePreview: responseContent.substring(0, 500),
+          responseEnd: responseContent.substring(Math.max(0, responseContent.length - 500))
+        });
+        throw new Error(`Failed to parse JSON from LLM response - received ${typeof parsedResult}, expected object`);
+      }
+      
+      console.log('[performRootCauseAnalysis] Successfully parsed JSON:', {
+        hasAnalysisReport: !!parsedResult.analysis_report,
+        hasConfidence: typeof parsedResult.confidence === 'number',
+        confidence: parsedResult.confidence,
+        hasRootCause: !!parsedResult.root_cause,
+        hasSolutions: Array.isArray(parsedResult.proposed_solutions),
+        solutionsCount: Array.isArray(parsedResult.proposed_solutions) ? parsedResult.proposed_solutions.length : 0,
+        needsMoreContext: parsedResult.needs_more_context,
+        keys: Object.keys(parsedResult)
+      });
+      
+      // Normalize proposed_solutions to ensure they're all strings
+      let normalizedSolutions: string[] = [];
+      if (Array.isArray(parsedResult.proposed_solutions)) {
+        normalizedSolutions = parsedResult.proposed_solutions
+          .map((sol: any) => {
+            // If it's already a string, use it
+            if (typeof sol === 'string') {
+              return sol.trim();
+            }
+            // If it's an object, try to extract meaningful text
+            if (typeof sol === 'object' && sol !== null) {
+              // Try common object fields
+              if (sol.solution) return String(sol.solution).trim();
+              if (sol.description) return String(sol.description).trim();
+              if (sol.text) return String(sol.text).trim();
+              // If none found, JSON stringify as last resort
+              console.warn('[performRootCauseAnalysis] Proposed solution is an object (not a string):', sol);
+              return JSON.stringify(sol);
+            }
+            // For any other type, convert to string
+            return String(sol).trim();
+          })
+          .filter((sol: string) => sol.length > 0); // Remove empty strings
+      }
+      
+      // If we ended up with no solutions, provide a default one
+      if (normalizedSolutions.length === 0) {
+        normalizedSolutions = ["Please provide more details about the bug, including error messages, stack traces, or specific symptoms you're experiencing. This will help identify the root cause and propose specific solutions."];
+      }
+      
+      // Validate and return structured result
+      return {
+        analysis_report: parsedResult.analysis_report || "Analysis could not be completed.",
+        confidence: typeof parsedResult.confidence === 'number' ? parsedResult.confidence : 50,
+        root_cause: parsedResult.root_cause || "Root cause could not be determined.",
+        proposed_solutions: normalizedSolutions,
+        needs_more_context: parsedResult.needs_more_context === true && iteration < 2,
+        additional_keywords: parsedResult.additional_keywords,
+        search_description: parsedResult.search_description
+      };
+      
+    } catch (error) {
+      console.error('[performRootCauseAnalysis] Error in performRootCauseAnalysis:', {
+        error,
+        errorMessage: error instanceof Error ? error.message : 'Unknown error',
+        errorStack: error instanceof Error ? error.stack : undefined,
+        iteration
+      });
+      this.telemetryService.captureError(error as Error, {
+        service: 'SamuraiAgent',
+        function: 'performRootCauseAnalysis',
+        iteration
+      });
+      
+      // Return fallback analysis
+      return {
+        analysis_report: `I encountered an error while analyzing the bug: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        confidence: 0,
+        root_cause: "Unable to determine root cause due to analysis error.",
+        proposed_solutions: ["Please provide more details about the bug, including error messages and stack traces."],
+        needs_more_context: false
+      };
+    }
+  }
+
+  /**
+   * Merges new code contexts with existing ones, avoiding duplicates
+   * @param existing - Existing code contexts
+   * @param newContext - New code context to merge
+   * @returns Merged array of code contexts
+   */
+  private mergeCodeContexts(
+    existing: ExtractCodeToolResultPayload[],
+    newContext: ExtractCodeToolResultPayload
+  ): ExtractCodeToolResultPayload[] {
+    // If no existing contexts, just return the new one in an array
+    if (existing.length === 0) {
+      return [newContext];
+    }
+    
+    // Create a map of existing file paths for quick lookup
+    const existingPaths = new Set<string>();
+    for (const context of existing) {
+      for (const element of context.relevantCodeElements || []) {
+        existingPaths.add(element.path);
+      }
+    }
+    
+    // Filter out new elements that are already in existing contexts
+    const uniqueNewElements = (newContext.relevantCodeElements || []).filter(
+      element => !existingPaths.has(element.path)
+    );
+    
+    // If no new unique elements, just return existing
+    if (uniqueNewElements.length === 0) {
+      console.log('[mergeCodeContexts] No new unique elements found');
+      return existing;
+    }
+    
+    // Create a merged context with unique elements
+    const mergedContext: ExtractCodeToolResultPayload = {
+      relevantCodeElements: uniqueNewElements,
+      files: uniqueNewElements.map(element => ({
+        path: element.path,
+        snippet: element.snippet
+      }))
+    } as ExtractCodeToolResultPayload;
+    
+    console.log(`[mergeCodeContexts] Added ${uniqueNewElements.length} new unique elements`);
+    return [...existing, mergedContext];
+  }
+
+  /**
+   * Formats the bug analysis response for display
+   * @param analysis - Analysis result from performRootCauseAnalysis
+   * @param codeContexts - Code contexts that were analyzed
+   * @param iterations - Number of iterations performed
+   * @returns Formatted markdown response
+   */
+  private formatBugAnalysisResponse(
+    analysis: {
+      analysis_report: string;
+      confidence: number;
+      root_cause: string;
+      proposed_solutions: string[];
+    },
+    codeContexts: ExtractCodeToolResultPayload[],
+    iterations: number
+  ): string {
+    // Determine confidence emoji
+    let confidenceEmoji = '🔴'; // Low
+    if (analysis.confidence >= 70) {
+      confidenceEmoji = '🟢'; // High
+    } else if (analysis.confidence >= 40) {
+      confidenceEmoji = '🟡'; // Medium
+    }
+    
+    // Build file list
+    const filesList: string[] = [];
+    for (const context of codeContexts) {
+      for (const element of context.relevantCodeElements || []) {
+        const elementCount = element.elements?.length || 0;
+        filesList.push(`- ${element.path} (${elementCount} element${elementCount !== 1 ? 's' : ''})`);
+      }
+    }
+    
+    const filesAnalyzed = filesList.length > 0 
+      ? filesList.join('\n')
+      : '- No files analyzed';
+    
+    // Format solutions with defensive handling
+    let solutionsFormatted: string;
+    if (analysis.proposed_solutions && analysis.proposed_solutions.length > 0) {
+      // Ensure all solutions are strings and format them
+      solutionsFormatted = analysis.proposed_solutions
+        .map((sol, idx) => {
+          // Extra defensive check - convert to string if somehow not a string
+          const solutionText = typeof sol === 'string' ? sol : String(sol);
+          return `${idx + 1}. ${solutionText}`;
+        })
+        .join('\n\n'); // Use double newline for better readability
+    } else {
+      // Default fallback - but this should rarely happen now
+      solutionsFormatted = '1. No specific solutions available. Please provide more details about the bug.';
+    }
+    
+    // Build the response with conditional sections
+    let response = `🔍 **Deep Bug Analysis Complete** (Iteration ${iterations}, Confidence: ${analysis.confidence}% ${confidenceEmoji})
+
+${analysis.analysis_report}`;
+
+    // Only include Root Cause section if we have meaningful content
+    if (analysis.root_cause && analysis.root_cause !== "Root cause could not be determined.") {
+      response += `
+
+**Root Cause:**
+${analysis.root_cause}`;
+    }
+
+    // Only include Proposed Solutions section if we have meaningful solutions
+    // Skip the default "no solutions available" message to avoid redundancy
+    if (analysis.proposed_solutions && analysis.proposed_solutions.length > 0) {
+      const hasDefaultMessage = analysis.proposed_solutions.length === 1 && 
+        (analysis.proposed_solutions[0].includes('No specific solutions available') ||
+         analysis.proposed_solutions[0].includes('Please provide more details'));
+      
+      if (!hasDefaultMessage) {
+        response += `
+
+**Proposed Solutions:**
+${solutionsFormatted}`;
+      }
+    }
+
+    // Include files analyzed
+    response += `
+
+**Files Analyzed:**
+${filesAnalyzed}`;
+
+    return response;
   }
 
   private logInvocation(methodName: string, message: string): void {

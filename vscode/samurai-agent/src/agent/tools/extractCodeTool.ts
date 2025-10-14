@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import * as path from "path";
 import {
   ToolDefinition,
   ToolExecutionResult,
@@ -30,6 +31,7 @@ type NormalizedExtractCodeParameters = ExtractCodeParameters & {
   filenameKeywords: string[];
   methodNameKeywords: string[];
   codeKeywords: string[];
+  maxDependencyDepth: number;
 };
 
 export interface ExtractCodeToolResultPayload {
@@ -55,6 +57,7 @@ export interface ExtractCodeParameters {
   filenameKeywords?: string[];
   methodNameKeywords?: string[];
   codeKeywords?: string[];
+  maxDependencyDepth?: number; // Maximum depth for recursive dependency resolution (default: 3)
 }
 
 export class ExtractCodeTool {
@@ -112,6 +115,11 @@ export class ExtractCodeTool {
             items: { type: "string" },
             description: "Optional array of keywords to match against file content.",
           },
+          maxDependencyDepth: {
+            type: "number",
+            description: "Maximum depth for recursive dependency resolution. Higher values find more transitive dependencies but take longer.",
+            default: 3,
+          },
       },
       required: ["query", "projectId"],
       additionalProperties: false,
@@ -154,9 +162,20 @@ export class ExtractCodeTool {
         normalizedParams.model,
       );
 
-      // Perform keyword-based search and merge with LLM selections
-      const keywordSelections = await this.performKeywordBasedSearch(
+      // NEW: Resolve missing dependencies identified by LLM
+      const workspaceRoot = normalizedParams.connectedCodebasePath || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
+      const enrichedFileInfos = await this.resolveMissingDependencies(
+        relevantElementSelections,
         filteredFileInfos,
+        workspaceRoot,
+        normalizedParams.maxDependencyDepth
+      );
+
+      console.log(`ExtractCodeTool: Enriched file count: ${enrichedFileInfos.size} (original: ${filteredFileInfos.size})`);
+
+      // Use enrichedFileInfos for all subsequent operations
+      const keywordSelections = await this.performKeywordBasedSearch(
+        enrichedFileInfos,
         normalizedParams,
       );
 
@@ -166,20 +185,20 @@ export class ExtractCodeTool {
       );
 
       let structuredContext = await this.buildStructuredCodeContextSnippets(
-        filteredFileInfos,
+        enrichedFileInfos,
         mergedSelections,
         GLOBAL_CONTEXT_TOKEN_LIMIT,
       );
 
       if (structuredContext.length === 0) {
         const fallbackSelections = this.heuristicFallbackSelections(
-          filteredFileInfos,
+          enrichedFileInfos,
           normalizedParams.query,
         );
 
         if (fallbackSelections.size) {
           structuredContext = await this.buildStructuredCodeContextSnippets(
-            filteredFileInfos,
+            enrichedFileInfos,
             fallbackSelections,
             GLOBAL_CONTEXT_TOKEN_LIMIT,
           );
@@ -197,13 +216,13 @@ export class ExtractCodeTool {
       })));
 
       const relevantElementSelections_after_step2 = await this.identifyRelevantCodeElementsWithLLM(
-        filteredFileInfos,
+        enrichedFileInfos,
         structuredContext,
         normalizedParams,
       );
 
       let structuredContext_after_step2 = await this.buildStructuredCodeContextSnippets(
-        filteredFileInfos,
+        enrichedFileInfos,
         relevantElementSelections_after_step2,
         GLOBAL_CONTEXT_TOKEN_LIMIT,
       );
@@ -311,6 +330,7 @@ export class ExtractCodeTool {
       filenameKeywords: params.filenameKeywords || [],
       methodNameKeywords: params.methodNameKeywords || [],
       codeKeywords: params.codeKeywords || [],
+      maxDependencyDepth: params.maxDependencyDepth ?? 3,
     };
   }
 
@@ -1057,6 +1077,193 @@ export class ExtractCodeTool {
       
       return undefined;
     }
+  }
+
+  /**
+   * Resolve import path to absolute file path
+   * Returns null for node_modules or unresolvable imports
+   */
+  private async resolveImportPath(
+    importStatement: string,
+    currentFilePath: string,
+    workspaceRoot: string
+  ): Promise<string | null> {
+    // Skip external packages (node_modules)
+    if (!importStatement.startsWith('.') && !importStatement.startsWith('/')) {
+      return null;
+    }
+    
+    const currentDir = path.dirname(currentFilePath);
+    let candidatePath: string;
+    
+    if (importStatement.startsWith('.')) {
+      // Relative import: ./utils or ../helpers
+      candidatePath = path.resolve(currentDir, importStatement);
+    } else {
+      // Absolute import from workspace root: /src/utils
+      candidatePath = path.join(workspaceRoot, importStatement);
+    }
+    
+    // Try common extensions
+    const extensions = ['.ts', '.tsx', '.js', '.jsx', '.py', '.java', '.cpp', '.go'];
+    
+    for (const ext of extensions) {
+      const withExt = candidatePath + ext;
+      try {
+        await vscode.workspace.fs.stat(vscode.Uri.file(withExt));
+        return withExt;
+      } catch {
+        // File doesn't exist, try next
+      }
+    }
+    
+    // Try index files for directory imports
+    const indexPatterns = ['index.ts', 'index.tsx', 'index.js', '__init__.py'];
+    for (const indexFile of indexPatterns) {
+      const indexPath = path.join(candidatePath, indexFile);
+      try {
+        await vscode.workspace.fs.stat(vscode.Uri.file(indexPath));
+        return indexPath;
+      } catch {
+        // Continue
+      }
+    }
+    
+    return null;
+  }
+
+  /**
+   * Recursively resolve and fetch missing dependencies
+   * Protection against infinite recursion:
+   * 1. Visited set tracks all processed files
+   * 2. Max depth limits recursion levels
+   * 3. Only follows local imports (skips node_modules)
+   */
+  private async resolveMissingDependencies(
+    llmSuggestedFiles: Map<string, Array<{name: string; type: string}>>,
+    existingFileInfos: Map<string, FileInfo>,
+    workspaceRoot: string,
+    maxDepth: number = 3
+  ): Promise<Map<string, FileInfo>> {
+    
+    const allFileInfos = new Map(existingFileInfos);
+    const visited = new Set<string>(existingFileInfos.keys()); // Track all seen files
+    const circularDeps = new Map<string, string[]>(); // Track circular dependencies
+    
+    console.log('[Dependency Resolver] Starting with', existingFileInfos.size, 'files');
+    
+    // Find files suggested by LLM but missing from initial scan
+    const missingFiles = new Set<string>();
+    for (const [filePath] of llmSuggestedFiles.entries()) {
+      if (!existingFileInfos.has(filePath)) {
+        missingFiles.add(filePath);
+        console.log('[Dependency Resolver] LLM suggested missing file:', filePath);
+      }
+    }
+    
+    if (missingFiles.size === 0) {
+      console.log('[Dependency Resolver] No missing files to resolve');
+      return allFileInfos;
+    }
+    
+    // Process files level by level
+    let currentLevel = Array.from(missingFiles);
+    let currentDepth = 0;
+    
+    while (currentLevel.length > 0 && currentDepth < maxDepth) {
+      console.log(`[Dependency Resolver] Processing level ${currentDepth} with ${currentLevel.length} files`);
+      const nextLevel: string[] = [];
+      
+      for (const filePath of currentLevel) {
+        // Skip if already visited (prevents infinite loops)
+        if (visited.has(filePath)) {
+          console.log('[Dependency Resolver] Skipping already visited:', filePath);
+          continue;
+        }
+        
+        visited.add(filePath);
+        
+        try {
+          // Check if file exists
+          const uri = vscode.Uri.file(filePath);
+          await vscode.workspace.fs.stat(uri);
+          
+          // Parse the file
+          const language = this.codeParser.detectLanguage(filePath);
+          if (!language) {
+            console.log('[Dependency Resolver] Unknown language for:', filePath);
+            continue;
+          }
+          
+          const elements = await this.codeParser.extractElementsFromFile(filePath, language);
+          const fileContent = await this.readFileSafe(filePath);
+          
+          if (!fileContent) {
+            console.log('[Dependency Resolver] Could not read file:', filePath);
+            continue;
+          }
+          
+          // Extract imports from this file
+          const imports = this.codeParser.extractImportsFromContent(fileContent, language);
+          console.log(`[Dependency Resolver] Found ${imports.length} imports in ${filePath}`);
+          
+          // Resolve each import to absolute path
+          const resolvedImports: string[] = [];
+          for (const importPath of imports) {
+            const resolved = await this.resolveImportPath(importPath, filePath, workspaceRoot);
+            if (resolved) {
+              resolvedImports.push(resolved);
+              
+              // Check for circular dependency
+              if (visited.has(resolved)) {
+                if (!circularDeps.has(filePath)) {
+                  circularDeps.set(filePath, []);
+                }
+                circularDeps.get(filePath)!.push(resolved);
+                console.log('[Dependency Resolver] Circular dependency detected:', filePath, '->', resolved);
+              } else if (!allFileInfos.has(resolved)) {
+                // New file to process in next level
+                nextLevel.push(resolved);
+              }
+            }
+          }
+          
+          // Add file to results
+          const stat = await vscode.workspace.fs.stat(uri);
+          allFileInfos.set(filePath, {
+            path: filePath,
+            name: path.basename(filePath),
+            extension: path.extname(filePath),
+            language,
+            size: stat.size,
+            elements,
+            lastModified: new Date(stat.mtime),
+          });
+          
+          console.log(`[Dependency Resolver] Added ${filePath} with ${elements.length} elements`);
+          
+        } catch (error) {
+          console.warn(`[Dependency Resolver] Error processing ${filePath}:`, error);
+          // Continue with other files
+        }
+      }
+      
+      currentLevel = nextLevel;
+      currentDepth++;
+    }
+    
+    if (currentLevel.length > 0) {
+      console.log(`[Dependency Resolver] Stopped at max depth ${maxDepth}. Remaining files:`, currentLevel.length);
+    }
+    
+    if (circularDeps.size > 0) {
+      console.log('[Dependency Resolver] Circular dependencies found:', 
+        Array.from(circularDeps.entries()).map(([file, deps]) => `${file} -> ${deps.join(', ')}`));
+    }
+    
+    console.log(`[Dependency Resolver] Completed. Total files: ${allFileInfos.size} (added ${allFileInfos.size - existingFileInfos.size})`);
+    
+    return allFileInfos;
   }
 
   private async loadPrompt(relativePath: string): Promise<string> {
