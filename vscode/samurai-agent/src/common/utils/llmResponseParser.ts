@@ -153,6 +153,204 @@ function repairJsonByError(jsonString: string, error: any): string | null {
 }
 
 /**
+ * Specialized parser for spec generation responses that may contain markdown syntax
+ * within JSON string values. This parser is more resilient to backticks, code blocks,
+ * and other markdown formatting that may not be properly escaped.
+ * 
+ * @param text - The raw LLM response content
+ * @returns Array of specs or null if parsing fails
+ */
+function parseSpecGenerationResponse(text: string): any[] | null {
+    console.log('[Spec Parser] Using specialized spec generation parser');
+    
+    // Strategy 1: Try standard parsing first
+    const standardResult = extractJsonFromLLMResponseInternal(text);
+    if (standardResult && Array.isArray(standardResult)) {
+        console.log('[Spec Parser] ✓ Standard parsing succeeded');
+        return standardResult;
+    }
+    
+    // Strategy 2: Try to sanitize backticks and markdown syntax in JSON strings
+    console.log('[Spec Parser] Strategy 2: Sanitizing markdown syntax');
+    let sanitized = text;
+    
+    // Extract the JSON content from markdown code blocks first
+    const jsonStartMarker = '```json';
+    const startIndex = text.indexOf(jsonStartMarker);
+    if (startIndex !== -1) {
+        const contentStartIndex = startIndex + jsonStartMarker.length;
+        const lastEndIndex = text.lastIndexOf('```');
+        if (lastEndIndex > contentStartIndex) {
+            sanitized = text.substring(contentStartIndex, lastEndIndex).trim();
+        }
+    }
+    
+    // Try to fix common issues with markdown in JSON strings
+    // This is tricky because we need to distinguish between JSON structural characters
+    // and characters within string values
+    const sanitizeAttempts = [
+        // Attempt 1: Escape unescaped backticks within string values
+        (content: string) => {
+            let result = '';
+            let inString = false;
+            let escapeNext = false;
+            
+            for (let i = 0; i < content.length; i++) {
+                const char = content[i];
+                
+                if (escapeNext) {
+                    result += char;
+                    escapeNext = false;
+                    continue;
+                }
+                
+                if (char === '\\') {
+                    result += char;
+                    escapeNext = true;
+                    continue;
+                }
+                
+                if (char === '"') {
+                    inString = !inString;
+                    result += char;
+                    continue;
+                }
+                
+                // Escape backticks within strings
+                if (char === '`' && inString) {
+                    result += '\\`';
+                } else {
+                    result += char;
+                }
+            }
+            
+            return result;
+        },
+        
+        // Attempt 2: Try to extract valid specs up to the error point
+        (content: string) => {
+            // Find where the JSON array starts
+            const arrayStart = content.indexOf('[');
+            if (arrayStart === -1) return content;
+            
+            // Try to find complete spec objects
+            let validContent = content.substring(0, arrayStart + 1);
+            let braceCount = 0;
+            let inString = false;
+            let escapeNext = false;
+            let validSpecs = 0;
+            
+            for (let i = arrayStart + 1; i < content.length; i++) {
+                const char = content[i];
+                
+                if (escapeNext) {
+                    validContent += char;
+                    escapeNext = false;
+                    continue;
+                }
+                
+                if (char === '\\') {
+                    validContent += char;
+                    escapeNext = true;
+                    continue;
+                }
+                
+                if (char === '"' && !escapeNext) {
+                    inString = !inString;
+                }
+                
+                if (!inString) {
+                    if (char === '{') braceCount++;
+                    if (char === '}') {
+                        braceCount--;
+                        if (braceCount === 0) {
+                            validSpecs++;
+                            validContent += char;
+                            
+                            // Look ahead for comma or closing bracket
+                            let j = i + 1;
+                            while (j < content.length && /\s/.test(content[j])) {
+                                validContent += content[j];
+                                j++;
+                            }
+                            
+                            if (j < content.length) {
+                                if (content[j] === ',') {
+                                    validContent += ',';
+                                    i = j;
+                                    continue;
+                                } else if (content[j] === ']') {
+                                    validContent += ']';
+                                    console.log(`[Spec Parser] Extracted ${validSpecs} valid specs before error`);
+                                    return validContent;
+                                }
+                            }
+                            continue;
+                        }
+                    }
+                }
+                
+                validContent += char;
+            }
+            
+            // If we got at least one valid spec, close the array
+            if (validSpecs > 0) {
+                validContent += ']';
+                console.log(`[Spec Parser] Extracted ${validSpecs} valid specs with array closure`);
+                return validContent;
+            }
+            
+            return content;
+        }
+    ];
+    
+    // Try each sanitization attempt
+    for (let i = 0; i < sanitizeAttempts.length; i++) {
+        try {
+            const sanitizedContent = sanitizeAttempts[i](sanitized);
+            const sanitizedWithNewlines = sanitizeJsonNewlines(sanitizedContent);
+            const parsed = JSON.parse(sanitizedWithNewlines);
+            
+            if (Array.isArray(parsed)) {
+                console.log(`[Spec Parser] ✓ Sanitization attempt ${i + 1} succeeded, extracted ${parsed.length} specs`);
+                return parsed;
+            }
+        } catch (error: any) {
+            console.log(`[Spec Parser] Sanitization attempt ${i + 1} failed:`, error.message.substring(0, 100));
+        }
+    }
+    
+    // Strategy 3: Try to parse individual specs and build array manually
+    console.log('[Spec Parser] Strategy 3: Attempting to extract individual specs');
+    try {
+        const specs: any[] = [];
+        const specMatches = sanitized.matchAll(/\{[^}]*"title"\s*:\s*"[^"]*"[^}]*"description"\s*:\s*"(?:[^"\\]|\\.)*"[^}]*\}/gs);
+        
+        for (const match of specMatches) {
+            try {
+                const specJson = match[0];
+                const sanitizedSpec = sanitizeJsonNewlines(specJson);
+                const spec = JSON.parse(sanitizedSpec);
+                specs.push(spec);
+            } catch {
+                // Skip invalid specs
+                continue;
+            }
+        }
+        
+        if (specs.length > 0) {
+            console.log(`[Spec Parser] ✓ Extracted ${specs.length} individual specs`);
+            return specs;
+        }
+    } catch (error: any) {
+        console.log('[Spec Parser] Individual spec extraction failed:', error.message);
+    }
+    
+    console.log('[Spec Parser] ✗ All spec parsing strategies failed');
+    return null;
+}
+
+/**
  * Extracts JSON from LLM responses that may be wrapped in markdown code blocks or be plain JSON.
  * This function handles multiple formats:
  * 1. JSON wrapped in ```json``` code blocks
@@ -162,7 +360,7 @@ function repairJsonByError(jsonString: string, error: any): string | null {
  * @param text - The raw LLM response content
  * @returns Parsed JSON object or array, or null if parsing fails
  */
-export function extractJsonFromLLMResponse(text: string): any | null {
+function extractJsonFromLLMResponseInternal(text: string): any | null {
     if (!text || typeof text !== 'string') {
         console.error('[JSON Parser] Invalid input: text is not a string');
         return null;
@@ -457,4 +655,20 @@ export function extractJsonFromLLMResponse(text: string): any | null {
     // All strategies failed
     console.error('[JSON Parser] ✗ All parsing strategies exhausted, returning null');
     return null;
+}
+
+/**
+ * Main export function that chooses the appropriate parsing strategy
+ * @param text - The raw LLM response content
+ * @param options - Optional configuration
+ * @returns Parsed JSON object or array, or null if parsing fails
+ */
+export function extractJsonFromLLMResponse(text: string, options?: { isSpecGeneration?: boolean }): any | null {
+    if (options?.isSpecGeneration) {
+        // Use specialized spec generation parser
+        return parseSpecGenerationResponse(text);
+    }
+    
+    // Use standard parser
+    return extractJsonFromLLMResponseInternal(text);
 }

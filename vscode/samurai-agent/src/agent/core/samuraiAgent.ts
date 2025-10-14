@@ -990,7 +990,8 @@ export class SamuraiAgent {
       }>;
       
       try {
-        const parsedResponse = extractJsonFromLLMResponse(responseContent);
+        // Use specialized spec generation parser for better handling of markdown syntax
+        const parsedResponse = extractJsonFromLLMResponse(responseContent, { isSpecGeneration: true });
         
         // Handle different response formats
         if (Array.isArray(parsedResponse)) {
