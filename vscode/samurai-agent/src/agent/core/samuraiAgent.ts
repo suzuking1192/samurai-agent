@@ -583,8 +583,14 @@ export class SamuraiAgent {
       // Format code contexts for prompt injection
       const formattedCodeContexts = this._formatCodeContextsForPrompt(codeContexts);
 
+      // Include current artifact in context if available
+      let artifactContext = "";
+      if (session.currentArtifact?.textSpec) {
+        artifactContext = `\n\n## CURRENT SPECIFICATION ARTIFACT\n${session.currentArtifact.textSpec}\n`;
+      }
+
       // Build conversation summary
-      const conversationSummary = this._buildConversationSummary(chatHistory) + `\n\nLatest user request: ${userMessage.content}`;
+      const conversationSummary = this._buildConversationSummary(chatHistory) + artifactContext + `\n\nLatest user request: ${userMessage.content}`;
       
       // Load and format the system prompt
       const systemPrompt = await this._loadAndFormatSystemPrompt(
@@ -804,7 +810,14 @@ export class SamuraiAgent {
     try {
       // Format code contexts for prompt injection
       const formattedCodeContexts = this._formatCodeContextsForPrompt(codeContexts);
-      const conversationSummary = this._buildConversationSummary(chatHistory) + `\n\nLatest user request: ${userMessage.content}`;
+      
+      // Include current artifact in context if available
+      let artifactContext = "";
+      if (session.currentArtifact?.textSpec) {
+        artifactContext = `\n\n## CURRENT SPECIFICATION ARTIFACT\n${session.currentArtifact.textSpec}\n`;
+      }
+      
+      const conversationSummary = this._buildConversationSummary(chatHistory) + artifactContext + `\n\nLatest user request: ${userMessage.content}`;
       const basePrompt = await this._loadAndFormatSystemPrompt(
         'specClarification/system_prompt.md',
         {
@@ -816,13 +829,31 @@ export class SamuraiAgent {
         }
       );
 
-      const structuredPrompt = `${basePrompt.trim()}\n\nOUTPUT FORMAT (CRITICAL)\nYou must respond **only** with valid JSON in this exact structure (no extra text):\n{\n  "clarification_text": string,\n  "score": number\n}`;
+      const structuredPrompt = `${basePrompt.trim()}
+
+## OUTPUT FORMAT (CRITICAL - MUST FOLLOW EXACTLY)
+
+You MUST respond with ONLY valid JSON. Do not include any explanatory text before or after the JSON.
+
+Required structure:
+{
+  "clarification_text": "your clarification questions and analysis here",
+  "score": 85
+}
+
+CRITICAL RULES:
+- Start your response with { (opening brace)
+- End your response with } (closing brace)  
+- Do NOT add any conversational text before or after the JSON
+- Do NOT wrap the JSON in markdown code fences
+- The score MUST be a number between 0 and 100`;
 
       const messages: LLMMessage[] = [
         { role: "system", content: structuredPrompt },
-        { role: "system", content: "When responding, output only the JSON object specified. Do not include explanations or extra text." },
+        { role: "system", content: "CRITICAL: Your entire response must be ONLY the JSON object. Start with { and end with }. No other text allowed." },
         ...chatHistory,
-        { role: "user", content: userMessage.content }
+        { role: "user", content: userMessage.content },
+        { role: "user", content: "Please respond with ONLY the JSON object as specified in the system prompt. No conversational text." }
       ];
 
       // Call LLM service
@@ -854,6 +885,18 @@ export class SamuraiAgent {
       
       const responseContent = llmResponse.content?.trim() || "";
       
+      // Log the full LLM response for debugging
+      console.log('[Spec Clarification] Full LLM response:', {
+        contentLength: responseContent.length,
+        contentType: typeof responseContent,
+        firstChars: responseContent.substring(0, 500),
+        lastChars: responseContent.substring(Math.max(0, responseContent.length - 500)),
+        fullResponse: responseContent.length < 3000 ? responseContent : 'Response too long, see first/last chars',
+        hasJsonMarker: responseContent.includes('```json'),
+        startsWithBrace: responseContent.trim().startsWith('{'),
+        endsWithBrace: responseContent.trim().endsWith('}')
+      });
+      
       // Parse and validate the JSON response
       try {
         const parsedResult = extractJsonFromLLMResponse(
@@ -862,12 +905,47 @@ export class SamuraiAgent {
         
         // Check if parsing was successful
         if (!parsedResult) {
+          console.error('[Spec Clarification] Failed to parse LLM response:', {
+            responseContentLength: responseContent.length,
+            responsePreview: responseContent.substring(0, 1000),
+            responseSuffix: responseContent.substring(Math.max(0, responseContent.length - 1000))
+          });
           throw new Error('Failed to parse JSON from LLM response');
         }
         
+        console.log('[Spec Clarification] Successfully parsed JSON:', {
+          hasClarificationText: !!parsedResult.clarification_text,
+          hasScore: parsedResult.score !== undefined && parsedResult.score !== null,
+          scoreValue: parsedResult.score,
+          scoreType: typeof parsedResult.score,
+          parsedKeys: Object.keys(parsedResult)
+        });
+        
         // Validate score is in range 0-100
         if (typeof parsedResult.score !== 'number' || parsedResult.score < 0 || parsedResult.score > 100) {
+          console.error('[Spec Clarification] Invalid score value:', {
+            scoreValue: parsedResult.score,
+            scoreType: typeof parsedResult.score,
+            parsedResult: parsedResult
+          });
           throw new Error(`Invalid score value: ${parsedResult.score}. Score must be between 0 and 100.`);
+        }
+        
+        // Trigger artifact generation asynchronously (fire and forget)
+        try {
+          this.generateSpecArtifact(session, chatHistory, projectDetails, codeContexts)
+            .then(async (artifact) => {
+              // Update session with new artifact
+              await this.dataStore.updateSession(session.id, {
+                currentArtifact: artifact
+              });
+              console.log('Spec artifact generated and saved successfully');
+            })
+            .catch(error => {
+              console.error('Failed to generate artifact:', error);
+            });
+        } catch (error) {
+          console.error('Error initiating artifact generation:', error);
         }
         
         return parsedResult;
@@ -912,8 +990,14 @@ export class SamuraiAgent {
       // Format code contexts for prompt injection
       const formattedCodeContexts = this._formatCodeContextsForPrompt(codeContexts);
       
+      // Include current artifact in context if available
+      let artifactContext = "";
+      if (session.currentArtifact?.textSpec) {
+        artifactContext = `\n\n## CURRENT SPECIFICATION ARTIFACT\n${session.currentArtifact.textSpec}\n`;
+      }
+      
       // Build conversation summary
-      const conversationSummary = this._buildConversationSummary(chatHistory) + `\n\nLatest user request: ${userMessage.content}`;
+      const conversationSummary = this._buildConversationSummary(chatHistory) + artifactContext + `\n\nLatest user request: ${userMessage.content}`;
       
       // Load and format the system prompt
       const systemPrompt = await this._loadAndFormatSystemPrompt(
@@ -1108,10 +1192,11 @@ export class SamuraiAgent {
           const specData = parsedSpecs[i];
           try {
             // All remaining specs should be children of the root spec
+            // Always use rootSpecId - ignore LLM's parent_spec_id which may be a title string
             const createSpecResult = await this.createSpecTool.execute({
               title: specData.title,
               description: specData.description,
-              parentSpecId: specData.parent_spec_id || rootSpecId,
+              parentSpecId: rootSpecId,
               depth: 2
             });
             
@@ -1164,6 +1249,11 @@ export class SamuraiAgent {
             
             console.warn(`Error updating parent spec hasSubspecs: ${error instanceof Error ? error.message : 'Unknown error'}`);
           }
+        }
+        
+        // Verify and repair spec relationships to ensure integrity
+        if (createdSpecs.length > 0) {
+          await this.verifyAndRepairSpecRelationships(createdSpecs, rootSpecId);
         }
       }
       
@@ -1227,6 +1317,273 @@ export class SamuraiAgent {
         message: `Error generating specs: ${error instanceof Error ? error.message : 'Unknown error'}`,
         metadata: { error: error instanceof Error ? error.message : 'Unknown error' }
       };
+    }
+  }
+
+  /**
+   * Verifies and repairs spec parent-child relationships after creation
+   * Ensures the first spec is the parent and all others are children of it
+   * 
+   * @param createdSpecs - Array of specs that were just created
+   * @param expectedParentId - The expected parent spec ID (from the first spec)
+   */
+  private async verifyAndRepairSpecRelationships(
+    createdSpecs: any[],
+    expectedParentId: string | null
+  ): Promise<void> {
+    if (!expectedParentId || createdSpecs.length === 0) {
+      console.log('[Spec Verification] No specs to verify or no parent ID provided');
+      return;
+    }
+
+    console.log(`[Spec Verification] Starting verification for ${createdSpecs.length} specs with expected parent ID: ${expectedParentId}`);
+    
+    try {
+      // Load all specs from persistence to verify the saved state
+      const loadResult = this.dataStore.handleWebviewMessage({
+        command: "loadSpecs",
+      });
+
+      if (loadResult.type === "error" || !loadResult.payload) {
+        console.warn('[Spec Verification] Failed to load specs for verification:', loadResult.error);
+        return;
+      }
+
+      const allSpecs = loadResult.payload as any[];
+      const createdSpecIds = new Set(createdSpecs.map(s => s.id));
+      const specsToVerify = allSpecs.filter(s => createdSpecIds.has(s.id));
+
+      console.log(`[Spec Verification] Loaded ${specsToVerify.length} specs from persistence for verification`);
+
+      let fixedCount = 0;
+      let issues: string[] = [];
+
+      // Verify parent spec (first spec)
+      const parentSpec = specsToVerify.find(s => s.id === expectedParentId);
+      if (parentSpec) {
+        let parentNeedsUpdate = false;
+        const parentUpdates: any = { ...parentSpec };
+
+        // Check parent properties
+        if (parentSpec.depth !== 1) {
+          issues.push(`Parent spec depth is ${parentSpec.depth}, expected 1`);
+          parentUpdates.depth = 1;
+          parentNeedsUpdate = true;
+        }
+        if (parentSpec.parentSpecId !== null) {
+          issues.push(`Parent spec has parentSpecId: ${parentSpec.parentSpecId}, expected null`);
+          parentUpdates.parentSpecId = null;
+          parentNeedsUpdate = true;
+        }
+        
+        // Check if parent should have hasSubspecs flag
+        const hasChildren = specsToVerify.some(s => s.id !== expectedParentId);
+        if (hasChildren && !parentSpec.hasSubspecs) {
+          issues.push(`Parent spec hasSubspecs is false, but has ${specsToVerify.length - 1} children`);
+          parentUpdates.hasSubspecs = true;
+          parentNeedsUpdate = true;
+        }
+
+        if (parentNeedsUpdate) {
+          console.log(`[Spec Verification] Fixing parent spec: ${parentSpec.title}`);
+          const updateResult = this.dataStore.handleWebviewMessage({
+            command: "saveSpec",
+            payload: parentUpdates,
+          });
+          
+          if (updateResult.type === "success") {
+            fixedCount++;
+          } else {
+            console.warn(`[Spec Verification] Failed to fix parent spec:`, updateResult.error);
+          }
+        }
+      } else {
+        console.warn(`[Spec Verification] Parent spec with ID ${expectedParentId} not found in loaded specs`);
+      }
+
+      // Verify child specs
+      for (const spec of specsToVerify) {
+        if (spec.id === expectedParentId) {
+          continue; // Skip parent, already checked
+        }
+
+        let childNeedsUpdate = false;
+        const childUpdates: any = { ...spec };
+
+        // Check child properties
+        if (spec.depth !== 2) {
+          issues.push(`Child spec "${spec.title}" depth is ${spec.depth}, expected 2`);
+          childUpdates.depth = 2;
+          childNeedsUpdate = true;
+        }
+        if (spec.parentSpecId !== expectedParentId) {
+          issues.push(`Child spec "${spec.title}" has parentSpecId: ${spec.parentSpecId}, expected ${expectedParentId}`);
+          childUpdates.parentSpecId = expectedParentId;
+          childNeedsUpdate = true;
+        }
+
+        if (childNeedsUpdate) {
+          console.log(`[Spec Verification] Fixing child spec: ${spec.title}`);
+          const updateResult = this.dataStore.handleWebviewMessage({
+            command: "saveSpec",
+            payload: childUpdates,
+          });
+          
+          if (updateResult.type === "success") {
+            fixedCount++;
+          } else {
+            console.warn(`[Spec Verification] Failed to fix child spec:`, updateResult.error);
+          }
+        }
+      }
+
+      // Log results
+      if (issues.length > 0) {
+        console.log(`[Spec Verification] Found ${issues.length} issue(s):`);
+        issues.forEach(issue => console.log(`  - ${issue}`));
+        console.log(`[Spec Verification] Fixed ${fixedCount} spec(s)`);
+      } else {
+        console.log(`[Spec Verification] ✓ All specs have correct relationships`);
+      }
+
+    } catch (error) {
+      console.error('[Spec Verification] Error during verification:', error);
+      this.telemetryService.captureError(error as Error, { 
+        service: 'SamuraiAgent', 
+        function: 'verifyAndRepairSpecRelationships',
+        expectedParentId
+      });
+    }
+  }
+
+  public async generateSpecArtifact(
+    session: Session,
+    chatHistory: LLMMessage[],
+    projectDetails: string,
+    codeContexts: ExtractCodeToolResultPayload[]
+  ): Promise<{ mermaidData: string; textSpec: string; timestamp: number }> {
+    this.logInvocation("generateSpecArtifact", "Generating spec artifact");
+    
+    try {
+      // Format contexts
+      const formattedCodeContexts = this._formatCodeContextsForPrompt(codeContexts);
+      const conversationSummary = this._buildConversationSummary(chatHistory);
+      
+      // Load artifact generation prompt
+      const systemPrompt = await this._loadAndFormatSystemPrompt(
+        'specArtifact/system_prompt.md',
+        {
+          projectDetails,
+          codeContexts: formattedCodeContexts,
+          conversationSummary,
+        }
+      );
+      
+      // Call LLM
+      const messages: LLMMessage[] = [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: "Generate the architecture artifact based on our conversation." }
+      ];
+      
+      const response = await this.llmProviderService.chat({
+        id: `artifact-generation-${Date.now()}`,
+        provider: "auto",
+        model: session.metadata.model || "",
+        messages,
+        metadata: { type: "artifact_generation" },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        maxTokens: 8000,
+      });
+      
+      console.log('[Artifact Generation] LLM response received:', {
+        responseType: response.type,
+        hasPayload: !!response.payload,
+        responseKeys: response ? Object.keys(response) : []
+      });
+      
+      if (response.type === "error" || !response.payload) {
+        console.error('[Artifact Generation] Error response:', {
+          type: response.type,
+          error: response.error,
+          fullResponse: JSON.stringify(response, null, 2)
+        });
+        throw new Error(response.error || "LLM request failed");
+      }
+      
+      // Parse response
+      const llmResponse = response.payload;
+      console.log('[Artifact Generation] LLM payload structure:', {
+        isNull: llmResponse === null,
+        isUndefined: llmResponse === undefined,
+        type: typeof llmResponse,
+        hasError: 'error' in llmResponse,
+        keys: llmResponse ? Object.keys(llmResponse) : [],
+        hasContent: 'content' in llmResponse,
+        contentType: llmResponse && 'content' in llmResponse ? typeof llmResponse.content : 'N/A'
+      });
+      
+      if (!llmResponse || 'error' in llmResponse) {
+        console.error('[Artifact Generation] Invalid LLM response payload:', {
+          llmResponse: llmResponse ? JSON.stringify(llmResponse, null, 2).substring(0, 500) : 'null/undefined'
+        });
+        throw new Error("Invalid LLM response");
+      }
+      
+      // Log the raw content before parsing
+      const rawContent = llmResponse.content || "";
+      console.log('[Artifact Generation] Raw LLM content:', {
+        contentLength: rawContent.length,
+        contentType: typeof rawContent,
+        isString: typeof rawContent === 'string',
+        firstChars: typeof rawContent === 'string' ? rawContent.substring(0, 200) : 'NOT A STRING',
+        lastChars: typeof rawContent === 'string' ? rawContent.substring(Math.max(0, rawContent.length - 200)) : 'NOT A STRING',
+        fullContentPreview: typeof rawContent === 'string' && rawContent.length < 1000 ? rawContent : 'Content too long or not a string'
+      });
+      
+      const artifactData = extractJsonFromLLMResponse(rawContent);
+      
+      console.log('[Artifact Generation] Parsed artifact data:', {
+        isNull: artifactData === null,
+        isUndefined: artifactData === undefined,
+        type: typeof artifactData,
+        keys: artifactData ? Object.keys(artifactData) : [],
+        hasMermaidData: artifactData && 'mermaidData' in artifactData,
+        hasTextSpec: artifactData && 'textSpec' in artifactData,
+        mermaidDataType: artifactData?.mermaidData ? typeof artifactData.mermaidData : 'N/A',
+        textSpecType: artifactData?.textSpec ? typeof artifactData.textSpec : 'N/A',
+        mermaidDataLength: artifactData?.mermaidData ? artifactData.mermaidData.length : 0,
+        textSpecLength: artifactData?.textSpec ? artifactData.textSpec.length : 0
+      });
+      
+      if (!artifactData || !artifactData.mermaidData || !artifactData.textSpec) {
+        console.error('[Artifact Generation] Invalid artifact data structure:', {
+          artifactData: artifactData ? JSON.stringify(artifactData, null, 2).substring(0, 500) : 'null/undefined',
+          hasMermaidData: !!artifactData?.mermaidData,
+          hasTextSpec: !!artifactData?.textSpec,
+          fullArtifactData: artifactData
+        });
+        throw new Error("Invalid artifact data structure");
+      }
+      
+      console.log('[Artifact Generation] ✓ Successfully generated artifact:', {
+        mermaidDataLength: artifactData.mermaidData.length,
+        textSpecLength: artifactData.textSpec.length,
+        timestamp: Date.now()
+      });
+      
+      return {
+        mermaidData: artifactData.mermaidData,
+        textSpec: artifactData.textSpec,
+        timestamp: Date.now()
+      };
+    } catch (error) {
+      console.error('[Artifact Generation] ✗ Error generating spec artifact:', {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : 'No stack trace',
+        errorType: error instanceof Error ? error.constructor.name : typeof error
+      });
+      throw error;
     }
   }
 

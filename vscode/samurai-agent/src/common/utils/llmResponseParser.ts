@@ -88,6 +88,47 @@ function repairJsonByError(jsonString: string, error: any): string | null {
         snippet: getTextSnippet(jsonString, errorPosition, 50)
     });
     
+    // Strategy 0: Handle unterminated strings (common with truncated responses)
+    if (errorMessage.includes("Unterminated string")) {
+        console.log('[JSON Repair] Detected unterminated string, attempting to close it');
+        
+        try {
+            // The string extends to the end of the input
+            // We need to close the string and then complete the JSON structure
+            let repaired = jsonString;
+            
+            // Check if we need to add closing quote
+            const lastChar = repaired[repaired.length - 1];
+            if (lastChar !== '"') {
+                // Close the unterminated string
+                repaired += '"';
+            }
+            
+            // Now complete the JSON structure
+            const openBraces = (repaired.match(/{/g) || []).length;
+            const closeBraces = (repaired.match(/}/g) || []).length;
+            const openBrackets = (repaired.match(/\[/g) || []).length;
+            const closeBrackets = (repaired.match(/\]/g) || []).length;
+            
+            // Add missing closing brackets/braces
+            repaired += ']'.repeat(Math.max(0, openBrackets - closeBrackets));
+            repaired += '}'.repeat(Math.max(0, openBraces - closeBraces));
+            
+            console.log('[JSON Repair] Attempting to parse repaired string (unterminated):', {
+                originalLength: jsonString.length,
+                repairedLength: repaired.length,
+                addedChars: repaired.length - jsonString.length,
+                endsWith: repaired.substring(Math.max(0, repaired.length - 50))
+            });
+            
+            JSON.parse(repaired);
+            return repaired;
+        } catch (repairError) {
+            console.log('[JSON Repair] Unterminated string repair failed:', repairError);
+            // Continue to other strategies
+        }
+    }
+    
     // Strategy 1: Handle incomplete array elements
     if (errorMessage.includes("after array element")) {
         // Find the problematic array element and try to fix it
@@ -362,7 +403,13 @@ function parseSpecGenerationResponse(text: string): any[] | null {
  */
 function extractJsonFromLLMResponseInternal(text: string): any | null {
     if (!text || typeof text !== 'string') {
-        console.error('[JSON Parser] Invalid input: text is not a string');
+        console.error('[JSON Parser] Invalid input: text is not a string', {
+            textType: typeof text,
+            textValue: text,
+            isNull: text === null,
+            isUndefined: text === undefined,
+            textConstructor: text?.constructor?.name || 'N/A'
+        });
         return null;
     }
 
@@ -373,10 +420,17 @@ function extractJsonFromLLMResponseInternal(text: string): any | null {
     }
 
     console.log('[JSON Parser] Starting JSON extraction, text length:', trimmedText.length);
+    console.log('[JSON Parser] Full response text:', {
+        firstChars: trimmedText.substring(0, 500),
+        lastChars: trimmedText.substring(Math.max(0, trimmedText.length - 500)),
+        fullText: trimmedText.length < 2000 ? trimmedText : 'Response too long, see first/last chars'
+    });
 
     // Strategy 1: Try to find JSON wrapped in markdown code blocks
     const jsonStartMarker = '```json';
     const startIndex = trimmedText.indexOf(jsonStartMarker);
+    
+    console.log('[JSON Parser] Strategy 1: Searching for ```json markers');
     
     if (startIndex !== -1) {
         console.log('[JSON Parser] Found ```json marker at position:', startIndex);
@@ -386,9 +440,12 @@ function extractJsonFromLLMResponseInternal(text: string): any | null {
         // Find the last ``` marker
         const endMarker = '```';
         const lastEndIndex = trimmedText.lastIndexOf(endMarker);
+        
+        let jsonContent = '';
+        
         if (lastEndIndex !== -1 && lastEndIndex > contentStartIndex) {
             // Extract content between the markers
-            const jsonContent = trimmedText.substring(contentStartIndex, lastEndIndex).trim();
+            jsonContent = trimmedText.substring(contentStartIndex, lastEndIndex).trim();
             
             console.log('[JSON Parser] Extracted JSON from code block:', {
                 contentLength: jsonContent.length,
@@ -397,48 +454,107 @@ function extractJsonFromLLMResponseInternal(text: string): any | null {
                 firstChars: jsonContent.substring(0, 50),
                 lastChars: jsonContent.substring(Math.max(0, jsonContent.length - 50))
             });
+        } else {
+            // No closing ``` found or it's before the opening - extract from opening marker to end
+            console.log('[JSON Parser] No valid closing ``` found, extracting from ```json to end of text');
+            jsonContent = trimmedText.substring(contentStartIndex).trim();
             
-            if (jsonContent) {
-                // Sanitize literal newlines in string values
-                const sanitizedContent = sanitizeJsonNewlines(jsonContent);
+            // Try to find where JSON actually ends (might be followed by non-JSON text)
+            // Look for the last } or ] that balances the opening { or [
+            let braceCount = 0;
+            let bracketCount = 0;
+            let lastValidEnd = -1;
+            let inString = false;
+            let escapeNext = false;
+            
+            for (let i = 0; i < jsonContent.length; i++) {
+                const char = jsonContent[i];
                 
-                try {
-                    const parsed = JSON.parse(sanitizedContent);
-                    console.log('[JSON Parser] ✓ Successfully parsed JSON from code block:', {
-                        contentLength: jsonContent.length,
-                        hasExtractionQuery: !!parsed.extraction_query,
-                        extractionQueryLength: parsed.extraction_query?.length,
-                        topLevelKeys: Object.keys(parsed)
-                    });
-                    return parsed;
-                } catch (error: any) {
-                    console.error('[JSON Parser] ✗ Failed to parse JSON content from code block:', {
-                        error: error.message,
-                        errorName: error.name,
-                        contentLength: jsonContent.length,
-                        snippet: error.message.includes('position') 
-                            ? getTextSnippet(jsonContent, parseInt((error.message.match(/position (\d+)/) || [])[1] || '0', 10), 100)
-                            : jsonContent.substring(0, 200)
-                    });
-                    
-                    // Try error-specific repair
-                    console.log('[JSON Parser] Attempting error-specific repair...');
-                    const repaired = repairJsonByError(sanitizedContent, error);
-                    if (repaired) {
-                        try {
-                            const parsed = JSON.parse(repaired);
-                            console.log('[JSON Parser] ✓ Successfully repaired and parsed JSON');
-                            return parsed;
-                        } catch (repairError) {
-                            console.error('[JSON Parser] ✗ Repair attempt failed:', repairError);
+                if (escapeNext) {
+                    escapeNext = false;
+                    continue;
+                }
+                
+                if (char === '\\') {
+                    escapeNext = true;
+                    continue;
+                }
+                
+                if (char === '"') {
+                    inString = !inString;
+                    continue;
+                }
+                
+                if (!inString) {
+                    if (char === '{') braceCount++;
+                    else if (char === '}') {
+                        braceCount--;
+                        if (braceCount === 0 && bracketCount === 0) {
+                            lastValidEnd = i;
+                        }
+                    } else if (char === '[') bracketCount++;
+                    else if (char === ']') {
+                        bracketCount--;
+                        if (braceCount === 0 && bracketCount === 0) {
+                            lastValidEnd = i;
                         }
                     }
-                    // Fall through to other strategies
                 }
             }
-        } else {
-            console.warn('[JSON Parser] Found ```json marker but no closing ``` or invalid range');
+            
+            if (lastValidEnd !== -1) {
+                console.log('[JSON Parser] Found balanced JSON ending at position:', lastValidEnd);
+                jsonContent = jsonContent.substring(0, lastValidEnd + 1);
+            }
+            
+            console.log('[JSON Parser] Extracted JSON without closing marker:', {
+                contentLength: jsonContent.length,
+                startPos: contentStartIndex,
+                firstChars: jsonContent.substring(0, 50),
+                lastChars: jsonContent.substring(Math.max(0, jsonContent.length - 50))
+            });
         }
+            
+        if (jsonContent) {
+            // Sanitize literal newlines in string values
+            const sanitizedContent = sanitizeJsonNewlines(jsonContent);
+            
+            try {
+                const parsed = JSON.parse(sanitizedContent);
+                console.log('[JSON Parser] ✓ Successfully parsed JSON from code block:', {
+                    contentLength: jsonContent.length,
+                    hasExtractionQuery: !!parsed.extraction_query,
+                    extractionQueryLength: parsed.extraction_query?.length,
+                    topLevelKeys: Object.keys(parsed)
+                });
+                return parsed;
+            } catch (error: any) {
+                console.error('[JSON Parser] ✗ Failed to parse JSON content from code block:', {
+                    error: error.message,
+                    errorName: error.name,
+                    contentLength: jsonContent.length,
+                    snippet: error.message.includes('position') 
+                        ? getTextSnippet(jsonContent, parseInt((error.message.match(/position (\d+)/) || [])[1] || '0', 10), 100)
+                        : jsonContent.substring(0, 200)
+                });
+                
+                // Try error-specific repair
+                console.log('[JSON Parser] Attempting error-specific repair...');
+                const repaired = repairJsonByError(sanitizedContent, error);
+                if (repaired) {
+                    try {
+                        const parsed = JSON.parse(repaired);
+                        console.log('[JSON Parser] ✓ Successfully repaired and parsed JSON');
+                        return parsed;
+                    } catch (repairError) {
+                        console.error('[JSON Parser] ✗ Repair attempt failed:', repairError);
+                    }
+                }
+                // Fall through to other strategies
+            }
+        }
+    } else {
+        console.log('[JSON Parser] Strategy 1: No ```json markers found in response, skipping to Strategy 2');
     }
 
     // Strategy 2: Try to parse the entire text as JSON (for plain JSON responses)
@@ -658,6 +774,88 @@ function extractJsonFromLLMResponseInternal(text: string): any | null {
 }
 
 /**
+ * Attempts to extract a score value from the end of the response text as a fallback.
+ * This handles cases where the main JSON parsing might extract only part of the JSON
+ * and miss the score field at the end.
+ * 
+ * @param text - The raw response text
+ * @returns The extracted score number, or null if not found
+ */
+function extractScoreFromEnd(text: string): number | null {
+    if (!text || typeof text !== 'string') {
+        return null;
+    }
+    
+    // Look for "score": <number> pattern near the end of the text
+    // Match patterns like: "score": 85, "score":85, "score": 85}, "score": 85}
+    const scorePattern = /"score"\s*:\s*(\d+)/g;
+    let lastScore: number | null = null;
+    let match;
+    
+    // Find all matches and keep the last one (closest to the end)
+    while ((match = scorePattern.exec(text)) !== null) {
+        const scoreValue = parseInt(match[1], 10);
+        if (!isNaN(scoreValue) && scoreValue >= 0 && scoreValue <= 100) {
+            lastScore = scoreValue;
+        }
+    }
+    
+    if (lastScore !== null) {
+        console.log('[JSON Parser] ✓ Extracted score from end of response:', lastScore);
+    }
+    
+    return lastScore;
+}
+
+/**
+ * Checks if a parsed result appears to be an artifact generation response and repairs
+ * missing required fields (mermaidData, textSpec) with placeholder text.
+ * This handles cases where the LLM response was truncated before completing all fields.
+ * 
+ * @param result - The parsed JSON result
+ * @returns The repaired result with all required fields, or the original if not an artifact
+ */
+function repairArtifactFields(result: any): any {
+    if (!result || typeof result !== 'object' || Array.isArray(result)) {
+        return result;
+    }
+    
+    // Check if this looks like an artifact response (has mermaidData or textSpec)
+    const isArtifact = 'mermaidData' in result || 'textSpec' in result;
+    
+    if (!isArtifact) {
+        return result;
+    }
+    
+    let wasRepaired = false;
+    
+    // Add missing mermaidData with placeholder
+    if (!result.mermaidData || typeof result.mermaidData !== 'string' || result.mermaidData.trim() === '') {
+        console.log('[JSON Parser] Missing or empty mermaidData in artifact, adding placeholder');
+        result.mermaidData = 'graph TD\n    A[Response was truncated] --> B[Unable to generate full diagram]';
+        wasRepaired = true;
+    }
+    
+    // Add missing textSpec with placeholder
+    if (!result.textSpec || typeof result.textSpec !== 'string' || result.textSpec.trim() === '') {
+        console.log('[JSON Parser] Missing or empty textSpec in artifact, adding placeholder');
+        result.textSpec = '[Response was truncated before specification could be completed. Please try regenerating or provide more specific requirements.]';
+        wasRepaired = true;
+    }
+    
+    if (wasRepaired) {
+        console.log('[JSON Parser] ✓ Repaired artifact with missing fields:', {
+            hasMermaidData: !!result.mermaidData,
+            hasTextSpec: !!result.textSpec,
+            mermaidDataLength: result.mermaidData?.length || 0,
+            textSpecLength: result.textSpec?.length || 0
+        });
+    }
+    
+    return result;
+}
+
+/**
  * Main export function that chooses the appropriate parsing strategy
  * @param text - The raw LLM response content
  * @param options - Optional configuration
@@ -670,5 +868,24 @@ export function extractJsonFromLLMResponse(text: string, options?: { isSpecGener
     }
     
     // Use standard parser
-    return extractJsonFromLLMResponseInternal(text);
+    let result = extractJsonFromLLMResponseInternal(text);
+    
+    // Fallback 1: If result exists but has undefined or missing score, try to extract from end
+    if (result && typeof result === 'object' && !Array.isArray(result)) {
+        if ('clarification_text' in result && (result.score === undefined || result.score === null)) {
+            console.log('[JSON Parser] Score is missing or undefined, attempting fallback extraction from end of text');
+            const extractedScore = extractScoreFromEnd(text);
+            if (extractedScore !== null) {
+                result.score = extractedScore;
+                console.log('[JSON Parser] ✓ Successfully applied fallback score:', extractedScore);
+            }
+        }
+    }
+    
+    // Fallback 2: If result looks like an artifact, ensure both required fields are present
+    if (result && typeof result === 'object' && !Array.isArray(result)) {
+        result = repairArtifactFields(result);
+    }
+    
+    return result;
 }

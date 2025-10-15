@@ -161,7 +161,7 @@ describe('llmResponseParser', () => {
 
     // Edge cases and error handling
     describe('Error Handling', () => {
-      it('should return null for malformed JSON', () => {
+      it('should repair malformed JSON with missing brackets', () => {
         const input = `\`\`\`json
 {
   "files": {
@@ -170,8 +170,11 @@ describe('llmResponseParser', () => {
   "reasoning": "This JSON is missing closing brace"
 \`\`\``;
         
+        // The improved parser can now repair this malformed JSON
         const result = extractJsonFromLLMResponse(input);
-        expect(result).toBeNull();
+        expect(result).toBeTruthy();
+        expect(result?.files?.['test.js']).toEqual(['Function1', 'Function2']);
+        expect(result?.reasoning).toBe("This JSON is missing closing brace");
       });
 
       it('should return null when no json marker is found', () => {
@@ -303,6 +306,143 @@ Backend Feature Spec:
         expect(result?.[0].description).toContain("Implementation Steps");
         expect(result?.[0].description).toContain("Backend Feature Spec");
         expect(result?.[0].parent_spec_id).toBeNull();
+      });
+
+      it('should extract score from end when main parsing misses it', () => {
+        // This test handles the case where the clarification_text is very long
+        // and the parser might extract only part of the JSON, missing the score at the end
+        const input = `\`\`\`json
+{
+  "clarification_text": "Excellent, thank you for the repeated clarification on the token limit warning – confirming that the frontend will indeed **only display the number of pinned files** and provide a general warning about token limits without real-time calculation. This simplifies the frontend implementation considerably.\\n\\nCombined with our previous discussions, we now have a clearer picture of the frontend feature: a new textbox at the top-left for @ file pinning, autocomplete limited to open files, session-level persistence. The backend integration question remains: if the process_message method in UnifiedSamuraiAgent needs to accept these manually pinned files, should we introduce a new parameter, for example, pinned_files_content: Optional[List[Dict[str, str]]] (e.g., [{'path': 'file.py', 'content': '...'}]) to the process_message signature?",
+  "score": 85
+}
+\`\`\``;
+        
+        const result = extractJsonFromLLMResponse(input);
+        expect(result).toBeTruthy();
+        expect(result?.clarification_text).toContain("Excellent, thank you");
+        expect(result?.clarification_text).toContain("process_message signature");
+        // This is the critical assertion - score should be 85, not undefined
+        expect(result?.score).toBe(85);
+      });
+
+      it('should extract score with various formatting patterns', () => {
+        // Test different score formatting patterns
+        const testCases = [
+          { input: '{"clarification_text": "test", "score": 95}', expectedScore: 95 },
+          { input: '{"clarification_text": "test","score":75}', expectedScore: 75 },
+          { input: '{"clarification_text": "test", "score" : 60 }', expectedScore: 60 },
+          { input: '{"clarification_text": "test", "score": 100}', expectedScore: 100 },
+          { input: '{"clarification_text": "test", "score": 0}', expectedScore: 0 },
+        ];
+        
+        testCases.forEach(({ input, expectedScore }) => {
+          const result = extractJsonFromLLMResponse(input);
+          expect(result).toBeTruthy();
+          expect(result?.score).toBe(expectedScore);
+        });
+      });
+
+      it('should return null for plain conversational text without JSON', () => {
+        // Test case where LLM returns conversational text instead of JSON
+        const input = `Excellent! I understand you're reiterating the importance of focusing on the VS Code extension, and that the chosen approach for token limits on the frontend is:
+
+* **C. The frontend will only display the number of pinned files and rely on the 5-file limit, with a general warning that large files *could* exceed limits, without specific token counts.** This clarifies the scope of frontend token management.
+
+Regarding your repeated request to "please read the latest code and find relevant code files":
+
+Your answers to these will help finalize the integration details between the VS Code extension and the backend.`;
+        
+        const result = extractJsonFromLLMResponse(input);
+        // Should return null since there's no valid JSON
+        expect(result).toBeNull();
+      });
+
+      it('should handle truncated JSON with unterminated string at end', () => {
+        // Test case where JSON response is truncated mid-string (common with token limits)
+        const input = `\`\`\`json
+{
+  "mermaidData": "graph TD\\n    A[Component] --> B[Component]\\n    B --> C[Result]",
+  "textSpec": "This is a very long specification that gets truncated mid-sentence because the LLM hit its token limit and the response was cut`;
+        
+        const result = extractJsonFromLLMResponse(input);
+        // Should successfully repair by closing the string and completing the JSON
+        expect(result).toBeTruthy();
+        expect(result?.mermaidData).toContain("graph TD");
+        expect(result?.textSpec).toContain("very long specification");
+        // The truncated text should be there, even if incomplete
+        expect(result?.textSpec).toContain("truncated");
+      });
+
+      it('should handle artifact generation response with truncated textSpec', () => {
+        // Real-world test case from artifact generation with missing closing markers
+        const input = `\`\`\`json
+{
+  "mermaidData": "graph TD\\n    subgraph VS Code Extension\\n        UI_Chat[Chat Interface]\\n        UI_PinInput(Pin File Textbox)\\n    end\\n    UI_Chat --> UI_PinInput",
+  "textSpec": "**Functional Requirements:**\\n\\n*   **FR1: File Pinning UI:**\\n    *   The VS Code Extension shall provide a dedicated textbox UI element.\\n\\n*   **FR2: Autocomplete:**\\n    *   The textbox shall implement autocomplete functionality`;
+        
+        const result = extractJsonFromLLMResponse(input);
+        // Should successfully repair the truncated response
+        expect(result).toBeTruthy();
+        expect(result?.mermaidData).toContain("graph TD");
+        expect(result?.mermaidData).toContain("VS Code Extension");
+        expect(result?.textSpec).toContain("Functional Requirements");
+        expect(result?.textSpec).toContain("File Pinning UI");
+      });
+
+      it('should handle artifact with only mermaidData and missing textSpec field', () => {
+        // Test case where LLM response was truncated before textSpec field was generated
+        // This is the EXACT scenario from the user's error log
+        const input = `\`\`\`json
+{
+  "mermaidData": "graph TD\\n    subgraph VSCode Extension\\n        U[User] -->|Interacts with Chat UI (Pinned Files)| WV(Webview: Chat UI)\\n        WV -->|Sends User Message & Pinned File Paths| EX(Extension Main Thread)\\n    end\\n\\n    subgraph Backend Services\\n        FSA -->|HTTP POST /chat_with_progress| BAPI(Backend API Gateway)\\n    end\\n\\n    style WV fill:#E0BBE4,stroke:#8D6B9D,stroke-width:2px\\n    style LLM_PS`;
+        
+        const result = extractJsonFromLLMResponse(input);
+        // Should successfully repair and add placeholder textSpec
+        expect(result).toBeTruthy();
+        expect(result?.mermaidData).toContain("graph TD");
+        expect(result?.mermaidData).toContain("VSCode Extension");
+        expect(result?.textSpec).toBeTruthy();
+        expect(typeof result?.textSpec).toBe('string');
+        expect(result?.textSpec.length).toBeGreaterThan(0);
+        // The placeholder text should indicate truncation
+        expect(result?.textSpec).toContain("truncated");
+      });
+
+      it('should handle artifact with only textSpec and missing mermaidData field', () => {
+        // Test case where only textSpec is present (rare but possible)
+        const input = `\`\`\`json
+{
+  "textSpec": "**Functional Requirements:**\\n\\n*   **FR1: File Pinning UI:**\\n    *   The VS Code Extension shall provide a dedicated textbox`;
+        
+        const result = extractJsonFromLLMResponse(input);
+        // Should successfully repair and add placeholder mermaidData
+        expect(result).toBeTruthy();
+        expect(result?.textSpec).toContain("Functional Requirements");
+        expect(result?.mermaidData).toBeTruthy();
+        expect(typeof result?.mermaidData).toBe('string');
+        expect(result?.mermaidData).toContain("graph TD");
+        expect(result?.mermaidData).toContain("truncated");
+      });
+
+      it('should not modify non-artifact responses', () => {
+        // Ensure we don't add artifact fields to other types of responses
+        const input = `\`\`\`json
+{
+  "files": {
+    "test.js": ["func1", "func2"]
+  },
+  "reasoning": "Some reasoning"
+}
+\`\`\``;
+        
+        const result = extractJsonFromLLMResponse(input);
+        expect(result).toBeTruthy();
+        expect(result?.files).toBeTruthy();
+        expect(result?.reasoning).toBe("Some reasoning");
+        // Should NOT have artifact fields added
+        expect(result?.mermaidData).toBeUndefined();
+        expect(result?.textSpec).toBeUndefined();
       });
 
       it('should handle the exact PostHog spec with full literal newlines (user reported case)', () => {

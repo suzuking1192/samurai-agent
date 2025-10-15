@@ -110,6 +110,11 @@ export interface Session extends BaseModel {
     };
     codeContextIds: string[]; // References to associated code context payloads
     previous_session_intent: UserIntentEnum; // Intent from the previous session
+    currentArtifact?: {
+        mermaidData: string;
+        textSpec: string;
+        timestamp: number;
+    } | null; // Current spec artifact for spec planning mode
 }
 
 /**

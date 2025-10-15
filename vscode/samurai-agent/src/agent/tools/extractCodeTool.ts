@@ -417,6 +417,9 @@ export class ExtractCodeTool {
     projectId: string,
     model: string,
   ): Promise<Map<string, Array<{ name: string; type: string; }>>> {
+    // Build folder structure context for LLM
+    const folderStructure = this.buildFolderStructureContext(fileInfos);
+
     // Build a summary of all files with their elements for LLM analysis
     const fileElementsSummary = Array.from(fileInfos.entries())
       .map(([filePath, fileInfo]) => {
@@ -433,6 +436,7 @@ export class ExtractCodeTool {
 
     const prompt = promptTemplate
       .replace("{{USER_REQUEST}}", query)
+      .replace("{{FOLDER_STRUCTURE}}", folderStructure)
       .replace("{{FILE_ELEMENTS_SUMMARY}}", fileElementsSummary);
 
     console.log("ExtractCodeTool: Ranking prompt prepared", {
@@ -646,6 +650,9 @@ export class ExtractCodeTool {
     structuredContext: Array<{ path: string; elements: CodeElement[]; snippet: string; }>,
     params: NormalizedExtractCodeParameters,
   ): Promise<any> {
+    // Build folder structure context for LLM
+    const folderStructure = this.buildFolderStructureContext(fileInfos);
+
     const promptTemplate = await this.loadPrompt(
       "codeParser/extract_code_context.md",
     );
@@ -660,6 +667,7 @@ export class ExtractCodeTool {
 
     const prompt = promptTemplate
       .replace("{{USER_REQUEST}}", params.query)
+      .replace("{{FOLDER_STRUCTURE}}", folderStructure)
       .replace("{{CODE_CONTENT}}", combinedContent);
 
     const messages: LLMMessage[] = [
@@ -1268,6 +1276,109 @@ export class ExtractCodeTool {
 
   private async loadPrompt(relativePath: string): Promise<string> {
     return this.codeParser.loadPrompt(relativePath);
+  }
+
+  /**
+   * Builds a high-level folder structure context from file paths (2 levels deep)
+   * to help LLM disambiguate between similar code in different project sections
+   * @param fileInfos - Map of file paths to FileInfo objects
+   * @returns Formatted markdown string with folder structure and auto-generated descriptions
+   */
+  private buildFolderStructureContext(fileInfos: Map<string, FileInfo>): string {
+    // Extract unique 2-level folder paths
+    const folderSet = new Set<string>();
+    
+    for (const filePath of fileInfos.keys()) {
+      const parts = filePath.split('/');
+      if (parts.length >= 2) {
+        // Get first two levels (e.g., "vscode/samurai-agent" from "vscode/samurai-agent/src/...")
+        const twoLevelPath = `${parts[0]}/${parts[1]}`;
+        folderSet.add(twoLevelPath);
+      } else if (parts.length === 1) {
+        // Single level folder
+        folderSet.add(parts[0]);
+      }
+    }
+
+    // Sort folders alphabetically for consistent output
+    const folders = Array.from(folderSet).sort();
+
+    // Generate descriptions for each folder based on common naming patterns
+    const folderDescriptions = folders.map(folder => {
+      const description = this.generateFolderDescription(folder);
+      return `- ${folder}/ - ${description}`;
+    });
+
+    if (folderDescriptions.length === 0) {
+      return "## Project Structure\n\nNo folder structure detected.";
+    }
+
+    return `## Project Structure (2 levels)\n\n${folderDescriptions.join('\n')}`;
+  }
+
+  /**
+   * Auto-generates human-readable descriptions for folder paths based on common patterns
+   * @param folderPath - 2-level folder path (e.g., "vscode/samurai-agent")
+   * @returns Human-readable description
+   */
+  private generateFolderDescription(folderPath: string): string {
+    const lowerPath = folderPath.toLowerCase();
+    
+    // Check common patterns
+    if (lowerPath.includes('vscode') || lowerPath.includes('vs-code')) {
+      return 'VS Code Extension implementation';
+    }
+    if (lowerPath.includes('frontend') || lowerPath.includes('client')) {
+      return 'Web Frontend application';
+    }
+    if (lowerPath.includes('backend') || lowerPath.includes('server')) {
+      return 'Backend API/Services';
+    }
+    if (lowerPath.includes('integration-test') || lowerPath.includes('e2e')) {
+      return 'Integration/E2E test suite';
+    }
+    if (lowerPath.includes('test') || lowerPath.includes('spec')) {
+      return 'Test files';
+    }
+    if (lowerPath.includes('doc') || lowerPath.includes('documentation')) {
+      return 'Documentation';
+    }
+    if (lowerPath.includes('script') || lowerPath.includes('scripts')) {
+      return 'Build/utility scripts';
+    }
+    if (lowerPath.includes('config') || lowerPath.includes('configuration')) {
+      return 'Configuration files';
+    }
+    if (lowerPath.includes('util') || lowerPath.includes('helper')) {
+      return 'Utility/helper functions';
+    }
+    if (lowerPath.includes('component')) {
+      return 'UI Components';
+    }
+    if (lowerPath.includes('service')) {
+      return 'Service layer';
+    }
+    if (lowerPath.includes('model') || lowerPath.includes('entity')) {
+      return 'Data models/entities';
+    }
+    if (lowerPath.includes('api')) {
+      return 'API endpoints/routes';
+    }
+    if (lowerPath.includes('lib') || lowerPath.includes('library')) {
+      return 'Shared library code';
+    }
+    if (lowerPath.includes('core')) {
+      return 'Core functionality';
+    }
+    if (lowerPath.includes('common') || lowerPath.includes('shared')) {
+      return 'Shared/common code';
+    }
+    
+    // Default: capitalize and clean up the folder name
+    const parts = folderPath.split('/');
+    const lastPart = parts[parts.length - 1];
+    const cleaned = lastPart.replace(/[-_]/g, ' ');
+    return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
   }
 
   private fallbackToFileRanking(

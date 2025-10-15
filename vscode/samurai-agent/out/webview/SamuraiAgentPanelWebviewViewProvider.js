@@ -267,6 +267,65 @@ class SamuraiAgentPanelWebviewViewProvider {
                     return;
                 }
             }
+            // Handle artifact generation command
+            if (command === "samurai-agent.generateSpecArtifact") {
+                console.log('WebviewProvider - Received generateSpecArtifact command', {
+                    sessionId: message.sessionId,
+                    hasSamuraiAgent: !!this.samuraiAgent,
+                    hasDataStore: !!this.dataStore
+                });
+                if (this.samuraiAgent && this.dataStore && message.sessionId) {
+                    try {
+                        const session = this.dataStore.loadSession(message.sessionId);
+                        if (!session) {
+                            webview.postMessage({
+                                command: 'error',
+                                requestId: message.requestId,
+                                error: 'Session not found',
+                                timestamp: new Date()
+                            });
+                            return;
+                        }
+                        const chatHistory = this.dataStore.loadChatMessagesForSession(message.sessionId);
+                        // Convert chat messages to LLM messages
+                        const llmHistory = chatHistory.map(msg => ({
+                            role: msg.role,
+                            content: msg.content
+                        }));
+                        const projectDetails = ""; // TODO: Load from project detail service if needed
+                        const codeContexts = []; // Empty for manual generation
+                        const artifact = await this.samuraiAgent.generateSpecArtifact(session, llmHistory, projectDetails, codeContexts);
+                        // Update session
+                        this.dataStore.updateSession(message.sessionId, {
+                            currentArtifact: artifact
+                        });
+                        webview.postMessage({
+                            command: 'artifactGenerated',
+                            requestId: message.requestId,
+                            payload: artifact,
+                            timestamp: new Date()
+                        });
+                    }
+                    catch (error) {
+                        console.error('Error generating artifact:', error);
+                        webview.postMessage({
+                            command: 'error',
+                            requestId: message.requestId,
+                            error: error instanceof Error ? error.message : 'Unknown error',
+                            timestamp: new Date()
+                        });
+                    }
+                }
+                else {
+                    webview.postMessage({
+                        command: 'error',
+                        requestId: message.requestId,
+                        error: 'Agent not available or invalid sessionId',
+                        timestamp: new Date()
+                    });
+                }
+                return;
+            }
             if (command === "projectDetail.ingest") {
                 console.log("Webview Provider: Received projectDetail.ingest command", {
                     hasSamuraiAgent: !!this.samuraiAgent,
@@ -538,7 +597,7 @@ class SamuraiAgentPanelWebviewViewProvider {
                 style-src ${webview.cspSource} 'unsafe-inline';
                 font-src ${webview.cspSource};
                 connect-src ${webview.cspSource} https:;
-                script-src 'nonce-${nonce}' ${webview.cspSource};
+                script-src 'nonce-${nonce}' ${webview.cspSource} https://cdn.jsdelivr.net;
             ">
             <title>Samurai Agent Panel</title>
             <link href="${agentPanelCssPath}" rel="stylesheet">
@@ -570,6 +629,9 @@ class SamuraiAgentPanelWebviewViewProvider {
                             <div class="api-cost-display" id="api-cost-display">
                                 API Cost: $0.00 this month
                             </div>
+                            <button class="show-current-spec-btn" id="show-current-spec-btn" style="display: none;">
+                                Show Current Spec
+                            </button>
                             <button class="start-new-conversation-btn" id="start-new-conversation-btn">
                                 Start New Conversation
                             </button>
@@ -610,6 +672,26 @@ class SamuraiAgentPanelWebviewViewProvider {
                     <!-- Setting Content -->
                     <div class="tab-content" id="setting-content" style="display: none;">
                         <!-- Settings content will be dynamically rendered by settings.js -->
+                    </div>
+                </div>
+                
+                <!-- Artifact Modal -->
+                <div id="spec-artifact-modal" class="spec-artifact-modal-overlay" style="display: none;">
+                    <div class="spec-artifact-modal">
+                        <div class="spec-artifact-header">
+                            <h3>Current Spec Understanding</h3>
+                            <button class="spec-artifact-close" id="spec-artifact-close">&times;</button>
+                        </div>
+                        <div class="spec-artifact-content">
+                            <div class="spec-artifact-section">
+                                <h4>Architecture Diagram</h4>
+                                <div id="spec-artifact-mermaid" class="spec-artifact-mermaid"></div>
+                            </div>
+                            <div class="spec-artifact-section">
+                                <h4>Specification Details</h4>
+                                <div id="spec-artifact-text" class="spec-artifact-text markdown-body"></div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -687,6 +769,17 @@ class SamuraiAgentPanelWebviewViewProvider {
                         }
                     }, 100);
                 }, 0);
+            </script>
+            
+            <!-- Mermaid.js for diagram rendering -->
+            <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+            <script nonce="${nonce}">
+                if (typeof mermaid !== 'undefined') {
+                    mermaid.initialize({ startOnLoad: false, theme: 'dark' });
+                    console.log('Webview: Mermaid.js initialized');
+                } else {
+                    console.warn('Webview: Mermaid.js failed to load');
+                }
             </script>
         </body>
         </html>`;

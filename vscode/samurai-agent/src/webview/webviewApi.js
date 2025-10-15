@@ -254,7 +254,8 @@ const uiFeedback = {
             }
 
             return postCommand('samurai-agent.execute', payload);
-        }
+        },
+        generateSpecArtifact: (sessionId) => postCommand('samurai-agent.generateSpecArtifact', { sessionId })
     };
 
     // Listen for messages from extension host

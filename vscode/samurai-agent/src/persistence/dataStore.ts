@@ -357,6 +357,13 @@ export class DataStore {
     public updateSession(sessionId: string, updates: Partial<Session>): Session {
         return this.updateSessionInternal(sessionId, updates);
     }
+
+    /**
+     * Public method to load a session by ID
+     */
+    public loadSession(sessionId: string): Session | undefined {
+        return this.loadSessionInternal(sessionId);
+    }
     
     /**
      * Upserts a collection item (update if exists, insert if not)

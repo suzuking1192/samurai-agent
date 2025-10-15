@@ -708,6 +708,9 @@
                         metadata: currentSession.metadata
                     });
                     chatState.currentSession = currentSession;
+                    
+                    // Update Show Current Spec button visibility based on mode
+                    updateShowCurrentSpecButton();
                 } catch (error) {
                     console.error('Chat: Failed to update session mode:', error);
                 }
@@ -1241,6 +1244,9 @@
             modeSelect.value = defaultMode;
         }
 
+        // Update Show Current Spec button visibility based on mode
+        updateShowCurrentSpecButton();
+
         void initializeChatSession();
     }
 
@@ -1643,6 +1649,256 @@
             refreshWebviewState
         };
     }
+
+    // ============ Spec Artifact Functionality ============
+
+    function updateShowCurrentSpecButton() {
+        const button = safeGetDocumentElement('show-current-spec-btn');
+        const modeSelect = safeGetDocumentElement('mode-select');
+        
+        if (!button || !modeSelect) return;
+        
+        const isSpecPlanningMode = modeSelect.value === 'spec_planning';
+        const hasArtifact = chatState.currentSession?.currentArtifact 
+            && chatState.currentSession.currentArtifact.mermaidData 
+            && chatState.currentSession.currentArtifact.textSpec;
+        
+        // Show button only in spec planning mode
+        button.style.display = isSpecPlanningMode ? 'inline-block' : 'none';
+        
+        // Enable button only if artifact exists
+        button.disabled = !hasArtifact;
+    }
+
+    async function handleShowCurrentSpecClick() {
+        if (!chatState.currentSession?.currentArtifact) {
+            alert('No artifact available. The artifact will be generated automatically during spec clarification.');
+            return;
+        }
+        
+        const { mermaidData, textSpec } = chatState.currentSession.currentArtifact;
+        renderArtifactModal(mermaidData, textSpec);
+    }
+
+    /**
+     * Validates and repairs Mermaid syntax
+     */
+    function repairMermaidSyntax(mermaidCode) {
+        if (!mermaidCode || typeof mermaidCode !== 'string') {
+            return {
+                repaired: 'graph TD\n    A[Invalid Diagram] --> B[Please regenerate]',
+                wasRepaired: true,
+                errors: ['Input was empty or invalid']
+            };
+        }
+        
+        let repaired = mermaidCode;
+        let changesApplied = 0;
+        const errors = [];
+        
+        // Remove markdown code fences if present
+        if (repaired.includes('```mermaid') || repaired.includes('```')) {
+            repaired = repaired.replace(/^```mermaid\n?/i, '').replace(/\n?```$/i, '');
+            changesApplied++;
+        }
+        
+        // Fix escaped newlines
+        if (repaired.includes('\\n')) {
+            repaired = repaired.replace(/\\n/g, '\n');
+            changesApplied++;
+        }
+        
+        // Remove trailing incomplete style definitions
+        const lines = repaired.split('\n');
+        const lastNonEmptyLine = lines.filter(line => line.trim().length > 0).pop();
+        if (lastNonEmptyLine && lastNonEmptyLine.trim().startsWith('style ')) {
+            // Check if style definition is incomplete (no fill: or stroke:)
+            if (!lastNonEmptyLine.includes('fill:') && !lastNonEmptyLine.includes('stroke:')) {
+                repaired = lines.filter(line => line !== lastNonEmptyLine).join('\n');
+                changesApplied++;
+                errors.push('Removed incomplete style definition');
+            }
+        }
+        
+        // Ensure it starts with a valid diagram type
+        const trimmed = repaired.trim();
+        if (!trimmed.startsWith('graph') && !trimmed.startsWith('flowchart') && 
+            !trimmed.startsWith('sequenceDiagram') && !trimmed.startsWith('classDiagram')) {
+            if (trimmed.includes('-->') || trimmed.includes('---')) {
+                repaired = `graph TD\n${trimmed}`;
+                changesApplied++;
+            }
+        }
+        
+        console.log('[Mermaid Validator] Repair completed:', {
+            wasRepaired: changesApplied > 0,
+            changesApplied,
+            errors
+        });
+        
+        return {
+            repaired,
+            wasRepaired: changesApplied > 0,
+            errors
+        };
+    }
+    
+    /**
+     * Converts markdown to HTML
+     */
+    function renderMarkdown(markdown) {
+        if (!markdown || typeof markdown !== 'string') {
+            return '<p>No specification available</p>';
+        }
+        
+        let html = markdown;
+        
+        // Headers
+        html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>');
+        html = html.replace(/^## (.*$)/gim, '<h2>$1</h2>');
+        html = html.replace(/^# (.*$)/gim, '<h1>$1</h1>');
+        
+        // Bold
+        html = html.replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>');
+        
+        // Italic
+        html = html.replace(/\*(.*?)\*/gim, '<em>$1</em>');
+        
+        // Inline code
+        html = html.replace(/`([^`]+)`/gim, '<code>$1</code>');
+        
+        // Code blocks
+        html = html.replace(/```(\w*)\n([\s\S]*?)```/gim, '<pre><code>$2</code></pre>');
+        
+        // Lists (bullet points starting with * or -)
+        html = html.replace(/^\s*[\*\-]\s+(.*)$/gim, '<li>$1</li>');
+        
+        // Wrap consecutive <li> items in <ul>
+        html = html.replace(/(<li>.*<\/li>\n?)+/gim, '<ul>$&</ul>');
+        
+        // Numbered lists
+        html = html.replace(/^\s*\d+\.\s+(.*)$/gim, '<li>$1</li>');
+        html = html.replace(/(<li>.*<\/li>\n?)+/gim, function(match) {
+            // Check if already wrapped in ul
+            if (match.includes('<ul>')) {
+                return match;
+            }
+            return '<ol>' + match + '</ol>';
+        });
+        
+        // Blockquotes
+        html = html.replace(/^\> (.*)$/gim, '<blockquote>$1</blockquote>');
+        
+        // Line breaks (double newline = paragraph)
+        html = html.replace(/\n\n/gim, '</p><p>');
+        
+        // Wrap in paragraph if not already in a block element
+        if (!html.startsWith('<h') && !html.startsWith('<ul') && !html.startsWith('<ol') && !html.startsWith('<p')) {
+            html = '<p>' + html + '</p>';
+        }
+        
+        return html;
+    }
+
+    function renderArtifactModal(mermaidData, textSpec) {
+        const modal = safeGetDocumentElement('spec-artifact-modal');
+        const mermaidContainer = safeGetDocumentElement('spec-artifact-mermaid');
+        const textContainer = safeGetDocumentElement('spec-artifact-text');
+        
+        if (!modal || !mermaidContainer || !textContainer) return;
+        
+        // Clear previous content
+        mermaidContainer.innerHTML = '';
+        textContainer.innerHTML = '';
+        
+        // Validate and repair Mermaid diagram
+        if (typeof mermaid !== 'undefined' && mermaidData) {
+            const repairResult = repairMermaidSyntax(mermaidData);
+            const diagramToRender = repairResult.repaired;
+            
+            if (repairResult.wasRepaired) {
+                console.log('[Artifact Modal] Mermaid syntax was repaired:', repairResult.errors);
+            }
+            
+            mermaidContainer.innerHTML = `<div class="mermaid">${diagramToRender}</div>`;
+            
+            try {
+                mermaid.init(undefined, mermaidContainer.querySelector('.mermaid'));
+                
+                // Show repair notice if applicable
+                if (repairResult.wasRepaired && repairResult.errors.length > 0) {
+                    const notice = document.createElement('p');
+                    notice.style.cssText = 'color: var(--vscode-editorWarning-foreground); font-size: 11px; margin-top: 8px;';
+                    notice.textContent = `⚠️ Diagram syntax was automatically repaired (${repairResult.errors.length} issue${repairResult.errors.length > 1 ? 's' : ''} fixed)`;
+                    mermaidContainer.appendChild(notice);
+                }
+            } catch (error) {
+                console.error('Mermaid rendering error:', error);
+                mermaidContainer.innerHTML = `
+                    <p style="color: var(--vscode-errorForeground);">Failed to render diagram</p>
+                    <p style="color: var(--vscode-descriptionForeground); font-size: 12px; margin-top: 8px;">
+                        ${error.message || 'Unknown syntax error'}
+                    </p>
+                `;
+            }
+        } else {
+            mermaidContainer.innerHTML = '<p>No diagram available</p>';
+        }
+        
+        // Render text spec with markdown
+        if (textSpec) {
+            const htmlContent = renderMarkdown(textSpec);
+            textContainer.innerHTML = htmlContent;
+        } else {
+            textContainer.innerHTML = '<p>No specification text available</p>';
+        }
+        
+        // Show modal
+        modal.style.display = 'flex';
+    }
+
+    function closeArtifactModal() {
+        const modal = safeGetDocumentElement('spec-artifact-modal');
+        if (modal) {
+            modal.style.display = 'none';
+        }
+    }
+
+    // Initialize artifact button handlers
+    if (typeof document !== 'undefined') {
+        document.addEventListener('DOMContentLoaded', function() {
+            const showButton = safeGetDocumentElement('show-current-spec-btn');
+            const closeButton = safeGetDocumentElement('spec-artifact-close');
+            const modal = safeGetDocumentElement('spec-artifact-modal');
+            
+            if (showButton) {
+                showButton.addEventListener('click', handleShowCurrentSpecClick);
+            }
+            
+            if (closeButton) {
+                closeButton.addEventListener('click', closeArtifactModal);
+            }
+            
+            if (modal) {
+                modal.addEventListener('click', function(e) {
+                    if (e.target === modal) {
+                        closeArtifactModal();
+                    }
+                });
+            }
+        });
+    }
+
+    // Export artifact manager
+    if (globalScope) {
+        globalScope.ArtifactManager = {
+            updateShowCurrentSpecButton,
+            handleShowCurrentSpecClick,
+            renderArtifactModal,
+            closeArtifactModal
+        };
+    }
+
 })(typeof window !== 'undefined' ? window : undefined);
 
 if (typeof module !== 'undefined') {

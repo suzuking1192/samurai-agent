@@ -442,3 +442,202 @@ body {
         min-width: auto;
     }
 }
+
+/* Show Current Spec Button */
+.show-current-spec-btn {
+    background-color: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    border: 1px solid var(--vscode-button-border);
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-size: var(--vscode-font-size);
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.show-current-spec-btn:hover {
+    background-color: var(--vscode-button-secondaryHoverBackground);
+}
+
+.show-current-spec-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Artifact Modal Overlay */
+.spec-artifact-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Artifact Modal */
+.spec-artifact-modal {
+    background-color: var(--vscode-editor-background);
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 8px;
+    width: 85%;
+    max-width: 1200px;
+    height: 85%;
+    max-height: 800px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+.spec-artifact-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.spec-artifact-header h3 {
+    margin: 0;
+    color: var(--vscode-foreground);
+}
+
+.spec-artifact-close {
+    background: none;
+    border: none;
+    color: var(--vscode-foreground);
+    font-size: 24px;
+    cursor: pointer;
+    padding: 0;
+    width: 30px;
+    height: 30px;
+}
+
+.spec-artifact-close:hover {
+    color: var(--vscode-errorForeground);
+}
+
+.spec-artifact-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+}
+
+.spec-artifact-section {
+    margin-bottom: 24px;
+}
+
+.spec-artifact-section h4 {
+    margin: 0 0 12px 0;
+    color: var(--vscode-foreground);
+}
+
+.spec-artifact-mermaid {
+    background-color: var(--vscode-editor-background);
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 4px;
+    padding: 16px;
+    overflow-x: auto;
+    min-height: 200px;
+}
+
+.spec-artifact-text {
+    background-color: var(--vscode-textCodeBlock-background);
+    color: var(--vscode-textPreformat-foreground);
+    padding: 16px;
+    border-radius: 4px;
+    font-size: 13px;
+    line-height: 1.6;
+    overflow-x: auto;
+}
+
+/* Markdown styling for spec text */
+.spec-artifact-text.markdown-body {
+    font-family: var(--vscode-font-family);
+}
+
+.spec-artifact-text.markdown-body h1,
+.spec-artifact-text.markdown-body h2,
+.spec-artifact-text.markdown-body h3,
+.spec-artifact-text.markdown-body h4 {
+    color: var(--vscode-foreground);
+    margin-top: 16px;
+    margin-bottom: 8px;
+    font-weight: 600;
+}
+
+.spec-artifact-text.markdown-body h2 {
+    font-size: 1.5em;
+    border-bottom: 1px solid var(--vscode-panel-border);
+    padding-bottom: 4px;
+}
+
+.spec-artifact-text.markdown-body h3 {
+    font-size: 1.25em;
+}
+
+.spec-artifact-text.markdown-body h4 {
+    font-size: 1.1em;
+}
+
+.spec-artifact-text.markdown-body p {
+    margin: 8px 0;
+}
+
+.spec-artifact-text.markdown-body ul,
+.spec-artifact-text.markdown-body ol {
+    margin: 8px 0;
+    padding-left: 24px;
+}
+
+.spec-artifact-text.markdown-body li {
+    margin: 4px 0;
+}
+
+.spec-artifact-text.markdown-body code {
+    background-color: var(--vscode-textCodeBlock-background);
+    color: var(--vscode-textPreformat-foreground);
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: var(--vscode-editor-font-family);
+    font-size: 0.9em;
+}
+
+.spec-artifact-text.markdown-body pre {
+    background-color: var(--vscode-textCodeBlock-background);
+    padding: 12px;
+    border-radius: 4px;
+    overflow-x: auto;
+    margin: 8px 0;
+}
+
+.spec-artifact-text.markdown-body pre code {
+    background: none;
+    padding: 0;
+}
+
+.spec-artifact-text.markdown-body strong {
+    font-weight: 600;
+    color: var(--vscode-foreground);
+}
+
+.spec-artifact-text.markdown-body em {
+    font-style: italic;
+}
+
+.spec-artifact-text.markdown-body blockquote {
+    border-left: 3px solid var(--vscode-panel-border);
+    padding-left: 12px;
+    margin: 8px 0;
+    color: var(--vscode-descriptionForeground);
+}
+
+@media (max-width: 768px) {
+    .spec-artifact-modal {
+        width: 95%;
+        height: 95%;
+    }
+}
