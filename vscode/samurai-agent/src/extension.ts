@@ -38,6 +38,7 @@ import { formatCost } from "./common/utils/llmCostCalculator";
 import { LLMResponse } from "./common/models/llm-models";
 import { ResponseType } from "./common/models/response-models";
 import { TelemetryService } from "./services/TelemetryService";
+import { RecentFilesTracker } from "./services/RecentFilesTracker";
 
 /**
  * Extension activation function - main backend entry point
@@ -82,6 +83,14 @@ export function activate(context: vscode.ExtensionContext) {
     // Track extension activation
     telemetryService.trackExtensionActivation();
     console.log('[Samurai Agent] ✓ Extension activation tracked');
+
+    // Initialize RecentFilesTracker (hybrid approach: open tabs + event tracking, workspace-aware)
+    const recentFilesTracker = RecentFilesTracker.getInstance();
+    recentFilesTracker.initialize();
+    context.subscriptions.push({
+      dispose: () => recentFilesTracker.dispose()
+    });
+    console.log('[Samurai Agent] ✓ RecentFilesTracker initialized');
 
     const llmProviderService = new LLMProviderService(globalDataStore, dataStore);
     console.log('[Samurai Agent] ✓ LLMProviderService initialized');

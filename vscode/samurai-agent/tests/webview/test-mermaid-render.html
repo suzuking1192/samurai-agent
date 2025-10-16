@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Mermaid Syntax Test</title>
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10.9.4/dist/mermaid.esm.min.mjs';
+        
+        mermaid.initialize({ 
+            startOnLoad: false,
+            logLevel: 'debug',
+            securityLevel: 'loose'
+        });
+
+        // Real data from sessions.json
+        const realMermaidData = `graph TD\\n    A[VS Code Extension Host] --> B(Samurai Agent Webview);\\n    B --> C[chat.js (Frontend Logic)];\\n\\n    subgraph Chat Initialization & Message Loading\\n        D(initializeChatSession());\\n        D --1. Calls after session init--> E(loadAndDisplayMessages(sessionId));\\n    end\\n\\n    E --2. Fetches Chat History--> F[WebviewApi.persistence.loadChatMessagesForSession()];\\n    F --3. Uses persistence service--> G[DataStore (Backend Persistence)];\\n    G --4. Returns persisted ChatMessage objects--> E;\\n\\n    subgraph ChatMessage Data Model\\n        H[ChatMessage];\\n        H --contains--> H1[specClarificationData (Score)];\\n        H --contains--> H2[interactiveQuestions (Yes/No buttons)];\\n        H --contains--> H3[interactiveConfirmationQuestions];\\n    end\\n\\n    E --5. For each ChatMessage (message)--> I(displayMessage(message));\\n    I --6. Returns created messageElement--> I;\\n    I --7. Renders basic content & H3 directly to DOM--> J[DOM: chatMessages Element];\\n\\n    subgraph Problem Area (Missing call for persisted messages)\\n        I --8. PROBLEM: For Assistant Messages, displayMessage() in loadAndDisplayMessages() \\n            does NOT explicitly call renderAssistantResponse() to render H1 & H2.--> K(renderAssistantResponse(messageElement, message));\\n    end\\n\\n    K --9. Renders H1 & H2 to messageElement in DOM--> J;\\n\\n    L(updateShowCurrentSpecButton()) --10. Called after messages loaded (for 'Create Specs' button)--> J;\\n\\n    style H fill:#f9f,stroke:#333,stroke-width:2px;\\n    style H1 fill:#e0e0ff,stroke:#666;\\n    style H2 fill:#e0e0ff,stroke:#666;\\n    style H3 fill:#e0e0ff,stroke:#666;\\n    style K fill:#ffdddd,stroke:#cc0000,stroke-width:2px,color:#cc0000;\\n    linkStyle 8 stroke:red,stroke-width:2px,fill:none,stroke-dasharray: 5 5;\\n`;
+
+        function repairMermaidSyntax(mermaidCode) {
+            if (!mermaidCode || typeof mermaidCode !== 'string') {
+                return {
+                    repaired: 'graph TD\n    A[Invalid Diagram] --> B[Please regenerate]',
+                    wasRepaired: true,
+                    errors: ['Input was empty or invalid']
+                };
+            }
+            
+            let repaired = mermaidCode;
+            let changesApplied = 0;
+            const errors = [];
+            
+            // Remove markdown code fences if present
+            if (repaired.includes('```mermaid') || repaired.includes('```')) {
+                repaired = repaired.replace(/^```mermaid\n?/i, '').replace(/\n?```$/i, '');
+                changesApplied++;
+            }
+            
+            // Fix escaped newlines
+            if (repaired.includes('\\n')) {
+                repaired = repaired.replace(/\\n/g, '\n');
+                changesApplied++;
+            }
+            
+            // Remove trailing semicolons from connections and node definitions
+            if (repaired.includes(';')) {
+                repaired = repaired.split('\n').map(line => {
+                    // Remove semicolons at end of lines (common mistake)
+                    return line.replace(/;(\s*)$/g, '$1');
+                }).join('\n');
+                changesApplied++;
+                errors.push('Removed trailing semicolons');
+            }
+            
+            // Collapse multiple consecutive empty lines
+            if (repaired.includes('\n\n\n')) {
+                repaired = repaired.replace(/\n{3,}/g, '\n\n');
+                changesApplied++;
+                errors.push('Collapsed multiple empty lines');
+            }
+            
+            // Fix linkStyle with spaces in property values (stroke-dasharray: 5 5 -> stroke-dasharray:5,5)
+            if (repaired.includes('linkStyle')) {
+                const originalRepaired = repaired;
+                // Fix spaces after colons in style properties
+                repaired = repaired.replace(/(\w+):\s+/g, '$1:');
+                // Fix stroke-dasharray with spaces (5 5 -> 5,5)
+                repaired = repaired.replace(/stroke-dasharray:(\d+)\s+(\d+)/g, 'stroke-dasharray:$1,$2');
+                if (repaired !== originalRepaired) {
+                    changesApplied++;
+                    errors.push('Fixed linkStyle syntax');
+                }
+            }
+            
+            // Fix colons in node labels (replace with space or remove)
+            // Mermaid doesn't allow colons in node labels without escaping
+            const labelColonRegex = /(\[|\()([^\]\)]*?):([^\]\)]*?)(\]|\))/g;
+            if (labelColonRegex.test(repaired)) {
+                repaired = repaired.replace(/(\[|\()([^\]\)]*?):([^\]\)]*?)(\]|\))/g, '$1$2 $3$4');
+                changesApplied++;
+                errors.push('Fixed colons in node labels');
+            }
+            
+            // Remove trailing incomplete style definitions
+            const lines = repaired.split('\n');
+            const lastNonEmptyLine = lines.filter(line => line.trim().length > 0).pop();
+            if (lastNonEmptyLine && lastNonEmptyLine.trim().startsWith('style ')) {
+                // Check if style definition is incomplete (no fill: or stroke:)
+                if (!lastNonEmptyLine.includes('fill:') && !lastNonEmptyLine.includes('stroke:')) {
+                    repaired = lines.filter(line => line !== lastNonEmptyLine).join('\n');
+                    changesApplied++;
+                    errors.push('Removed incomplete style definition');
+                }
+            }
+            
+            // Ensure it starts with a valid diagram type
+            const trimmed = repaired.trim();
+            if (!trimmed.startsWith('graph') && !trimmed.startsWith('flowchart') && 
+                !trimmed.startsWith('sequenceDiagram') && !trimmed.startsWith('classDiagram')) {
+                if (trimmed.includes('-->') || trimmed.includes('---')) {
+                    repaired = `graph TD\n${trimmed}`;
+                    changesApplied++;
+                }
+            }
+            
+            return {
+                repaired,
+                wasRepaired: changesApplied > 0,
+                errors
+            };
+        }
+
+        window.addEventListener('DOMContentLoaded', async () => {
+            const statusDiv = document.getElementById('status');
+            const outputDiv = document.getElementById('output');
+            const diagramDiv = document.getElementById('diagram');
+            const repairedCodeDiv = document.getElementById('repaired-code');
+            
+            statusDiv.textContent = 'Repairing syntax...';
+            
+            const result = repairMermaidSyntax(realMermaidData);
+            
+            statusDiv.innerHTML = `
+                <strong>Repair Status:</strong> ${result.wasRepaired ? 'Applied repairs' : 'No repairs needed'}<br>
+                <strong>Issues fixed:</strong> ${result.errors.length > 0 ? result.errors.join(', ') : 'None'}
+            `;
+            
+            repairedCodeDiv.textContent = result.repaired;
+            
+            outputDiv.textContent = 'Rendering diagram...';
+            
+            try {
+                diagramDiv.innerHTML = result.repaired;
+                await mermaid.run({
+                    nodes: [diagramDiv],
+                    suppressErrors: false
+                });
+                outputDiv.innerHTML = '<strong style="color: green;">✅ SUCCESS! Diagram rendered without errors.</strong>';
+            } catch (error) {
+                outputDiv.innerHTML = `
+                    <strong style="color: red;">❌ RENDERING FAILED</strong><br>
+                    <strong>Error:</strong> ${error.message}<br>
+                    <strong>Details:</strong> ${error.toString()}<br>
+                    ${error.stack ? `<pre>${error.stack}</pre>` : ''}
+                `;
+                console.error('Mermaid rendering error:', error);
+            }
+        });
+    </script>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        #status, #output {
+            padding: 15px;
+            margin: 10px 0;
+            border: 1px solid #ccc;
+            background: #f5f5f5;
+        }
+        #diagram {
+            margin: 20px 0;
+            padding: 20px;
+            border: 2px solid #333;
+            min-height: 200px;
+        }
+        #repaired-code {
+            background: #f0f0f0;
+            padding: 15px;
+            border: 1px solid #ccc;
+            white-space: pre-wrap;
+            font-size: 12px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        h2 {
+            margin-top: 30px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Mermaid Syntax Repair Test</h1>
+    <p>Testing with real data from sessions.json using Mermaid v10.9.4</p>
+    
+    <div id="status">Initializing...</div>
+    <div id="output">Waiting...</div>
+    
+    <h2>Rendered Diagram</h2>
+    <div id="diagram" class="mermaid"></div>
+    
+    <h2>Repaired Code</h2>
+    <div id="repaired-code"></div>
+</body>
+</html>
+

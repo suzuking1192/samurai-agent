@@ -154,6 +154,7 @@ export class SamuraiAgent {
             filenameKeywords: codeExtractionAnalysisResult.filenameKeywords,
             methodNameKeywords: codeExtractionAnalysisResult.methodNameKeywords,
             codeKeywords: codeExtractionAnalysisResult.codeKeywords,
+            manuallyPinnedFilePaths: session.pinnedFilePaths || [],
           });
 
           if (extractionResult.success && extractionResult.result) {
@@ -933,16 +934,38 @@ CRITICAL RULES:
         
         // Trigger artifact generation asynchronously (fire and forget)
         try {
+          // Set status to generating
+          await this.dataStore.updateSession(session.id, {
+            currentArtifact: {
+              mermaidData: '',
+              textSpec: '',
+              timestamp: Date.now(),
+              generationStatus: 'generating'
+            }
+          });
+          
           this.generateSpecArtifact(session, chatHistory, projectDetails, codeContexts)
             .then(async (artifact) => {
               // Update session with new artifact
               await this.dataStore.updateSession(session.id, {
-                currentArtifact: artifact
+                currentArtifact: {
+                  ...artifact,
+                  generationStatus: 'completed'
+                }
               });
               console.log('Spec artifact generated and saved successfully');
             })
-            .catch(error => {
+            .catch(async error => {
               console.error('Failed to generate artifact:', error);
+              // Set status to failed
+              await this.dataStore.updateSession(session.id, {
+                currentArtifact: {
+                  mermaidData: '',
+                  textSpec: '',
+                  timestamp: Date.now(),
+                  generationStatus: 'failed'
+                }
+              });
             });
         } catch (error) {
           console.error('Error initiating artifact generation:', error);

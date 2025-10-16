@@ -17,6 +17,7 @@ import { TextDecoder } from "util";
 import * as vscode from "vscode";
 import { extractJsonFromLLMResponse } from "../../common/utils/llmResponseParser";
 import { TelemetryService } from "../../services/TelemetryService";
+import { RecentFilesTracker } from "../../services/RecentFilesTracker";
 
 const DEFAULT_MAX_ITERATIONS = 2;
 const DEFAULT_MAX_FILES = 5000;
@@ -32,6 +33,7 @@ type NormalizedExtractCodeParameters = ExtractCodeParameters & {
   methodNameKeywords: string[];
   codeKeywords: string[];
   maxDependencyDepth: number;
+  manuallyPinnedFilePaths: string[];
 };
 
 export interface ExtractCodeToolResultPayload {
@@ -58,6 +60,7 @@ export interface ExtractCodeParameters {
   methodNameKeywords?: string[];
   codeKeywords?: string[];
   maxDependencyDepth?: number; // Maximum depth for recursive dependency resolution (default: 3)
+  manuallyPinnedFilePaths?: string[]; // Optional array of absolute file paths to unconditionally include
 }
 
 export class ExtractCodeTool {
@@ -155,23 +158,33 @@ export class ExtractCodeTool {
         throw new Error("No code files found that match the provided parameters.");
       }
 
+      // Process pinned files early
+      const workspaceRoot = normalizedParams.connectedCodebasePath || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
+      const pinnedFileInfos = await this.processPinnedFiles(
+        normalizedParams.manuallyPinnedFilePaths,
+        workspaceRoot
+      );
+
+      // Merge pinned files into filteredFileInfos
+      const mergedFileInfos = new Map([...filteredFileInfos, ...pinnedFileInfos]);
+      console.log(`ExtractCodeTool: Total files after pinning: ${mergedFileInfos.size} (pinned: ${pinnedFileInfos.size})`);
+
       const relevantElementSelections = await this.rankRelevantFileswithLLM(
-        filteredFileInfos,
+        mergedFileInfos,
         normalizedParams.query,
         normalizedParams.projectId,
         normalizedParams.model,
       );
 
       // NEW: Resolve missing dependencies identified by LLM
-      const workspaceRoot = normalizedParams.connectedCodebasePath || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
       const enrichedFileInfos = await this.resolveMissingDependencies(
         relevantElementSelections,
-        filteredFileInfos,
+        mergedFileInfos,
         workspaceRoot,
         normalizedParams.maxDependencyDepth
       );
 
-      console.log(`ExtractCodeTool: Enriched file count: ${enrichedFileInfos.size} (original: ${filteredFileInfos.size})`);
+      console.log(`ExtractCodeTool: Enriched file count: ${enrichedFileInfos.size} (original: ${mergedFileInfos.size})`);
 
       // Use enrichedFileInfos for all subsequent operations
       const keywordSelections = await this.performKeywordBasedSearch(
@@ -188,6 +201,7 @@ export class ExtractCodeTool {
         enrichedFileInfos,
         mergedSelections,
         GLOBAL_CONTEXT_TOKEN_LIMIT,
+        normalizedParams.manuallyPinnedFilePaths,
       );
 
       if (structuredContext.length === 0) {
@@ -201,6 +215,7 @@ export class ExtractCodeTool {
             enrichedFileInfos,
             fallbackSelections,
             GLOBAL_CONTEXT_TOKEN_LIMIT,
+            normalizedParams.manuallyPinnedFilePaths,
           );
         }
       }
@@ -331,6 +346,7 @@ export class ExtractCodeTool {
       methodNameKeywords: params.methodNameKeywords || [],
       codeKeywords: params.codeKeywords || [],
       maxDependencyDepth: params.maxDependencyDepth ?? 3,
+      manuallyPinnedFilePaths: params.manuallyPinnedFilePaths || [],
     };
   }
 
@@ -420,6 +436,10 @@ export class ExtractCodeTool {
     // Build folder structure context for LLM
     const folderStructure = this.buildFolderStructureContext(fileInfos);
 
+    // Build recently opened files context (workspace-aware)
+    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
+    const recentFilesContext = this.buildRecentlyOpenedFilesContext(10, workspaceRoot);
+
     // Build a summary of all files with their elements for LLM analysis
     const fileElementsSummary = Array.from(fileInfos.entries())
       .map(([filePath, fileInfo]) => {
@@ -437,6 +457,7 @@ export class ExtractCodeTool {
     const prompt = promptTemplate
       .replace("{{USER_REQUEST}}", query)
       .replace("{{FOLDER_STRUCTURE}}", folderStructure)
+      .replace("{{RECENTLY_OPENED_FILES}}", recentFilesContext)
       .replace("{{FILE_ELEMENTS_SUMMARY}}", fileElementsSummary);
 
     console.log("ExtractCodeTool: Ranking prompt prepared", {
@@ -653,6 +674,10 @@ export class ExtractCodeTool {
     // Build folder structure context for LLM
     const folderStructure = this.buildFolderStructureContext(fileInfos);
 
+    // Build recently opened files context (workspace-aware)
+    const workspaceRoot = params.connectedCodebasePath || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
+    const recentFilesContext = this.buildRecentlyOpenedFilesContext(10, workspaceRoot);
+
     const promptTemplate = await this.loadPrompt(
       "codeParser/extract_code_context.md",
     );
@@ -668,6 +693,7 @@ export class ExtractCodeTool {
     const prompt = promptTemplate
       .replace("{{USER_REQUEST}}", params.query)
       .replace("{{FOLDER_STRUCTURE}}", folderStructure)
+      .replace("{{RECENTLY_OPENED_FILES}}", recentFilesContext)
       .replace("{{CODE_CONTENT}}", combinedContent);
 
     const messages: LLMMessage[] = [
@@ -853,13 +879,47 @@ export class ExtractCodeTool {
     fileInfos: Map<string, FileInfo>,
     relevantElementSelections: Map<string, Array<{ name: string; type: string; }>>,
     globalTokenLimit: number = GLOBAL_CONTEXT_TOKEN_LIMIT,
+    pinnedFilePaths: string[] = [],
   ): Promise<Array<{ path: string; elements: CodeElement[]; snippet: string; }>> {
     const results: Array<{ path: string; elements: CodeElement[]; snippet: string; }> = [];
     let totalTokenCount = 0;
 
-    // Process files in order of importance (based on the order in relevantElementSelections)
-    // This ensures the most important files are processed first
-    const orderedFilePaths = Array.from(relevantElementSelections.keys());
+    // First, process pinned files (priority)
+    console.log(`[Context File Pinning] Building snippets with ${pinnedFilePaths.length} pinned files`);
+    
+    for (const pinnedPath of pinnedFilePaths) {
+      const fileInfo = fileInfos.get(pinnedPath);
+      if (!fileInfo) {
+        console.warn(`[Context File Pinning] Pinned file not found in fileInfos: ${pinnedPath}`);
+        continue;
+      }
+
+      // Include ALL elements from pinned files
+      const allElements = fileInfo.elements;
+      if (allElements.length === 0) {
+        console.warn(`[Context File Pinning] Pinned file has no elements: ${pinnedPath}`);
+        continue;
+      }
+      
+      const snippet = this.buildFileSnippet(fileInfo, allElements);
+      const tokenCount = snippet.length;
+
+      results.push({
+        path: pinnedPath,
+        elements: allElements,
+        snippet: snippet,
+      });
+      
+      totalTokenCount += tokenCount;
+      console.log(`[Context File Pinning] Added pinned file: ${pinnedPath} (${tokenCount} tokens, ${allElements.length} elements)`);
+    }
+    
+    console.log(`[Context File Pinning] Total tokens from pinned files: ${totalTokenCount}`);
+
+    // Then process auto-extracted files (regular priority)
+    // Filter out already-pinned files to avoid duplicates
+    const orderedFilePaths = Array.from(relevantElementSelections.keys())
+      .filter(path => !pinnedFilePaths.includes(path));
 
     for (const filePath of orderedFilePaths) {
       const fileInfo = fileInfos.get(filePath);
@@ -972,6 +1032,24 @@ export class ExtractCodeTool {
     }
 
     return results;
+  }
+
+  /**
+   * Builds a complete file snippet from FileInfo and elements
+   * @param fileInfo - File information
+   * @param elements - Code elements to include
+   * @returns Formatted snippet string
+   */
+  private buildFileSnippet(fileInfo: FileInfo, elements: CodeElement[]): string {
+    const snippetParts: string[] = [];
+    
+    for (const element of elements) {
+      if (!element.codeSnippet) continue;
+      const comment = this.getCommentForElementType(element.type);
+      snippetParts.push(`${comment} ${element.name}\n${element.codeSnippet}`);
+    }
+    
+    return snippetParts.join('\n\n');
   }
 
   private truncateElementSnippet(
@@ -1274,8 +1352,82 @@ export class ExtractCodeTool {
     return allFileInfos;
   }
 
+  /**
+   * Processes manually pinned files to include in code context unconditionally
+   * @param pinnedPaths - Array of absolute file paths to pin
+   * @param workspaceRoot - Workspace root path
+   * @returns Map of file paths to FileInfo objects for pinned files
+   */
+  private async processPinnedFiles(
+    pinnedPaths: string[],
+    workspaceRoot: string
+  ): Promise<Map<string, FileInfo>> {
+    const pinnedFileInfos = new Map<string, FileInfo>();
+    
+    if (!pinnedPaths || pinnedPaths.length === 0) {
+      return pinnedFileInfos;
+    }
+    
+    console.log(`[Context File Pinning] Processing ${pinnedPaths.length} pinned files`);
+    
+    for (const filePath of pinnedPaths) {
+      try {
+        const content = await this.readFileSafe(filePath);
+        if (!content) {
+          console.warn(`[Context File Pinning] Could not read file: ${filePath}`);
+          continue;
+        }
+        
+        const language = this.codeParser.detectLanguage(filePath) || 'unknown';
+        const elements = await this.codeParser.extractElementsFromFile(filePath, language);
+        
+        // Get file stats
+        const uri = vscode.Uri.file(filePath);
+        const stat = await vscode.workspace.fs.stat(uri);
+        
+        const fileInfo: FileInfo = {
+          path: filePath,
+          name: filePath.split('/').pop() || filePath,
+          extension: filePath.split('.').pop() || '',
+          language: language,
+          size: stat.size,
+          elements: elements,
+          lastModified: new Date(stat.mtime),
+        };
+        
+        pinnedFileInfos.set(filePath, fileInfo);
+        console.log(`[Context File Pinning] Processed file: ${filePath} (${elements.length} elements)`);
+      } catch (error) {
+        console.error(`[Context File Pinning] Failed to process pinned file ${filePath}:`, error);
+      }
+    }
+    
+    console.log(`[Context File Pinning] Successfully processed ${pinnedFileInfos.size} pinned files`);
+    return pinnedFileInfos;
+  }
+
   private async loadPrompt(relativePath: string): Promise<string> {
     return this.codeParser.loadPrompt(relativePath);
+  }
+
+  /**
+   * Builds recently opened files context (HYBRID APPROACH)
+   * Priority: 1) Currently open tabs, 2) Recently closed files
+   * Workspace-aware: Only includes files from current workspace
+   * 
+   * @param maxFiles - Maximum number of files to include
+   * @param workspaceRoot - Workspace root to filter files by
+   * @returns Formatted markdown string with recently opened files
+   */
+  private buildRecentlyOpenedFilesContext(maxFiles: number, workspaceRoot: string): string {
+    const recentFiles = RecentFilesTracker.getInstance().getRecentlyOpenedFilePaths(maxFiles, workspaceRoot);
+    
+    if (recentFiles.length === 0) {
+      return "## Recently Opened Files\n\nNo recently opened files in current workspace.";
+    }
+
+    const fileList = recentFiles.map(filePath => `- ${filePath}`).join('\n');
+    return `## Recently Opened Files (top ${recentFiles.length})\n\n${fileList}`;
   }
 
   /**
@@ -1772,6 +1924,7 @@ export class ExtractCodeTool {
       if (merged.has(filePath)) {
         const existingElements = merged.get(filePath)!;
         const newElements = elements.filter(newEl => 
+          newEl && // Add null check
           !existingElements.some(existingEl => 
             existingEl.name === newEl.name && existingEl.type === newEl.type
           )
@@ -1786,7 +1939,7 @@ export class ExtractCodeTool {
           
           if (existingIndex >= 0) {
             // Prefer specific type over "unknown"
-            if (existingElements[existingIndex].type === "unknown" && newEl.type !== "unknown") {
+            if (mergedElements[existingIndex].type === "unknown" && newEl.type !== "unknown") {
               mergedElements[existingIndex] = newEl;
             }
           } else {

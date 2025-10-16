@@ -6,6 +6,8 @@ User Request: {{USER_REQUEST}}
 Project Folder Structure:
 {{FOLDER_STRUCTURE}}
 
+{{RECENTLY_OPENED_FILES}}
+
 Code Content:
 {{CODE_CONTENT}}
 
@@ -63,6 +65,8 @@ Instructions:
    - When similar functions exist in multiple locations (e.g., web version vs extension version), use the folder context as the PRIMARY guide for selection
    - Prioritize the folder whose code aligns best with the described functionality, current context, or dependencies in recent messages
    - If uncertain, analyze all versions and summarize differences before selecting the most relevant one
+12. Recently opened file information is useful because what users are talking about is often related to what they have checked recently. However, it’s not necessarily always relevant, as users may start thinking in a completely new direction. Therefore, use it as a helpful hint, but don’t rely on it 100%.
+
 
 STRICT OUTPUT FORMAT (RETURN JSON ONLY — NO EXTRA TEXT):
 

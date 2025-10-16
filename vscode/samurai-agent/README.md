@@ -1,8 +1,8 @@
-# Samurai Agent
+# 🥋 Samurai Agent
 
-**Generate codebase-aware specs for complex features, refactoring, and hard bugs.**
+**Deep Bug Analysis & Feature Planning for Complex Code**
 
-When AI coding tools suggest generic solutions, Samurai Agent references YOUR existing code.
+When AI tools get stuck on complex bugs or struggle to plan intricate features, Samurai finds root causes and compares architectural trade-offs.
 
 ## 🎥 Quick Demo
 ![Samurai Agent Demo](https://raw.githubusercontent.com/suzuking1192/samurai-agent/main/samurai-agent-demo.gif)
@@ -11,88 +11,92 @@ When AI coding tools suggest generic solutions, Samurai Agent references YOUR ex
 
 ## Why Samurai Agent?
 
-**The Problem:**
-Most AI coding tools don't truly understand your codebase. They use grep-based keyword search to find relevant code—fast, but shallow.
+### The Problem
+**Complex bugs:** Quick AI tools guess at symptoms but can't trace system-wide interactions to find root causes.
 
-**Our Approach:**
-We use LLMs to READ and UNDERSTAND your code, not just search for keywords. This foundationally different approach means we:
-- ✅ Understand architecture and how components relate
-- ✅ Find relevant code even without exact keyword matches
-- ✅ Recognize patterns and conventions across your codebase
-- ✅ Reference existing utilities by understanding what they do, not just their names
+**Complex features:** AI tools suggest generic solutions without comparing architectural trade-offs specific to your codebase.
 
-**Example:**
-- ❌ Other tools: "Implement generic caching with localStorage"
-- ✅ Samurai: "Use your existing DataStore at `src/persistence/dataStore.ts` which already handles persistence patterns"
+### Our Approach
 
-**Why This Matters:**
-Grep-based search finds code with matching keywords. LLM-based analysis understands what your code DOES. That's why we can suggest using your existing solutions instead of reinventing them.
+Unlike quick tools that use keyword search, we use **agentic code search** to read and understand your code:
 
----
+**Deep Bug Analysis:** Traces execution paths across files to find root causes by analyzing how components interact.
 
-## When to Use Samurai Agent
+**Spec Planning:** Reads your existing patterns to compare architectural options with trade-offs specific to your codebase.
 
-Use alongside your existing AI coding tools for:
-- ✅ **Complex features** (touching 5+ files, architectural considerations)
-- ✅ **Large refactoring** (cross-cutting changes, pattern updates)
-- ✅ **Difficult bugs** (require understanding how systems interact)
 
-For simple features, your usual tools work fine. For complex work, use Samurai first.
+### Example
 
----
+**Other tools:**
+```
+❌ "Add caching with localStorage"
+```
 
-## How It Works
+**Samurai:**
+```
+✅ "Use your existing DataStore at src/persistence/dataStore.ts
 
-### 1️⃣ **Analyze Your Codebase**
-**For exploring improvements/refactoring:**
-Type: "Please read the latest code and suggest improvements for [area]..."
+   Option A: Extend DataStore.cache
+   Pros: Consistent with your patterns, handles errors
+   Cons: Adds 2KB to session size
+   
+   Option B: New CacheService
+   Pros: Isolated, lighter weight
+   Cons: Another abstraction to maintain
+   
+   Recommendation: Option A - you already have 3 similar patterns"
+```
+```
 
-**For understanding existing code:**
-Type: "Please read the latest code and explain how [feature/system] works..."
-
-**For debugging:**
-Type: "Please read the latest code and help me understand why [bug description]..."
-
-You can skip step 1 if you already know what feature you want to build and just need a detailed spec.
-
-### 2️⃣ **Discuss Your Feature**
-Example: "I want to add LLM cost tracking with monthly stats..."
-Samurai asks clarifying questions, identifies ambiguities, and references your existing code.
-
-### 3️⃣ **Generate Spec**
-Click "Create Spec" button or type: "create specs"
-
-Get a detailed specification that:
-- References YOUR existing utilities
-- Follows YOUR conventions
-- Lists files to modify
-- Suggests implementation order
-
-### 4️⃣ **Use with Your AI Tools**
-Copy the spec to your preferred AI coding tool for code generation. The spec ensures generated code fits your architecture.
-
-### 5️⃣ **Code Review** (Optional)
-Return to Samurai Agent to review generated code against the spec.
 
 ---
 
-## Setup (2 minutes)
+## Two Core Modes
 
-### 1. Configure LLM Provider
-- Go to Settings → Samurai Agent
-- Add API key (Gemini, OpenAI, or Anthropic)
-- **Recommended:** Gemini Flash 2.5 (optimized for performance)
+### 🔍 Deep Bug Analysis
+**Finds root causes by analyzing system interactions**
 
-### 2. Start Using
-- Open your project
-- Type: `"Please read the latest code and suggest..."`
-- Watch Samurai analyze your codebase
+**When to use:** When AI coding agents are stuck in a bug
 
-### 3. Add Project Context (Optional)
-- Go to Settings → Samurai Agent
-- Scroll to bottom: "Context Information"
-- Add project-specific documentation, conventions, or guidelines
-- Samurai will consider this when generating specs
+**How it works:**
+1. Select "Deep Bug Analysis" mode
+2. Describe the bug: *"Progress banner appears after wrong message"*
+3. Samurai traces data flow across 10+ files
+4. Get root cause: *"Banner position set only once on creation, never updated"*
+
+### 📋 Spec Planning Mode
+**Compares architectural options before you build**
+
+**When to use:** Feature requires architectural decisions
+
+**How it works:**
+1. Select "Spec Planning" mode
+2. Describe feature: *"Add file pinning to LLM context"*
+3. Answer clarifying questions: *"Should pins persist across sessions?"*
+4. Review trade-offs: Session storage vs Workspace storage
+5. Click "Create specs" → Get method-level implementation plan
+
+**Use with any AI tool:**  
+Copy specs to Cursor/Copilot for code generation. Specs ensure generated code fits your architecture.
+
+
+---
+
+## Quick Start
+
+### 1. Install & Configure (2 minutes)
+1. Install from VS Code Marketplace
+2. Settings → Samurai Agent → Add API key
+   - Gemini, OpenAI, or Anthropic
+   - **Recommended:** Gemini Flash 2.5 (fastest)
+   - **Free tier available** with daily limits
+
+### 2. Optional: Add Project Context
+Settings → Samurai Agent → "Context Information"  
+Add conventions, docs, or guidelines Samurai should follow
+
+### 3. Start Using
+Open Samurai sidebar → Select mode → Describe your bug or feature
 
 ---
 
@@ -115,20 +119,32 @@ Return to Samurai Agent to review generated code against the spec.
 
 ## FAQ
 
-**Q: How is this different from other AI coding tools?**
-A: Most tools use grep-based keyword search to find relevant code (fast but shallow). We use LLMs to READ and UNDERSTAND your code—recognizing architecture, patterns, and what utilities actually do. This lets us reference your existing solutions instead of suggesting generic ones.
+**Q: How is this different from Cursor/Copilot?**  
+A: They generate code quickly. Samurai analyzes deeply for complex cases:
+- **Bugs:** Traces system interactions to find root causes
+- **Features:** Compares architectural trade-offs before building
 
-**Q: Do I need to stop using my current AI coding tools?**
-A: No! Use both. Samurai for complex planning, your existing tools for code generation.
+Use both: Samurai for debugging/planning, Cursor/Copilot for coding.
 
-**Q: How long does codebase analysis take?**
+**Q: When should I use Samurai vs quick AI tools?**  
+A: Use Samurai when:
+- Bug affects multiple files and quick tools can't find the cause
+- Feature needs architectural decisions with trade-offs
+- You want reviewable specs before coding
+
+Use quick tools when:
+- Simple bugs or features
+- Speed matters more than understanding
+- Just generating straightforward code
+
+**Q: How long does analysis take?**  
 A: 10-30 seconds for most projects (up to 10,000 files).
 
-**Q: What if I have a private codebase?**
-A: All analysis uses your own API keys. Your code is processed according to your chosen LLM provider's policies.
+**Q: What about private codebases?**  
+A: Analysis uses YOUR API keys. Code processed per your provider's policy (Gemini/OpenAI/Anthropic).
 
-**Q: Why is LLM-based analysis better than keyword search?**
-A: Keyword search finds code with matching text. LLM-based analysis understands what code DOES—recognizing similar functionality even with different naming, understanding relationships between components, and finding relevant patterns across your codebase.
+**Q: Does this replace my current AI coding tools?**  
+A: No, complements them! Samurai for complex debugging/planning → Your tools for code generation.
 
 ---
 

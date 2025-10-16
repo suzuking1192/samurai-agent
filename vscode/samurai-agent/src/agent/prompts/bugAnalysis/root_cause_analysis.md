@@ -72,6 +72,9 @@ If you answer "no" to any of these, revise your analysis.
 }
 ```
 
+
+
+
 ## Field Descriptions:
 - **analysis_report**: A comprehensive markdown-formatted explanation of what you found, how the bug occurs, and why it happens. Include relevant code references.
 - **root_cause**: A concise 1-2 sentence summary of the root cause
@@ -82,6 +85,11 @@ If you answer "no" to any of these, revise your analysis.
   - methodNameKeywords: Function/method names to look for
   - codeKeywords: Keywords in code content to find
 - **search_description**: Only include if needs_more_context is true. A specific description of what code to search for in the next iteration.
+
+# LANGUAGE HANDLING
+
+Respond in the same language as the user's last message, keeping technical terms and code in English but translating all explanations and comments.
+
 
 ## Confidence Calibration:
 

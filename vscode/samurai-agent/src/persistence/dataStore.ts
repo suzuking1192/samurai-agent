@@ -159,7 +159,8 @@ export class DataStore {
             lastMessageAt: stored.lastMessageAt ? new Date(stored.lastMessageAt) : new Date(stored.createdAt),
             metadata: stored.metadata ?? {
                 projectId: ''
-            }
+            },
+            pinnedFilePaths: stored.pinnedFilePaths ?? []
         };
     }
 
@@ -221,6 +222,7 @@ export class DataStore {
             },
             codeContextIds: [],
             previous_session_intent: UserIntentEnum.PURE_DISCUSSION,
+            pinnedFilePaths: [],
             createdAt: now,
             updatedAt: now
         };

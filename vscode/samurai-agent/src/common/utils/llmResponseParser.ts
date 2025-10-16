@@ -13,12 +13,12 @@
  */
 
 /**
- * Sanitizes JSON string by escaping literal newlines within string values.
- * LLMs sometimes generate JSON with actual line breaks inside string values,
- * which is invalid JSON. This function converts them to \n escape sequences.
+ * Sanitizes JSON string by escaping literal newlines and other control characters within string values.
+ * LLMs sometimes generate JSON with actual line breaks or control characters inside string values,
+ * which is invalid JSON. This function converts them to proper escape sequences.
  * 
  * @param jsonString - The JSON string to sanitize
- * @returns Sanitized JSON string with escaped newlines
+ * @returns Sanitized JSON string with escaped newlines and control characters
  */
 function sanitizeJsonNewlines(jsonString: string): string {
     let result = '';
@@ -51,6 +51,18 @@ function sanitizeJsonNewlines(jsonString: string): string {
             } else {
                 result += char;
             }
+            escapeNext = false;
+        } else if (char === '\t' && inString) {
+            // Replace literal tabs inside strings with \t
+            result += '\\t';
+            escapeNext = false;
+        } else if (char === '\b' && inString) {
+            // Replace literal backspace inside strings
+            result += '\\b';
+            escapeNext = false;
+        } else if (char === '\f' && inString) {
+            // Replace literal form feed inside strings
+            result += '\\f';
             escapeNext = false;
         } else {
             result += char;
@@ -187,6 +199,172 @@ function repairJsonByError(jsonString: string, error: any): string | null {
             return repaired;
         } catch {
             // Continue to next strategy
+        }
+    }
+    
+    // Strategy 3: Handle "Expected ',' or '}' after property value" errors
+    if (errorMessage.includes("after property value")) {
+        console.log('[JSON Repair] Detected "after property value" error, attempting targeted repairs');
+        
+        const repairAttempts = [];
+        
+        // Attempt 1: Find the problematic string and escape unescaped quotes
+        try {
+            let repaired = '';
+            let inString = false;
+            let escapeNext = false;
+            let stringStartPos = -1;
+            let foundError = false;
+            
+            for (let i = 0; i < jsonString.length; i++) {
+                const char = jsonString[i];
+                
+                if (escapeNext) {
+                    repaired += char;
+                    escapeNext = false;
+                    continue;
+                }
+                
+                if (char === '\\') {
+                    repaired += char;
+                    escapeNext = true;
+                    continue;
+                }
+                
+                if (char === '"') {
+                    if (!inString) {
+                        inString = true;
+                        stringStartPos = i;
+                    } else {
+                        inString = false;
+                        stringStartPos = -1;
+                    }
+                    repaired += char;
+                    continue;
+                }
+                
+                // If we're at or past the error position and in a string, we might have found the problem
+                if (i >= errorPosition && inString && !foundError) {
+                    // We found an unescaped quote or problematic content
+                    foundError = true;
+                    console.log('[JSON Repair] Found problematic content in string at position', i);
+                }
+                
+                repaired += char;
+            }
+            
+            repairAttempts.push(repaired);
+        } catch {
+            // Continue to next attempt
+        }
+        
+        // Attempt 2: Truncate at error position and close the structure properly
+        try {
+            let truncated = jsonString.substring(0, errorPosition);
+            
+            // Walk backwards to find the start of the problematic property value
+            let pos = errorPosition - 1;
+            let inStr = false;
+            let escNext = false;
+            
+            // Find the opening quote of the current string value
+            while (pos >= 0) {
+                const char = truncated[pos];
+                
+                if (escNext) {
+                    escNext = false;
+                    pos--;
+                    continue;
+                }
+                
+                if (char === '\\') {
+                    escNext = true;
+                    pos--;
+                    continue;
+                }
+                
+                if (char === '"') {
+                    if (!inStr) {
+                        // Found the closing quote of the string we're in
+                        inStr = true;
+                    } else {
+                        // Found the opening quote - this is where the problematic value starts
+                        break;
+                    }
+                }
+                pos--;
+            }
+            
+            // Truncate before the problematic value
+            if (pos > 0) {
+                // Look for the property name and colon before this
+                let beforeValue = truncated.substring(0, pos);
+                // Find the last colon which separates property name from value
+                const lastColon = beforeValue.lastIndexOf(':');
+                if (lastColon > 0) {
+                    truncated = beforeValue.substring(0, lastColon);
+                    // Remove the property name as well if we're removing the value
+                    const lastComma = truncated.lastIndexOf(',');
+                    const lastOpenBrace = truncated.lastIndexOf('{');
+                    if (lastComma > lastOpenBrace) {
+                        truncated = truncated.substring(0, lastComma);
+                    }
+                }
+            }
+            
+            // Now close the structure
+            const openBraces = (truncated.match(/{/g) || []).length;
+            const closeBraces = (truncated.match(/}/g) || []).length;
+            const openBrackets = (truncated.match(/\[/g) || []).length;
+            const closeBrackets = (truncated.match(/\]/g) || []).length;
+            
+            truncated += '}'.repeat(Math.max(0, openBraces - closeBraces));
+            truncated += ']'.repeat(Math.max(0, openBrackets - closeBrackets));
+            
+            repairAttempts.push(truncated);
+            
+            console.log('[JSON Repair] Created truncated version:', {
+                originalLength: jsonString.length,
+                truncatedLength: truncated.length,
+                removedChars: jsonString.length - truncated.length
+            });
+        } catch {
+            // Continue to next attempt
+        }
+        
+        // Attempt 3: Simple truncation - just cut at error and close structure
+        try {
+            let simple = jsonString.substring(0, errorPosition);
+            
+            // If we're in an incomplete string, close it
+            const quotes = (simple.match(/"/g) || []).length;
+            if (quotes % 2 !== 0) {
+                simple += '"';
+            }
+            
+            // Close the structure
+            const openBraces = (simple.match(/{/g) || []).length;
+            const closeBraces = (simple.match(/}/g) || []).length;
+            const openBrackets = (simple.match(/\[/g) || []).length;
+            const closeBrackets = (simple.match(/\]/g) || []).length;
+            
+            simple += '}'.repeat(Math.max(0, openBraces - closeBraces));
+            simple += ']'.repeat(Math.max(0, openBrackets - closeBrackets));
+            
+            repairAttempts.push(simple);
+        } catch {
+            // Continue
+        }
+        
+        // Try each repair attempt
+        for (let i = 0; i < repairAttempts.length; i++) {
+            try {
+                JSON.parse(repairAttempts[i]);
+                console.log(`[JSON Repair] ✓ Successfully repaired with attempt ${i + 1}/${repairAttempts.length}`);
+                return repairAttempts[i];
+            } catch (attemptError: any) {
+                console.log(`[JSON Repair] Attempt ${i + 1} failed:`, attemptError.message.substring(0, 100));
+            }
         }
     }
     

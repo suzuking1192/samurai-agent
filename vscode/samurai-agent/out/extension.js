@@ -70,6 +70,7 @@ const samuraiAgent_1 = require("./agent/core/samuraiAgent");
 const llmCostStorage_1 = require("./storage/llmCostStorage");
 const llmCostCalculator_1 = require("./common/utils/llmCostCalculator");
 const TelemetryService_1 = require("./services/TelemetryService");
+const RecentFilesTracker_1 = require("./services/RecentFilesTracker");
 /**
  * Extension activation function - main backend entry point
  * Registers all commands, webview providers, and initializes the agent system
@@ -101,6 +102,13 @@ function activate(context) {
         // Track extension activation
         telemetryService.trackExtensionActivation();
         console.log('[Samurai Agent] ✓ Extension activation tracked');
+        // Initialize RecentFilesTracker (hybrid approach: open tabs + event tracking, workspace-aware)
+        const recentFilesTracker = RecentFilesTracker_1.RecentFilesTracker.getInstance();
+        recentFilesTracker.initialize();
+        context.subscriptions.push({
+            dispose: () => recentFilesTracker.dispose()
+        });
+        console.log('[Samurai Agent] ✓ RecentFilesTracker initialized');
         const llmProviderService = new llmProviderService_1.LLMProviderService(globalDataStore, dataStore);
         console.log('[Samurai Agent] ✓ LLMProviderService initialized');
         llmProviderService.registerClient("openai", new openaiChatClient_1.OpenAIChatClient());

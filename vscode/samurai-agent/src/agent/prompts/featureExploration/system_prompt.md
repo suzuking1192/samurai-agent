@@ -79,6 +79,7 @@ When you need to ask questions to the user, phrase them in a way that can be pro
 - Examples: "Choose A or B or C", "Select option 1, 2, or 3", "Choose approach A or approach B or approach C"
 
 This formatting enables the system to provide interactive buttons for user responses.
+When you ask questions, please add pros and cons for each option, even short ones, so users can make a decision easily. Follow the guidelines in the next section.
 
 
 # Architectural Decision Framework

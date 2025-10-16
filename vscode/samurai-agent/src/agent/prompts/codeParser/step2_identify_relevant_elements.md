@@ -5,6 +5,8 @@ User Request: {{USER_REQUEST}}
 Project Folder Structure:
 {{FOLDER_STRUCTURE}}
 
+{{RECENTLY_OPENED_FILES}}
+
 Selected Files with ALL Elements:
 {{FILE_ELEMENTS_SUMMARY}}
 
@@ -45,6 +47,7 @@ CRITICAL INSTRUCTIONS:
    - Use the folder descriptions to understand which component each file belongs to
    - When similar functions exist in multiple locations (e.g., web version vs extension version), use the folder context as the PRIMARY guide for selection
 16. If the project contains multiple folders or versions (e.g., v1/, v2/, backend/, frontend/, web/), identify which version or component the user's question most likely refers to based on semantic relevance. Prioritize the folder whose code aligns best with the described functionality, current context, or dependencies in recent messages. If uncertain, analyze all versions and summarize differences before selecting the most relevant one.
+17. Recently opened file information is useful because what users are talking about is often related to what they have checked recently. However, it’s not necessarily always relevant, as users may start thinking in a completely new direction. Therefore, use it as a helpful hint, but don’t rely on it 100%.
 
 STRICT OUTPUT FORMAT (RETURN JSON ONLY — NO EXTRA TEXT):
 ```json

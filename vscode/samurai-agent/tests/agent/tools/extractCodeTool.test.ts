@@ -916,6 +916,92 @@ describe('ExtractCodeTool', () => {
           { name: 'function1', type: 'function' }
         ]);
       });
+
+      // Regression test for bug: TypeError: Cannot read properties of undefined (reading 'type')
+      // This test replicates the exact scenario that caused the production error
+      it('should handle merging when keyword selections have same-name elements with different types', () => {
+        const llmSelections = new Map<string, Array<{ name: string; type: string; }>>();
+        llmSelections.set('/test/file1.ts', [
+          { name: 'helper', type: 'unknown' },
+          { name: 'processData', type: 'function' }
+        ]);
+
+        const keywordSelections = new Map<string, Array<{ name: string; type: string; }>>();
+        keywordSelections.set('/test/file1.ts', [
+          { name: 'helper', type: 'function' }, // Same name, different type
+          { name: 'newFunction', type: 'function' }
+        ]);
+
+        // This should NOT throw "Cannot read properties of undefined (reading 'type')"
+        const result = (extractCodeTool as any).mergeKeywordAndLLMSelections(llmSelections, keywordSelections);
+
+        expect(result.size).toBe(1);
+        expect(result.get('/test/file1.ts')).toEqual([
+          { name: 'helper', type: 'function' }, // Should prefer specific type over unknown
+          { name: 'processData', type: 'function' },
+          { name: 'newFunction', type: 'function' }
+        ]);
+      });
+
+      // Regression test for undefined values in keyword selections
+      it('should filter out undefined values from keyword selections', () => {
+        const llmSelections = new Map<string, Array<{ name: string; type: string; }>>();
+        llmSelections.set('/test/file1.ts', [
+          { name: 'function1', type: 'function' }
+        ]);
+
+        // This simulates the scenario where keyword search might return arrays with undefined values
+        const keywordSelections = new Map<string, Array<{ name: string; type: string; } | undefined>>();
+        keywordSelections.set('/test/file1.ts', [
+          { name: 'function2', type: 'function' },
+          undefined as any, // This should be filtered out
+          { name: 'function3', type: 'function' }
+        ] as any);
+
+        // Should NOT crash when encountering undefined
+        const result = (extractCodeTool as any).mergeKeywordAndLLMSelections(llmSelections, keywordSelections);
+
+        expect(result.size).toBe(1);
+        // Should only include defined elements
+        expect(result.get('/test/file1.ts')).toEqual([
+          { name: 'function1', type: 'function' },
+          { name: 'function2', type: 'function' },
+          { name: 'function3', type: 'function' }
+        ]);
+      });
+
+      // Integration test: Simulates the exact error scenario from production logs
+      it('should handle complex merging scenario with 20+ keyword matches', () => {
+        const llmSelections = new Map<string, Array<{ name: string; type: string; }>>();
+        llmSelections.set('/test/main.ts', [
+          { name: 'mainFunction', type: 'unknown' }
+        ]);
+
+        const keywordSelections = new Map<string, Array<{ name: string; type: string; }>>();
+        
+        // Create 20 files with keyword matches (simulating the production scenario)
+        for (let i = 0; i < 20; i++) {
+          const filePath = `/test/file${i}.ts`;
+          keywordSelections.set(filePath, [
+            { name: `function${i}`, type: 'function' }
+          ]);
+        }
+
+        // Add the main file with a same-name element but specific type
+        keywordSelections.set('/test/main.ts', [
+          { name: 'mainFunction', type: 'function' }, // Same name as LLM selection but specific type
+          { name: 'helperFunction', type: 'function' }
+        ]);
+
+        // This should complete without errors
+        const result = (extractCodeTool as any).mergeKeywordAndLLMSelections(llmSelections, keywordSelections);
+
+        expect(result.size).toBe(21); // 20 files + main file
+        expect(result.get('/test/main.ts')).toEqual([
+          { name: 'mainFunction', type: 'function' }, // Should be upgraded to specific type
+          { name: 'helperFunction', type: 'function' }
+        ]);
+      });
     });
 
     describe('searchByFilenameKeywords', () => {

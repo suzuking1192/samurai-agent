@@ -114,7 +114,9 @@ export interface Session extends BaseModel {
         mermaidData: string;
         textSpec: string;
         timestamp: number;
+        generationStatus?: 'not_started' | 'generating' | 'completed' | 'failed';
     } | null; // Current spec artifact for spec planning mode
+    pinnedFilePaths: string[]; // Array of absolute file paths for manually pinned files
 }
 
 /**

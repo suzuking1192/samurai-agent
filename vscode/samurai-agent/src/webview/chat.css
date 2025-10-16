@@ -459,11 +459,6 @@ body {
     background-color: var(--vscode-button-secondaryHoverBackground);
 }
 
-.show-current-spec-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
-
 /* Artifact Modal Overlay */
 .spec-artifact-modal-overlay {
     position: fixed;

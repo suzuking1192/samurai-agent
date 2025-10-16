@@ -1,7 +1,7 @@
 {
   "name": "samurai-agent",
-  "displayName": "Samurai Agent: Tackle complex bugs, features & refactors",
-  "description": "Deep codebase analysis for debugging, planning & refactoring - references YOUR code, not generic patterns",
+  "displayName": "Samurai Agent - Deep Bug Analysis & Feature Planning",
+  "description": "Find root causes of bugs and plan complex features with confidence. Analyzes system-wide code relationships, presents architectural trade-offs, generates reviewable specs. For production codebases.",
   "version": "0.0.19",
   "publisher": "SamuraiAgent",
   "engines": {
@@ -12,15 +12,15 @@
   ],
   "keywords": [
     "ai-coding",
-  "copilot",
-  "cursor", 
-  "code-analysis",
-  "debugging",
-  "refactoring",
-  "codebase",
-  "planning",
-  "architecture",
-  "bug-fix"
+    "copilot",
+    "cursor",
+    "code-analysis",
+    "debugging",
+    "bug analysis",
+    "complex bugs",
+    "spec generation",
+    "ai planning",
+    "bug-fix"
   ],
   "galleryBanner": {
     "color": "#1e1e1e",
@@ -35,8 +35,7 @@
     "url": "https://github.com/suzuking1192/samurai-agent/issues"
   },
   "icon": "icon.png",
-  "activationEvents": [
-  ],
+  "activationEvents": [],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
@@ -103,6 +102,7 @@
     "eslint": "^9.34.0",
     "html-webpack-plugin": "^5.6.4",
     "jest": "^29.5.0",
+    "jsdom": "^27.0.0",
     "ts-jest": "^29.4.4",
     "ts-loader": "^9.5.4",
     "ts-node": "^10.9.2",

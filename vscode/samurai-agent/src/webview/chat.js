@@ -14,7 +14,8 @@
         lastAssistantMessageContent: null,
         lastAssistantMessageTimestamp: 0,
         messagesLoaded: false, // Track if messages have been loaded
-        lastRefreshTime: 0 // Track when we last refreshed to prevent rapid refreshes
+        lastRefreshTime: 0, // Track when we last refreshed to prevent rapid refreshes
+        pinnedFilePaths: [] // Array of absolute file paths for pinned files
     };
 
     const MessageType = {
@@ -469,6 +470,15 @@
             });
         }
 
+        // New: Call renderAssistantResponse for assistant messages to add spec score and interactive buttons
+        // This ensures these elements are added to messageElement when it's initially constructed,
+        // covering both new messages and messages loaded from history.
+        if (message.role === 'assistant' && 
+            (message.specClarificationData || 
+             (Array.isArray(message.interactiveQuestions) && message.interactiveQuestions.length > 0))) {
+            renderAssistantResponse(messageElement, message);
+        }
+
         // Ensure links open safely
         messageElement.querySelectorAll('a').forEach((link) => {
             link.setAttribute('target', '_blank');
@@ -498,31 +508,43 @@
             banner = document.createElement('div');
             banner.id = 'agent-progress-banner';
             banner.className = 'agent-progress-banner';
-            
-            // Find the last user message to insert the banner after it
+        }
+        
+        // ALWAYS reposition banner (moved outside the if block)
+        // First, remove from current parent if already in DOM
+        if (banner.parentNode) {
+            banner.parentNode.removeChild(banner);
+        }
+        
+        // Find the best insertion point
+        // Priority 1: After "Thinking..." indicator (most current context)
+        let insertionPoint = null;
+        const pendingIndicator = chatContainer.querySelector('.assistant-message.pending');
+        
+        if (pendingIndicator) {
+            insertionPoint = pendingIndicator;
+        } else {
+            // Priority 2: After last user message
             const messages = chatContainer.querySelectorAll('.chat-message');
-            let lastUserMessage = null;
-            
-            // Find the last user message by iterating from the end
             for (let i = messages.length - 1; i >= 0; i--) {
                 if (messages[i].classList.contains('user-message')) {
-                    lastUserMessage = messages[i];
+                    insertionPoint = messages[i];
                     break;
                 }
             }
-            
-            try {
-                if (lastUserMessage) {
-                    // Insert the banner right after the last user message
-                    lastUserMessage.parentNode.insertBefore(banner, lastUserMessage.nextSibling);
-                } else {
-                    // Fallback: append to the end if no user message found
-                    chatContainer.appendChild(banner);
-                }
-            } catch (error) {
-                console.error('Chat: Error inserting progress banner:', error);
-                return;
+        }
+        
+        try {
+            if (insertionPoint) {
+                // Insert the banner right after the insertion point
+                insertionPoint.parentNode.insertBefore(banner, insertionPoint.nextSibling);
+            } else {
+                // Fallback: append to the end if no insertion point found
+                chatContainer.appendChild(banner);
             }
+        } catch (error) {
+            console.error('Chat: Error inserting progress banner:', error);
+            return;
         }
 
         const { stage, data } = update || {};
@@ -550,7 +572,10 @@
 
         if (stage === 'rendering-response' || stage === 'extraction-complete' || stage === 'extraction-failed') {
             setTimeout(() => {
-                banner.style.display = 'none';
+                // Properly remove from DOM instead of just hiding
+                if (banner && banner.parentNode) {
+                    banner.parentNode.removeChild(banner);
+                }
             }, 3000);
         }
     }
@@ -568,6 +593,8 @@
                 const session = await globalScope.WebviewApi.persistence.loadSession(sessionId);
                 if (!session) {
                     sessionId = await createAndPersistSession();
+                } else {
+                    chatState.currentSession = session;
                 }
             } else {
                 sessionId = await createAndPersistSession();
@@ -577,6 +604,8 @@
 
             if (sessionId) {
                 await loadAndDisplayMessages(sessionId);
+                // Update button state after loading session
+                updateShowCurrentSpecButton();
             }
         } catch (error) {
             console.error('Chat: Failed to initialize session', error);
@@ -758,7 +787,8 @@
                     await globalScope.WebviewApi.agent.execute({
                         userMessage: userMessage,
                         session: currentSession,
-                        message: messageText
+                        message: messageText,
+                        pinnedFilePaths: chatState.pinnedFilePaths
                     });
                     
                     // Remove pending indicator - the actual response will be displayed by the message listener
@@ -1021,6 +1051,164 @@
         }
     }
 
+    // ============ Pinned File Management Functions ============
+    
+    function initializePinFileInput() {
+        const pinInput = safeGetDocumentElement('pin-file-input');
+        const autocompleteDropdown = safeGetDocumentElement('file-autocomplete');
+        
+        if (!pinInput || !autocompleteDropdown) {
+            console.warn('Chat: Pin file input or autocomplete dropdown not found');
+            return;
+        }
+        
+        pinInput.addEventListener('input', async (event) => {
+            const value = event.target.value;
+            
+            // Check if user typed @
+            if (value.startsWith('@')) {
+                const searchTerm = value.substring(1).toLowerCase();
+                
+                try {
+                    // Request open files from extension
+                    const openFiles = await globalScope.WebviewApi.postCommand('getOpenFiles');
+                    
+                    if (!openFiles || !Array.isArray(openFiles)) {
+                        console.warn('Chat: No open files returned');
+                        hideAutocomplete();
+                        return;
+                    }
+                    
+                    // Filter files based on search term
+                    const filteredFiles = openFiles.filter(filePath => {
+                        const fileName = filePath.split('/').pop().toLowerCase();
+                        return fileName.includes(searchTerm);
+                    });
+                    
+                    // Display autocomplete suggestions
+                    displayAutocomplete(filteredFiles, searchTerm);
+                } catch (error) {
+                    console.error('Chat: Error getting open files:', error);
+                    hideAutocomplete();
+                }
+            } else {
+                hideAutocomplete();
+            }
+        });
+        
+        // Hide autocomplete when clicking outside
+        document.addEventListener('click', (event) => {
+            if (!pinInput.contains(event.target) && !autocompleteDropdown.contains(event.target)) {
+                hideAutocomplete();
+            }
+        });
+    }
+
+    function displayAutocomplete(files, searchTerm) {
+        const dropdown = safeGetDocumentElement('file-autocomplete');
+        if (!dropdown) return;
+        
+        if (files.length === 0) {
+            hideAutocomplete();
+            return;
+        }
+        
+        dropdown.innerHTML = '';
+        files.slice(0, 10).forEach(filePath => {
+            const item = document.createElement('div');
+            item.className = 'autocomplete-item';
+            
+            const fileName = filePath.split('/').pop();
+            const fileDir = filePath.substring(0, filePath.lastIndexOf('/'));
+            
+            item.innerHTML = `
+                <span class="file-name">${escapeHtml(fileName)}</span>
+                <span class="file-path">${escapeHtml(fileDir)}</span>
+            `;
+            
+            item.addEventListener('click', () => addPinnedFile(filePath));
+            dropdown.appendChild(item);
+        });
+        
+        dropdown.style.display = 'block';
+    }
+
+    function hideAutocomplete() {
+        const dropdown = safeGetDocumentElement('file-autocomplete');
+        if (dropdown) dropdown.style.display = 'none';
+    }
+
+    function addPinnedFile(filePath) {
+        // Enforce 5-file limit
+        if (chatState.pinnedFilePaths.length >= 5) {
+            console.warn('Chat: Maximum 5 files can be pinned');
+            // TODO: Could show a toast notification here
+            return;
+        }
+        
+        // Avoid duplicates
+        if (chatState.pinnedFilePaths.includes(filePath)) {
+            console.warn('Chat: File already pinned:', filePath);
+            return;
+        }
+        
+        chatState.pinnedFilePaths.push(filePath);
+        console.log('Chat: Pinned file:', filePath);
+        renderPinnedFiles();
+        
+        // Clear input
+        const pinInput = safeGetDocumentElement('pin-file-input');
+        if (pinInput) pinInput.value = '';
+        hideAutocomplete();
+    }
+
+    function removePinnedFile(filePath) {
+        const index = chatState.pinnedFilePaths.indexOf(filePath);
+        if (index > -1) {
+            chatState.pinnedFilePaths.splice(index, 1);
+            console.log('Chat: Unpinned file:', filePath);
+            renderPinnedFiles();
+        }
+    }
+
+    function renderPinnedFiles() {
+        const container = safeGetDocumentElement('pinned-files-list');
+        const countDisplay = safeGetDocumentElement('pinned-files-count');
+        
+        if (!container) {
+            console.warn('Chat: Pinned files list container not found');
+            return;
+        }
+        
+        container.innerHTML = '';
+        
+        chatState.pinnedFilePaths.forEach(filePath => {
+            const chip = document.createElement('div');
+            chip.className = 'pinned-file-chip';
+            
+            const fileName = filePath.split('/').pop();
+            chip.innerHTML = `
+                <span class="chip-name">${escapeHtml(fileName)}</span>
+                <button class="chip-remove" data-path="${escapeHtml(filePath)}">&times;</button>
+            `;
+            
+            const removeButton = chip.querySelector('.chip-remove');
+            if (removeButton) {
+                removeButton.addEventListener('click', (e) => {
+                    const path = e.target.getAttribute('data-path');
+                    if (path) removePinnedFile(path);
+                });
+            }
+            
+            container.appendChild(chip);
+        });
+        
+        // Update count display
+        if (countDisplay) {
+            countDisplay.textContent = `${chatState.pinnedFilePaths.length}/5`;
+        }
+    }
+
     function initializeChat() {
         console.log('Chat: Initializing chat functionality...');
 
@@ -1035,6 +1223,9 @@
             const llmModelSelect = safeGetDocumentElement('llm-model-select');
 
             initializeMessageListener(chatMessages);
+            
+            // Initialize pinned file input
+            initializePinFileInput();
             
             // Initialize cost display with monthly cost
             updateApiCostDisplay(0);
@@ -1307,6 +1498,9 @@
             await globalScope.WebviewApi.persistence.saveProjectSettings(updatedProjectSettings);
             chatState.projectSettings = updatedProjectSettings;
             console.log('Mode changed to:', selectedMode);
+            
+            // Update button visibility based on new mode
+            updateShowCurrentSpecButton();
         } catch (error) {
             console.error('Error saving mode selection:', error);
         }
@@ -1449,12 +1643,23 @@
                     });
 
                     if (assistantMessage) {
-                        const element = displayMessage(assistantMessage);
-                        if (element) {
-                            renderAssistantResponse(element, assistantMessage);
-                        }
+                        // displayMessage now handles rendering of spec scores and interactive buttons internally
+                        displayMessage(assistantMessage);
                         chatState.lastAssistantMessageContent = assistantMessage.content;
                         chatState.lastAssistantMessageTimestamp = Date.now();
+                    }
+                    
+                    // Reload session to get updated artifact status
+                    if (chatState.currentSessionId && globalScope?.WebviewApi?.persistence?.loadSession) {
+                        try {
+                            const updatedSession = await globalScope.WebviewApi.persistence.loadSession(chatState.currentSessionId);
+                            if (updatedSession) {
+                                chatState.currentSession = updatedSession;
+                                updateShowCurrentSpecButton();
+                            }
+                        } catch (error) {
+                            console.error('Failed to reload session after agent response:', error);
+                        }
                     }
                 }
 
@@ -1480,6 +1685,17 @@
 
             if (message.type === 'agentProgress') {
                 showProgressIndicator(message.payload);
+                return;
+            }
+
+            // Handle artifact generation completion
+            if (message.command === 'artifactGenerated' && message.payload) {
+                // Update session state with new artifact
+                if (chatState.currentSession) {
+                    chatState.currentSession.currentArtifact = message.payload;
+                    // Refresh the button to reflect the new state
+                    updateShowCurrentSpecButton();
+                }
                 return;
             }
 
@@ -1659,25 +1875,51 @@
         if (!button || !modeSelect) return;
         
         const isSpecPlanningMode = modeSelect.value === 'spec_planning';
-        const hasArtifact = chatState.currentSession?.currentArtifact 
-            && chatState.currentSession.currentArtifact.mermaidData 
-            && chatState.currentSession.currentArtifact.textSpec;
         
         // Show button only in spec planning mode
         button.style.display = isSpecPlanningMode ? 'inline-block' : 'none';
         
-        // Enable button only if artifact exists
-        button.disabled = !hasArtifact;
+        // Button is always enabled
+        button.disabled = false;
+        
+        // Update button text based on generation status
+        const generationStatus = chatState.currentSession?.currentArtifact?.generationStatus;
+        if (generationStatus === 'generating') {
+            button.textContent = 'Show Current Spec (Generating...)';
+        } else {
+            button.textContent = 'Show Current Spec';
+        }
     }
 
     async function handleShowCurrentSpecClick() {
-        if (!chatState.currentSession?.currentArtifact) {
-            alert('No artifact available. The artifact will be generated automatically during spec clarification.');
+        const artifact = chatState.currentSession?.currentArtifact;
+        const generationStatus = artifact?.generationStatus;
+        
+        // Backward compatibility: if artifact has data but no generationStatus, treat as completed
+        const hasArtifactData = artifact?.mermaidData || artifact?.textSpec;
+        
+        // Handle different states
+        if (!artifact || (!hasArtifactData && (!generationStatus || generationStatus === 'not_started'))) {
+            // Spec not created yet
+            renderArtifactModal(null, null, 'not_started');
             return;
         }
         
-        const { mermaidData, textSpec } = chatState.currentSession.currentArtifact;
-        renderArtifactModal(mermaidData, textSpec);
+        if (generationStatus === 'generating') {
+            // Spec is being generated
+            renderArtifactModal(null, null, 'generating');
+            return;
+        }
+        
+        if (generationStatus === 'failed') {
+            // Spec generation failed
+            renderArtifactModal(null, null, 'failed');
+            return;
+        }
+        
+        // Spec is completed (or has data from before the fix)
+        const { mermaidData, textSpec } = artifact;
+        renderArtifactModal(mermaidData, textSpec, 'completed');
     }
 
     /**
@@ -1706,6 +1948,45 @@
         if (repaired.includes('\\n')) {
             repaired = repaired.replace(/\\n/g, '\n');
             changesApplied++;
+        }
+        
+        // Remove trailing semicolons from connections and node definitions
+        if (repaired.includes(';')) {
+            repaired = repaired.split('\n').map(line => {
+                // Remove semicolons at end of lines (common mistake)
+                return line.replace(/;(\s*)$/g, '$1');
+            }).join('\n');
+            changesApplied++;
+            errors.push('Removed trailing semicolons');
+        }
+        
+        // Collapse multiple consecutive empty lines
+        if (repaired.includes('\n\n\n')) {
+            repaired = repaired.replace(/\n{3,}/g, '\n\n');
+            changesApplied++;
+            errors.push('Collapsed multiple empty lines');
+        }
+        
+        // Fix linkStyle with spaces in property values (stroke-dasharray: 5 5 -> stroke-dasharray:5,5)
+        if (repaired.includes('linkStyle')) {
+            const originalRepaired = repaired;
+            // Fix spaces after colons in style properties
+            repaired = repaired.replace(/(\w+):\s+/g, '$1:');
+            // Fix stroke-dasharray with spaces (5 5 -> 5,5)
+            repaired = repaired.replace(/stroke-dasharray:(\d+)\s+(\d+)/g, 'stroke-dasharray:$1,$2');
+            if (repaired !== originalRepaired) {
+                changesApplied++;
+                errors.push('Fixed linkStyle syntax');
+            }
+        }
+        
+        // Fix colons in node labels (replace with space or remove)
+        // Mermaid doesn't allow colons in node labels without escaping
+        const labelColonRegex = /(\[|\()([^\]\)]*?):([^\]\)]*?)(\]|\))/g;
+        if (labelColonRegex.test(repaired)) {
+            repaired = repaired.replace(/(\[|\()([^\]\)]*?):([^\]\)]*?)(\]|\))/g, '$1$2 $3$4');
+            changesApplied++;
+            errors.push('Fixed colons in node labels');
         }
         
         // Remove trailing incomplete style definitions
@@ -1800,7 +2081,7 @@
         return html;
     }
 
-    function renderArtifactModal(mermaidData, textSpec) {
+    function renderArtifactModal(mermaidData, textSpec, state = 'completed') {
         const modal = safeGetDocumentElement('spec-artifact-modal');
         const mermaidContainer = safeGetDocumentElement('spec-artifact-mermaid');
         const textContainer = safeGetDocumentElement('spec-artifact-text');
@@ -1811,6 +2092,57 @@
         mermaidContainer.innerHTML = '';
         textContainer.innerHTML = '';
         
+        // Handle different states
+        if (state === 'not_started') {
+            mermaidContainer.innerHTML = `
+                <div style="text-align: center; padding: 40px 20px; color: var(--vscode-descriptionForeground);">
+                    <p style="font-size: 16px; margin-bottom: 12px;">📋 Spec Not Created Yet</p>
+                    <p style="font-size: 13px;">The spec artifact will be generated automatically during spec clarification.</p>
+                </div>
+            `;
+            textContainer.innerHTML = `
+                <p style="color: var(--vscode-descriptionForeground);">
+                    Start a conversation in spec planning mode to generate your specification artifact.
+                </p>
+            `;
+            modal.style.display = 'flex';
+            return;
+        }
+        
+        if (state === 'generating') {
+            mermaidContainer.innerHTML = `
+                <div style="text-align: center; padding: 40px 20px; color: var(--vscode-descriptionForeground);">
+                    <div style="font-size: 40px; margin-bottom: 12px;">⏳</div>
+                    <p style="font-size: 16px; margin-bottom: 12px;">Spec is Being Generated...</p>
+                    <p style="font-size: 13px;">Please wait while the AI generates your specification artifact.</p>
+                </div>
+            `;
+            textContainer.innerHTML = `
+                <p style="color: var(--vscode-descriptionForeground);">
+                    The specification will be available shortly. This process may take a few moments.
+                </p>
+            `;
+            modal.style.display = 'flex';
+            return;
+        }
+        
+        if (state === 'failed') {
+            mermaidContainer.innerHTML = `
+                <div style="text-align: center; padding: 40px 20px; color: var(--vscode-errorForeground);">
+                    <p style="font-size: 16px; margin-bottom: 12px;">❌ Spec Generation Failed</p>
+                    <p style="font-size: 13px;">There was an error generating the specification artifact.</p>
+                </div>
+            `;
+            textContainer.innerHTML = `
+                <p style="color: var(--vscode-errorForeground);">
+                    Please try continuing the conversation or check the console for error details.
+                </p>
+            `;
+            modal.style.display = 'flex';
+            return;
+        }
+        
+        // State is 'completed' - render the actual artifact
         // Validate and repair Mermaid diagram
         if (typeof mermaid !== 'undefined' && mermaidData) {
             const repairResult = repairMermaidSyntax(mermaidData);

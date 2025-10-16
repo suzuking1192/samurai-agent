@@ -43,7 +43,7 @@ describe('Chat Webview', () => {
 
         window.CustomEvent = dom.window.CustomEvent;
 
-        const script = require('../chat.js');
+        const script = require('../../src/webview/chat.js');
         script.__setWindow?.(window);
     });
 
@@ -59,9 +59,9 @@ describe('Chat Webview', () => {
             handleInitialSettings: jest.fn()
         };
 
-        require('../chat.js');
+        require('../../src/webview/chat.js');
 
-        const handler = require('../chat.js').__getMessageHandler?.();
+        const handler = require('../../src/webview/chat.js').__getMessageHandler?.();
         await handler({ type: 'globalSettingsUpdated' });
 
         expect(window.ChatManager.refreshLLMModelDropdown).toHaveBeenCalled();
@@ -92,9 +92,29 @@ describe('Progress Indicator Positioning', () => {
         global.window = window;
         global.document = document;
 
+        // Set up WebviewApi mock
+        window.WebviewApi = {
+            persistence: {
+                loadGlobalSettings: jest.fn().mockResolvedValue({
+                    openaiApiKey: 'test-key',
+                    geminiApiKey: 'test-key'
+                }),
+                loadProjectSettings: jest.fn().mockResolvedValue({
+                    projectId: 'test-project',
+                    primaryLLMModel: 'test-model'
+                })
+            },
+            subscribe: jest.fn().mockImplementation(callback => {
+                window.__subscriber = callback;
+                return () => {};
+            })
+        };
+
+        window.CustomEvent = dom.window.CustomEvent;
+
         // Load the chat.js module to get access to functions
-        delete require.cache[require.resolve('../chat.js')];
-        require('../chat.js');
+        delete require.cache[require.resolve('../../src/webview/chat.js')];
+        require('../../src/webview/chat.js');
     });
 
     afterEach(() => {

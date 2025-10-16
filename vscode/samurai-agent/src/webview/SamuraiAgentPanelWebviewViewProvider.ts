@@ -162,6 +162,21 @@ export class SamuraiAgentPanelWebviewViewProvider
     const { command } = message;
 
     try {
+      // Get open files command
+      if (command === "getOpenFiles") {
+        const openFiles = vscode.workspace.textDocuments
+          .filter(doc => !doc.isUntitled && doc.uri.scheme === 'file')
+          .map(doc => doc.uri.fsPath);
+        
+        webview.postMessage({
+          type: "success",
+          requestId: message.requestId,
+          payload: openFiles,
+          timestamp: new Date()
+        });
+        return;
+      }
+
       // Direct agent execute command
       if (command === "samurai-agent.execute") {
         console.log('[COST DEBUG] WebviewProvider - Received samurai-agent.execute command', {
@@ -170,7 +185,15 @@ export class SamuraiAgentPanelWebviewViewProvider
         });
         
         if (this.samuraiAgent && message.payload?.userMessage && message.payload?.session) {
-          const { userMessage, session } = message.payload;
+          const { userMessage, session, pinnedFilePaths } = message.payload;
+          
+          // Update session with pinned files if provided
+          if (pinnedFilePaths && Array.isArray(pinnedFilePaths)) {
+            session.pinnedFilePaths = pinnedFilePaths;
+            console.log('[Context File Pinning] Received pinned files:', pinnedFilePaths.length);
+          } else if (!session.pinnedFilePaths) {
+            session.pinnedFilePaths = [];
+          }
           
           this.samuraiAgent.execute(
             userMessage,
@@ -322,6 +345,16 @@ export class SamuraiAgentPanelWebviewViewProvider
             const projectDetails = ""; // TODO: Load from project detail service if needed
             const codeContexts: any[] = []; // Empty for manual generation
             
+            // Set status to generating
+            this.dataStore.updateSession(message.sessionId, {
+              currentArtifact: {
+                mermaidData: '',
+                textSpec: '',
+                timestamp: Date.now(),
+                generationStatus: 'generating'
+              }
+            });
+            
             const artifact = await this.samuraiAgent.generateSpecArtifact(
               session,
               llmHistory,
@@ -329,19 +362,36 @@ export class SamuraiAgentPanelWebviewViewProvider
               codeContexts
             );
             
-            // Update session
+            // Update session with completed artifact
             this.dataStore.updateSession(message.sessionId, {
-              currentArtifact: artifact
+              currentArtifact: {
+                ...artifact,
+                generationStatus: 'completed'
+              }
             });
             
             webview.postMessage({
               command: 'artifactGenerated',
               requestId: message.requestId,
-              payload: artifact,
+              payload: {
+                ...artifact,
+                generationStatus: 'completed'
+              },
               timestamp: new Date()
             });
           } catch (error) {
             console.error('Error generating artifact:', error);
+            
+            // Set status to failed
+            this.dataStore.updateSession(message.sessionId, {
+              currentArtifact: {
+                mermaidData: '',
+                textSpec: '',
+                timestamp: Date.now(),
+                generationStatus: 'failed'
+              }
+            });
+            
             webview.postMessage({
               command: 'error',
               requestId: message.requestId,
@@ -705,6 +755,99 @@ export class SamuraiAgentPanelWebviewViewProvider
             <link href="${chatCssPath}" rel="stylesheet">
             <link href="${specCssPath}" rel="stylesheet">
             <link href="${settingsCssPath}" rel="stylesheet">
+            <style>
+                /* Pinned Files Section Styles */
+                .pinned-files-section {
+                    padding: 8px 10px;
+                    background-color: var(--vscode-editor-background);
+                    border-bottom: 1px solid var(--vscode-panel-border);
+                }
+                
+                .pinned-files-header {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    margin-bottom: 6px;
+                    font-size: 12px;
+                }
+                
+                .pinned-files-count {
+                    color: var(--vscode-descriptionForeground);
+                }
+                
+                .pin-file-input {
+                    width: 100%;
+                    padding: 6px 8px;
+                    border: 1px solid var(--vscode-input-border);
+                    border-radius: 3px;
+                    background-color: var(--vscode-input-background);
+                    color: var(--vscode-input-foreground);
+                    font-size: 12px;
+                }
+                
+                .file-autocomplete-dropdown {
+                    position: absolute;
+                    background-color: var(--vscode-dropdown-background);
+                    border: 1px solid var(--vscode-dropdown-border);
+                    border-radius: 3px;
+                    max-height: 200px;
+                    overflow-y: auto;
+                    z-index: 1000;
+                    width: calc(100% - 20px);
+                }
+                
+                .autocomplete-item {
+                    padding: 6px 10px;
+                    cursor: pointer;
+                }
+                
+                .autocomplete-item:hover {
+                    background-color: var(--vscode-list-hoverBackground);
+                }
+                
+                .file-name {
+                    font-weight: 600;
+                }
+                
+                .file-path {
+                    font-size: 10px;
+                    color: var(--vscode-descriptionForeground);
+                    margin-left: 8px;
+                }
+                
+                .pinned-files-list {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 6px;
+                    margin-top: 6px;
+                }
+                
+                .pinned-file-chip {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 6px;
+                    padding: 4px 8px;
+                    background-color: var(--vscode-badge-background);
+                    color: var(--vscode-badge-foreground);
+                    border-radius: 12px;
+                    font-size: 11px;
+                }
+                
+                .chip-remove {
+                    background: none;
+                    border: none;
+                    color: var(--vscode-badge-foreground);
+                    cursor: pointer;
+                    font-size: 16px;
+                    line-height: 1;
+                    padding: 0;
+                    margin: 0;
+                }
+                
+                .chip-remove:hover {
+                    opacity: 0.7;
+                }
+            </style>
         </head>
         <body>
             <div class="agent-panel-container">
@@ -736,6 +879,20 @@ export class SamuraiAgentPanelWebviewViewProvider
                             <button class="start-new-conversation-btn" id="start-new-conversation-btn">
                                 Start New Conversation
                             </button>
+                        </div>
+                        
+                        <!-- Pinned Files Section -->
+                        <div class="pinned-files-section">
+                            <div class="pinned-files-header">
+                                <label for="pin-file-input">Pin Files (up to 5):</label>
+                                <span class="pinned-files-count" id="pinned-files-count">0/5</span>
+                            </div>
+                            <input type="text" 
+                                   id="pin-file-input" 
+                                   class="pin-file-input" 
+                                   placeholder="Type @ to search open files..." />
+                            <div id="file-autocomplete" class="file-autocomplete-dropdown" style="display: none;"></div>
+                            <div id="pinned-files-list" class="pinned-files-list"></div>
                         </div>
                         
                         <div class="chat-container">
