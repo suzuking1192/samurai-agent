@@ -72,6 +72,16 @@ const llmCostCalculator_1 = require("./common/utils/llmCostCalculator");
 const TelemetryService_1 = require("./services/TelemetryService");
 const RecentFilesTracker_1 = require("./services/RecentFilesTracker");
 /**
+ * Beta testing constants
+ */
+const VALID_BETA_CODE = 'BETA-SA-2025-7K9M';
+/**
+ * Helper function to validate beta code
+ */
+function isBetaCodeValid(code) {
+    return code?.trim() === VALID_BETA_CODE;
+}
+/**
  * Extension activation function - main backend entry point
  * Registers all commands, webview providers, and initializes the agent system
  */
@@ -109,7 +119,7 @@ function activate(context) {
             dispose: () => recentFilesTracker.dispose()
         });
         console.log('[Samurai Agent] ✓ RecentFilesTracker initialized');
-        const llmProviderService = new llmProviderService_1.LLMProviderService(globalDataStore, dataStore);
+        const llmProviderService = new llmProviderService_1.LLMProviderService(globalDataStore, dataStore, undefined, llmCostStorage);
         console.log('[Samurai Agent] ✓ LLMProviderService initialized');
         llmProviderService.registerClient("openai", new openaiChatClient_1.OpenAIChatClient());
         llmProviderService.registerClient("google", new geminiChatClient_1.GeminiChatClient());
@@ -201,6 +211,7 @@ function activate(context) {
                 const result = await projectDetailService.ingestProjectDetail(projectId, rawText, mode);
                 // Track cost if LLM was used
                 if (result.llmResponse && result.llmResponse.cost !== undefined && result.llmResponse.cost > 0) {
+                    const currentGlobalSettings = globalDataStore.loadGlobalSettings().payload;
                     const costRecord = {
                         id: `cost-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                         timestamp: new Date().toISOString(),
@@ -211,6 +222,7 @@ function activate(context) {
                         totalTokens: result.llmResponse.usage.totalTokens,
                         cost: result.llmResponse.cost,
                         requestId: result.llmResponse.requestId,
+                        isBetaUserActive: isBetaCodeValid(currentGlobalSettings?.betaCode),
                     };
                     console.log('[COST DEBUG] projectDetail.ingest - Saving cost record:', costRecord);
                     await llmCostStorage.saveRecord(costRecord);
@@ -230,6 +242,7 @@ function activate(context) {
                     // The cost in metadata is the total for this execution (may include multiple LLM calls)
                     // We need to extract individual LLM call information if available
                     // For now, we'll create a single record for the entire execution
+                    const currentGlobalSettings = globalDataStore.loadGlobalSettings().payload;
                     const costRecord = {
                         id: `cost-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                         timestamp: new Date().toISOString(),
@@ -240,6 +253,7 @@ function activate(context) {
                         totalTokens: 0,
                         cost: result.metadata.cost,
                         requestId: `agent-${Date.now()}`,
+                        isBetaUserActive: isBetaCodeValid(currentGlobalSettings?.betaCode),
                     };
                     console.log('[COST DEBUG] samurai-agent.execute - Saving cost record:', costRecord);
                     await llmCostStorage.saveRecord(costRecord);
@@ -283,6 +297,10 @@ Click to see details in the Samurai Agent panel.
                 console.error('Error getting monthly cost from storage:', error);
                 return null;
             }
+        }));
+        // Register command to get monthly cost for beta users
+        context.subscriptions.push(vscode.commands.registerCommand('samurai-agent.getMonthlyCostForBetaUsers', () => {
+            return llmCostStorage.getMonthlyCostForBetaUsers();
         }));
         // Register command to clear cost history
         context.subscriptions.push(vscode.commands.registerCommand('samurai-agent.clearCostHistory', async () => {

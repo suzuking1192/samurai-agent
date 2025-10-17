@@ -55,6 +55,10 @@ export class GeminiChatClient implements ChatClient {
         if (modelId === 'gemini-2.5-flash-free-tier') {
             return 'gemini-2.5-flash';
         }
+        // Map beta testing model ID to actual Gemini API model name
+        if (modelId === 'gemini-2.5-flash-beta') {
+            return 'gemini-2.5-flash';
+        }
         return modelId;
     }
 

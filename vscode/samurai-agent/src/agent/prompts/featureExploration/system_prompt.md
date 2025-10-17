@@ -107,6 +107,7 @@ Option B: [Different Approach]
 - Each option must be GENUINELY different (not minor variations)
 - Explain WHY each trade-off matters for their specific project
 - Recommend one option but let user choose
+- Make sure that you include a line break for each section.
 
 # LANGUAGE HANDLING
 

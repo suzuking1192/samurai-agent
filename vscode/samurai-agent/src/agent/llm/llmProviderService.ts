@@ -8,7 +8,7 @@ import {
 } from "../../common/models/llm-models";
 import { ApiResponse, ResponseType } from "../../common/models/response-models";
 import { LLM_MODELS } from "../../common/constants/llm-models";
-import { FREE_TIER_GEMINI_API_KEY } from "../../common/constants/llm-constants";
+import { FREE_TIER_GEMINI_API_KEY, BETA_GEMINI_API_KEY, VALID_BETA_CODE, BETA_MONTHLY_LIMIT } from "../../common/constants/llm-constants";
 import { ProjectSettings } from "../../common/models/settings-models";
 import { calculateLLMCost } from "../../common/utils/llmCostCalculator";
 
@@ -24,6 +24,7 @@ export class LLMProviderService {
     private readonly globalDataStore: GlobalDataStore,
     private readonly dataStore?: DataStore,
     clients?: Map<string, ChatClient>,
+    private readonly llmCostStorage?: any,
   ) {
     this.clients = clients ?? new Map();
   }
@@ -111,7 +112,35 @@ export class LLMProviderService {
 
     if (provider === "google" && request.maxTokens) {
       modelRequest.maxTokens = request.maxTokens;
-    } 
+    }
+    
+    // Beta mode enforcement
+    if (modelRequest.model === 'gemini-2.5-flash-beta') {
+      const isBetaCodeValid = globalSettings.betaCode?.trim() === VALID_BETA_CODE;
+      
+      if (!isBetaCodeValid) {
+        return this.createErrorResponse(
+          "Beta Testing requires a valid beta code. Please check your settings.",
+          request.id,
+        );
+      }
+      
+      // Check monthly limit
+      if (this.llmCostStorage) {
+        const betaMonthlyCost = this.llmCostStorage.getMonthlyCostForBetaUsers();
+        if (betaMonthlyCost >= BETA_MONTHLY_LIMIT) {
+          // Fallback: use user's own key if available, otherwise free tier
+          if (globalSettings.geminiApiKey?.trim()) {
+            modelRequest.model = 'gemini-2.5-flash';
+            modelRequest.metadata = { ...modelRequest.metadata, apiKey: globalSettings.geminiApiKey };
+          } else {
+            modelRequest.model = 'gemini-2.5-flash-free-tier';
+            modelRequest.metadata = { ...modelRequest.metadata, apiKey: FREE_TIER_GEMINI_API_KEY };
+          }
+        }
+      }
+    }
+    
     // Execute the LLM request
     const response = await client.chat(modelRequest);
     
@@ -238,6 +267,11 @@ export class LLMProviderService {
     // Always use hardcoded API key for free tier model
     if (model === 'gemini-2.5-flash-free-tier') {
       return FREE_TIER_GEMINI_API_KEY;
+    }
+    
+    // Use dedicated beta API key for beta testing model
+    if (model === 'gemini-2.5-flash-beta') {
+      return BETA_GEMINI_API_KEY;
     }
 
     switch (provider) {

@@ -231,7 +231,7 @@ const uiFeedback = {
 };
 
     const agentApi = {
-        execute: ({ userMessage, session, message }) => {
+        execute: ({ userMessage, session, message, pinnedFilePaths }) => {
             // Provide backward compatibility: if userMessage is not supplied, construct from message
             const payload = {};
 
@@ -251,6 +251,10 @@ const uiFeedback = {
 
             if (session) {
                 payload.session = session;
+            }
+
+            if (pinnedFilePaths) {
+                payload.pinnedFilePaths = pinnedFilePaths;
             }
 
             return postCommand('samurai-agent.execute', payload);

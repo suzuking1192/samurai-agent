@@ -39,6 +39,14 @@ import { LLMResponse } from "./common/models/llm-models";
 import { ResponseType } from "./common/models/response-models";
 import { TelemetryService } from "./services/TelemetryService";
 import { RecentFilesTracker } from "./services/RecentFilesTracker";
+import { VALID_BETA_CODE } from "./common/constants/llm-constants";
+
+/**
+ * Helper function to validate beta code
+ */
+function isBetaCodeValid(code: string | undefined): boolean {
+    return code?.trim() === VALID_BETA_CODE;
+}
 
 /**
  * Extension activation function - main backend entry point
@@ -92,7 +100,7 @@ export function activate(context: vscode.ExtensionContext) {
     });
     console.log('[Samurai Agent] ✓ RecentFilesTracker initialized');
 
-    const llmProviderService = new LLMProviderService(globalDataStore, dataStore);
+    const llmProviderService = new LLMProviderService(globalDataStore, dataStore, undefined, llmCostStorage);
     console.log('[Samurai Agent] ✓ LLMProviderService initialized');
 
     llmProviderService.registerClient("openai", new OpenAIChatClient());
@@ -224,6 +232,7 @@ export function activate(context: vscode.ExtensionContext) {
           
           // Track cost if LLM was used
           if (result.llmResponse && result.llmResponse.cost !== undefined && result.llmResponse.cost > 0) {
+            const currentGlobalSettings = globalDataStore.loadGlobalSettings().payload;
             const costRecord: LLMCostRecord = {
               id: `cost-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
               timestamp: new Date().toISOString(),
@@ -234,6 +243,7 @@ export function activate(context: vscode.ExtensionContext) {
               totalTokens: result.llmResponse.usage.totalTokens,
               cost: result.llmResponse.cost,
               requestId: result.llmResponse.requestId,
+              isBetaUserActive: isBetaCodeValid(currentGlobalSettings?.betaCode),
             };
             
             console.log('[COST DEBUG] projectDetail.ingest - Saving cost record:', costRecord);
@@ -262,6 +272,7 @@ export function activate(context: vscode.ExtensionContext) {
             // The cost in metadata is the total for this execution (may include multiple LLM calls)
             // We need to extract individual LLM call information if available
             // For now, we'll create a single record for the entire execution
+            const currentGlobalSettings = globalDataStore.loadGlobalSettings().payload;
             const costRecord: LLMCostRecord = {
               id: `cost-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
               timestamp: new Date().toISOString(),
@@ -272,6 +283,7 @@ export function activate(context: vscode.ExtensionContext) {
               totalTokens: 0,
               cost: result.metadata.cost,
               requestId: `agent-${Date.now()}`,
+              isBetaUserActive: isBetaCodeValid(currentGlobalSettings?.betaCode),
             };
             
             console.log('[COST DEBUG] samurai-agent.execute - Saving cost record:', costRecord);
@@ -335,6 +347,16 @@ Click to see details in the Samurai Agent panel.
           console.error('Error getting monthly cost from storage:', error);
           return null;
         }
+      }
+    )
+    );
+
+    // Register command to get monthly cost for beta users
+    context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'samurai-agent.getMonthlyCostForBetaUsers',
+      () => {
+        return llmCostStorage.getMonthlyCostForBetaUsers();
       }
     )
     );

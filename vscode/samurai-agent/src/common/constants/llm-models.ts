@@ -60,6 +60,16 @@ export const LLM_MODELS: Record<string, LLMModel[]> = {
             supportsStreaming: true
         },
         {
+            id: 'gemini-2.5-flash-beta',
+            name: 'Beta Testing',
+            provider: 'google',
+            inputCostPerMTokens: 0.075,
+            outputCostPerMTokens: 0.30,
+            description: 'Beta Testing access with $3 monthly sponsored limit',
+            maxTokens: 8192,
+            supportsStreaming: true
+        },
+        {
             id: 'gemini-2.5-flash',
             name: 'Gemini 2.5 Flash',
             provider: 'google',

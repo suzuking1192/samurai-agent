@@ -94,6 +94,7 @@ export class GlobalDataStore {
                     openaiApiKey: '',
                     geminiApiKey: '',
                     claudeApiKey: '',
+                    betaCode: '', // Beta testing code
                     defaultProvider: 'openai' as any,
                     defaultModel: 'gpt-4o',
                     defaultMode: 'default' as any,
@@ -124,6 +125,7 @@ export class GlobalDataStore {
                 openaiApiKey: cleanSettings.openaiApiKey || '',
                 geminiApiKey: cleanSettings.geminiApiKey || '',
                 claudeApiKey: cleanSettings.claudeApiKey || '',
+                betaCode: cleanSettings.betaCode || '', // Beta testing code
                 defaultProvider: cleanSettings.defaultProvider || 'openai',
                 defaultModel: cleanSettings.defaultModel || 'gpt-4o',
                 defaultMode: cleanSettings.defaultMode || 'default',

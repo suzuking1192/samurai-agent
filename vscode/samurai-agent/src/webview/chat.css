@@ -636,3 +636,15 @@ body {
         height: 95%;
     }
 }
+
+/* Beta testing warning message */
+.beta-limit-warning {
+    background-color: rgba(255, 193, 7, 0.15);
+    border: 1px solid rgba(255, 193, 7, 0.5);
+    border-radius: 4px;
+    padding: 12px;
+    margin: 8px 0;
+    color: var(--vscode-editorWarning-foreground);
+    font-size: 13px;
+    line-height: 1.5;
+}

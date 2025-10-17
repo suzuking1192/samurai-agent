@@ -72,6 +72,7 @@ export interface GlobalSettings extends BaseModel {
     openaiApiKey: string;
     geminiApiKey: string;
     claudeApiKey: string;
+    betaCode?: string; // Beta testing code for sponsored access
     
     // Default preferences
     defaultProvider: LLMProvider;

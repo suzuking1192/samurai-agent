@@ -25,6 +25,10 @@
         ERROR: 'error'
     };
 
+    // Beta testing constants
+    const VALID_BETA_CODE = 'BETA-SA-2025-7K9M';
+    const BETA_MONTHLY_LIMIT = 3.00;
+
     function escapeHtml(str) {
         if (!str || typeof str !== 'string') {
             return '';
@@ -1533,15 +1537,53 @@
                 availableModels.push(...chatState.llmModels.openai);
             }
 
+            // Beta model logic
+            const isBetaCodeEntered = globalSettings.betaCode?.trim() === VALID_BETA_CODE;
+            let betaLimitReached = false;
+            
+            console.log('[Beta Debug] Beta code check:', {
+                betaCode: globalSettings.betaCode,
+                trimmed: globalSettings.betaCode?.trim(),
+                expectedCode: VALID_BETA_CODE,
+                isValid: isBetaCodeEntered
+            });
+            
+            if (isBetaCodeEntered) {
+                try {
+                    const betaMonthlyCost = await globalScope.WebviewApi.postCommand('samurai-agent.getMonthlyCostForBetaUsers');
+                    console.log('[Beta Debug] Monthly cost:', betaMonthlyCost, 'Limit:', BETA_MONTHLY_LIMIT);
+                    if (typeof betaMonthlyCost === 'number' && betaMonthlyCost >= BETA_MONTHLY_LIMIT) {
+                        betaLimitReached = true;
+                    }
+                } catch (error) {
+                    console.error('Error getting beta monthly cost:', error);
+                }
+            }
+
+            // Add beta testing model if code valid AND limit not reached
+            if (isBetaCodeEntered && !betaLimitReached) {
+                const betaModel = chatState.llmModels.google?.find(m => m.id === 'gemini-2.5-flash-beta');
+                console.log('[Beta Debug] Beta model search:', {
+                    googleModels: chatState.llmModels.google?.map(m => m.id),
+                    betaModelFound: !!betaModel,
+                    betaModel
+                });
+                if (betaModel) {
+                    availableModels.push(betaModel);
+                }
+            }
+
             // Always add free tier model since it uses hardcoded API key
             const freeTierModel = chatState.llmModels.google?.find(m => m.id === 'gemini-2.5-flash-free-tier');
             if (freeTierModel) {
                 availableModels.push(freeTierModel);
             }
 
-            // Add other Google models if user has Gemini API key
+            // Add other Google models if user has Gemini API key (exclude free tier and beta)
             if (globalSettings.geminiApiKey?.trim()) {
-                const otherGoogleModels = chatState.llmModels.google?.filter(m => m.id !== 'gemini-2.5-flash-free-tier') || [];
+                const otherGoogleModels = chatState.llmModels.google?.filter(
+                    m => m.id !== 'gemini-2.5-flash-free-tier' && m.id !== 'gemini-2.5-flash-beta'
+                ) || [];
                 availableModels.push(...otherGoogleModels);
             }
 
@@ -1555,12 +1597,16 @@
                     return a.provider.localeCompare(b.provider);
                 }
                 
-                // Within same provider, put free tier model last
+                // Within Google provider, order: beta, paid models, free tier
+                const aIsBeta = a.id === 'gemini-2.5-flash-beta';
+                const bIsBeta = b.id === 'gemini-2.5-flash-beta';
                 const aIsFree = a.id === 'gemini-2.5-flash-free-tier';
                 const bIsFree = b.id === 'gemini-2.5-flash-free-tier';
                 
-                if (aIsFree && !bIsFree) return 1;  // a (free tier) goes after b
-                if (!aIsFree && bIsFree) return -1; // b (free tier) goes after a
+                if (aIsBeta && !bIsBeta) return -1; // Beta model comes first
+                if (!aIsBeta && bIsBeta) return 1;
+                if (aIsFree && !bIsFree) return 1;  // Free tier goes last
+                if (!aIsFree && bIsFree) return -1;
                 
                 // Otherwise sort alphabetically by name
                 return a.name.localeCompare(b.name);
@@ -1568,8 +1614,44 @@
 
             populateLLMModelDropdown();
 
-            const currentSelection = chatState.projectSettings?.primaryLLMModel;
+            // Handle beta limit warning message
             const llmModelSelect = safeGetDocumentElement('llm-model-select');
+            const chatInputArea = safeGetDocumentElement('chat-input-area');
+            let betaLimitMessageElement = document.getElementById('beta-limit-message');
+            
+            if (isBetaCodeEntered && betaLimitReached) {
+                // Show beta limit warning
+                if (!betaLimitMessageElement && chatInputArea) {
+                    betaLimitMessageElement = document.createElement('div');
+                    betaLimitMessageElement.id = 'beta-limit-message';
+                    betaLimitMessageElement.className = 'beta-limit-warning';
+                    betaLimitMessageElement.textContent = 'Beta test limit ($3/month) reached. Please use the free tier or add your own API key.';
+                    
+                    if (llmModelSelect && llmModelSelect.parentNode) {
+                        llmModelSelect.parentNode.insertBefore(betaLimitMessageElement, llmModelSelect);
+                    }
+                }
+                
+                // If current selection is beta model, switch to free tier
+                if (llmModelSelect?.value === 'gemini-2.5-flash-beta' && chatState.availableModels.length > 0) {
+                    const freeTier = chatState.availableModels.find(m => m.id === 'gemini-2.5-flash-free-tier');
+                    if (freeTier) {
+                        llmModelSelect.value = freeTier.id;
+                        chatState.projectSettings = {
+                            ...(chatState.projectSettings || {}),
+                            primaryLLMModel: freeTier.id
+                        };
+                        await globalScope.WebviewApi.persistence.saveProjectSettings(chatState.projectSettings);
+                    }
+                }
+            } else {
+                // Hide/remove beta limit message if it exists
+                if (betaLimitMessageElement) {
+                    betaLimitMessageElement.remove();
+                }
+            }
+
+            const currentSelection = chatState.projectSettings?.primaryLLMModel;
             
             if (currentSelection && !chatState.availableModels.some(model => model.id === currentSelection)) {
                 // Current selection is no longer available, select first available model
@@ -1608,8 +1690,50 @@
             }
 
             if (type === 'globalSettingsUpdated') {
-                console.log('Chat: Received globalSettingsUpdated notification, refreshing LLM models');
-                await refreshLLMModelDropdown();
+                console.log('Chat: Received globalSettingsUpdated notification, updating LLM models');
+                
+                // If backend provided updated availableModels, use them directly
+                if (payload?.availableModels) {
+                    console.log('Chat: Using availableModels from backend:', {
+                        modelCount: payload.availableModels.length,
+                        modelIds: payload.availableModels.map(m => m.id)
+                    });
+                    
+                    // Update chat state with new settings and models
+                    if (payload.globalSettings) {
+                        chatState.globalSettings = payload.globalSettings;
+                    }
+                    chatState.availableModels = payload.availableModels;
+                    
+                    // Repopulate dropdown
+                    populateLLMModelDropdown();
+                    
+                    // Ensure current selection is still valid
+                    const llmModelSelect = safeGetDocumentElement('llm-model-select');
+                    const currentSelection = chatState.projectSettings?.primaryLLMModel;
+                    
+                    if (currentSelection && !chatState.availableModels.some(model => model.id === currentSelection)) {
+                        // Current selection is no longer available, select first available model
+                        if (chatState.availableModels.length > 0 && llmModelSelect) {
+                            const newSelection = chatState.availableModels[0].id;
+                            llmModelSelect.value = newSelection;
+                            chatState.projectSettings = {
+                                ...(chatState.projectSettings || {}),
+                                primaryLLMModel: newSelection
+                            };
+                            if (globalScope?.WebviewApi) {
+                                await globalScope.WebviewApi.persistence.saveProjectSettings(chatState.projectSettings);
+                            }
+                        }
+                    } else if (currentSelection && llmModelSelect) {
+                        // Restore current selection
+                        llmModelSelect.value = currentSelection;
+                    }
+                } else {
+                    // Fallback to refreshing if backend didn't provide availableModels
+                    await refreshLLMModelDropdown();
+                }
+                
                 chatMessagesElement?.dispatchEvent(new CustomEvent('chat-settings-updated'));
             }
 
@@ -1709,7 +1833,17 @@
                 }, 500);
             }
 
-            if (!message.requestId && message.type) {
+            // Handle notifications (messages without requestId that are not responses)
+            // Special case: globalSettingsUpdated should always be processed even if it has requestId
+            if (message.type === 'globalSettingsUpdated' && message.payload) {
+                console.log('[Chat] Received globalSettingsUpdated, processing...', {
+                    hasRequestId: !!message.requestId,
+                    payloadKeys: Object.keys(message.payload),
+                    availableModelsCount: message.payload.availableModels?.length
+                });
+                await dispatchNotification(message.type, message.payload);
+            } else if (!message.requestId && message.type) {
+                console.log('[Chat] Dispatching notification:', message.type);
                 await dispatchNotification(message.type, message.payload);
             }
         };
@@ -2229,6 +2363,34 @@
             renderArtifactModal,
             closeArtifactModal
         };
+    }
+
+    // Add visibility observer to refresh dropdown when chat tab becomes visible
+    if (typeof document !== 'undefined' && typeof globalScope.ChatManager !== 'undefined') {
+        const setupVisibilityObserver = () => {
+            const chatContent = document.getElementById('chat-content');
+            if (chatContent) {
+                const observer = new MutationObserver(() => {
+                    if (chatContent.style.display !== 'none' && globalScope.ChatManager) {
+                        console.log('[Chat] Chat tab became visible, refreshing dropdown');
+                        setTimeout(() => {
+                            if (globalScope.ChatManager.refreshLLMModelDropdown) {
+                                globalScope.ChatManager.refreshLLMModelDropdown();
+                            }
+                        }, 100);
+                    }
+                });
+                
+                observer.observe(chatContent, { attributes: true, attributeFilter: ['style'] });
+                console.log('[Chat] Visibility observer set up for chat tab');
+            }
+        };
+        
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', setupVisibilityObserver);
+        } else {
+            setupVisibilityObserver();
+        }
     }
 
 })(typeof window !== 'undefined' ? window : undefined);

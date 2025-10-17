@@ -358,6 +358,105 @@
     font-size: 12px;
 }
 
+/* Beta Testing Section Styles */
+.beta-testing-section {
+    margin-bottom: 24px;
+    padding: 20px;
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 8px;
+    background-color: var(--vscode-editor-background);
+}
+
+.beta-testing-section fieldset {
+    border: none;
+    margin: 0;
+    padding: 0;
+}
+
+.beta-testing-section legend {
+    font-weight: 600;
+    color: var(--vscode-foreground);
+    margin-bottom: 15px;
+    font-size: 16px;
+}
+
+.beta-code-input-wrapper {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.beta-code-input-wrapper input {
+    flex: 1;
+}
+
+.validate-beta-btn {
+    background-color: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    border: 1px solid var(--vscode-button-border);
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: var(--vscode-font-family);
+    font-size: var(--vscode-font-size);
+    font-weight: 500;
+    white-space: nowrap;
+    transition: background-color 0.2s ease;
+}
+
+.validate-beta-btn:hover {
+    background-color: var(--vscode-button-secondaryHoverBackground);
+}
+
+.beta-validation-status {
+    margin-top: 12px;
+    padding: 12px;
+    border-radius: 4px;
+    font-size: 13px;
+    display: none;
+}
+
+.beta-validation-status .status-success {
+    color: #28a745;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.beta-validation-status .status-error {
+    color: #dc3545;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.beta-validation-status .status-neutral {
+    color: var(--vscode-descriptionForeground);
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.beta-validation-status .status-details {
+    margin-top: 8px;
+    padding: 8px;
+    background-color: var(--vscode-textCodeBlock-background);
+    border-radius: 4px;
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+    line-height: 1.6;
+}
+
+.beta-description {
+    margin-top: 8px;
+    font-size: 13px;
+    color: var(--vscode-descriptionForeground);
+    line-height: 1.4;
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
     .settings-container {
@@ -375,7 +474,17 @@
     }
     
     .llm-provider-section,
-    .project-detail-section {
+    .project-detail-section,
+    .beta-testing-section {
         padding: 15px;
+    }
+    
+    .beta-code-input-wrapper {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .validate-beta-btn {
+        width: 100%;
     }
 }

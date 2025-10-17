@@ -22,6 +22,10 @@ if (!window.WebviewApi) {
 function initializeSettings() {
     console.log('Settings: Initializing settings functionality...');
 
+// Beta testing constants
+const VALID_BETA_CODE = 'BETA-SA-2025-7K9M';
+const BETA_MONTHLY_LIMIT = 3.00;
+
 // Import LLM models from constants (this will be available via the webview API)
 let LLM_MODELS = {
     openai: [
@@ -30,6 +34,7 @@ let LLM_MODELS = {
     ],
     google: [
         { id: 'gemini-2.5-flash-free-tier', name: 'Free Tier', description: 'Free tier Gemini model with daily usage limits' },
+        { id: 'gemini-2.5-flash-beta', name: 'Beta Testing', description: 'Beta Testing access with $3 monthly sponsored limit' },
         { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', description: 'Fast and efficient Gemini model for quick responses' },
         { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', description: 'Most capable Gemini model for complex tasks' }
     ],
@@ -162,6 +167,9 @@ function renderSettings() {
             <!-- Telemetry Section -->
             ${renderTelemetrySection()}
             
+            <!-- Beta Testing Section -->
+            ${renderBetaTestingSection()}
+            
             <!-- LLM Provider Sections -->
             ${renderLLMProviderSection('OpenAI', LLM_MODELS.openai, 'openai')}
             ${renderLLMProviderSection('Gemini', LLM_MODELS.google, 'gemini')}
@@ -198,6 +206,32 @@ function renderTelemetrySection() {
                     <p class="telemetry-description">
                         Help improve Samurai Agent by sharing anonymous usage data. 
                         No personal information or code content is collected.
+                    </p>
+                </div>
+            </fieldset>
+        </div>
+    `;
+}
+
+function renderBetaTestingSection() {
+    const betaCodeValue = settingsState.globalSettings.betaCode || '';
+    
+    return `
+        <div class="beta-testing-section">
+            <fieldset>
+                <legend>Beta Testing</legend>
+                <div class="settings-form-group">
+                    <label for="beta-code-input">Beta Code:</label>
+                    <div class="beta-code-input-wrapper">
+                        <input type="text" 
+                               id="beta-code-input" 
+                               placeholder="Enter your beta testing code..."
+                               value="${betaCodeValue}">
+                        <button id="validate-beta-code-btn" class="validate-beta-btn">Validate</button>
+                    </div>
+                    <div id="beta-validation-status" class="beta-validation-status"></div>
+                    <p class="beta-description">
+                        Enter a beta code to access sponsored LLM usage with a $3 monthly limit.
                     </p>
                 </div>
             </fieldset>
@@ -275,8 +309,93 @@ function renderProjectDetailSection() {
     `;
 }
 
+async function validateBetaCode() {
+    const betaCodeInput = document.getElementById('beta-code-input');
+    const statusDiv = document.getElementById('beta-validation-status');
+    
+    if (!betaCodeInput || !statusDiv) {
+        console.error('Beta code validation elements not found');
+        return;
+    }
+    
+    const betaCode = betaCodeInput.value?.trim() || '';
+    
+    // Check if code is valid
+    const isValid = betaCode === VALID_BETA_CODE;
+    
+    if (!betaCode) {
+        statusDiv.innerHTML = '<span class="status-neutral">⚠️ No beta code entered</span>';
+        statusDiv.style.display = 'block';
+        return;
+    }
+    
+    if (!isValid) {
+        statusDiv.innerHTML = '<span class="status-error">❌ Invalid beta code</span>';
+        statusDiv.style.display = 'block';
+        return;
+    }
+    
+    // Code is valid, check monthly usage
+    try {
+        const betaMonthlyCost = await window.WebviewApi.postCommand('samurai-agent.getMonthlyCostForBetaUsers');
+        const remainingBudget = BETA_MONTHLY_LIMIT - betaMonthlyCost;
+        const percentUsed = (betaMonthlyCost / BETA_MONTHLY_LIMIT * 100).toFixed(1);
+        
+        if (betaMonthlyCost >= BETA_MONTHLY_LIMIT) {
+            statusDiv.innerHTML = `
+                <span class="status-error">❌ Beta code valid but monthly limit reached</span>
+                <div class="status-details">
+                    Used: $${betaMonthlyCost.toFixed(2)} / $${BETA_MONTHLY_LIMIT.toFixed(2)} (${percentUsed}%)
+                </div>
+            `;
+        } else {
+            statusDiv.innerHTML = `
+                <span class="status-success">✅ Beta code valid and active</span>
+                <div class="status-details">
+                    Used: $${betaMonthlyCost.toFixed(2)} / $${BETA_MONTHLY_LIMIT.toFixed(2)} (${percentUsed}%)
+                    <br>Remaining: $${remainingBudget.toFixed(2)}
+                </div>
+            `;
+        }
+        statusDiv.style.display = 'block';
+    } catch (error) {
+        console.error('Error getting beta monthly cost:', error);
+        statusDiv.innerHTML = `
+            <span class="status-success">✅ Beta code is valid</span>
+            <div class="status-details">Unable to check usage limits</div>
+        `;
+        statusDiv.style.display = 'block';
+    }
+}
+
 function attachSettingsEventListeners() {
     console.log('Settings: attachSettingsEventListeners called');
+    
+    // Beta code validation button
+    const validateBetaBtn = document.getElementById('validate-beta-code-btn');
+    if (validateBetaBtn) {
+        validateBetaBtn.addEventListener('click', async function(e) {
+            e.preventDefault();
+            await validateBetaCode();
+        });
+    }
+    
+    // Auto-validate on input change (debounced)
+    const betaCodeInput = document.getElementById('beta-code-input');
+    if (betaCodeInput) {
+        let validationTimeout;
+        betaCodeInput.addEventListener('input', function() {
+            clearTimeout(validationTimeout);
+            validationTimeout = setTimeout(() => {
+                validateBetaCode();
+            }, 500); // Debounce 500ms
+        });
+        
+        // Also validate on load if there's a value
+        if (betaCodeInput.value?.trim()) {
+            setTimeout(() => validateBetaCode(), 100);
+        }
+    }
     
     // Telemetry toggle
     const telemetryToggle = document.getElementById('telemetry-toggle');
@@ -519,6 +638,7 @@ function updateGlobalSettingsFromUI() {
     settingsState.globalSettings.openaiApiKey = document.getElementById('openai-api-key')?.value || '';
     settingsState.globalSettings.geminiApiKey = document.getElementById('gemini-api-key')?.value || '';
     settingsState.globalSettings.claudeApiKey = document.getElementById('claude-api-key')?.value || '';
+    settingsState.globalSettings.betaCode = document.getElementById('beta-code-input')?.value || '';
 }
 
 function updateProjectSettingsFromUI() {

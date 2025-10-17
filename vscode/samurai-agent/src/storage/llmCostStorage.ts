@@ -18,6 +18,7 @@ export interface LLMCostRecord {
     cost: number;
     sessionId?: string;
     requestId?: string;
+    isBetaUserActive?: boolean; // Flag for beta user calls
 }
 
 interface StoredCostData {
@@ -155,6 +156,23 @@ export class LLMCostStorage {
         });
         
         return monthRecords.reduce((sum, record) => sum + record.cost, 0);
+    }
+    
+    /**
+     * Get cost for the current month specifically for beta users
+     * @returns Current month's cost in USD for beta usage
+     */
+    getMonthlyCostForBetaUsers(): number {
+        const now = new Date();
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        
+        const data = this.loadStoredData();
+        const betaMonthRecords = data.records.filter(r => {
+            const recordTime = new Date(r.timestamp);
+            return recordTime >= monthStart && r.isBetaUserActive === true;
+        });
+        
+        return betaMonthRecords.reduce((sum, record) => sum + record.cost, 0);
     }
     
     /**

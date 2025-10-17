@@ -4,6 +4,7 @@ import * as fs from "fs";
 import { DataStore } from "../persistence/dataStore";
 import { GlobalDataStore } from "../persistence/globalDataStore";
 import { LLM_MODELS } from "../common/constants/llm-models";
+import { VALID_BETA_CODE, BETA_MONTHLY_LIMIT } from "../common/constants/llm-constants";
 import { LLMProviderService } from "../agent/llm/llmProviderService";
 import { ProjectDetailService } from "../agent/memory/projectDetailService";
 import { TreeSitterLoaderService } from "../agent/code_parser/TreeSitterLoaderService";
@@ -486,9 +487,22 @@ export class SamuraiAgentPanelWebviewViewProvider
             console.log(
               "Webview Provider: Sending globalSettingsUpdated notification",
             );
+            
+            // Get updated available models based on new settings
+            const updatedGlobalSettings = response.payload;
+            const updatedAvailableModels = this.getAvailableModels(updatedGlobalSettings);
+            
+            console.log('[Backend] Updated available models after settings save:', {
+              modelCount: updatedAvailableModels.length,
+              modelIds: updatedAvailableModels.map(m => m.id)
+            });
+            
             webview.postMessage({
               type: "globalSettingsUpdated",
-              payload: message.payload,
+              payload: {
+                globalSettings: updatedGlobalSettings,
+                availableModels: updatedAvailableModels
+              },
               timestamp: new Date(),
             });
           }
@@ -515,6 +529,32 @@ export class SamuraiAgentPanelWebviewViewProvider
                 type: "error",
                 requestId: message.requestId,
                 error: error instanceof Error ? error.message : "Failed to get cost statistics",
+                timestamp: new Date(),
+              });
+            }
+          );
+        }
+        return;
+      }
+
+      // Handle beta monthly cost command
+      if (command === "samurai-agent.getMonthlyCostForBetaUsers") {
+        const commandPromise = vscode.commands.executeCommand(command);
+        if (commandPromise && typeof commandPromise.then === "function") {
+          commandPromise.then(
+            (result: unknown) => {
+              webview.postMessage({
+                type: "success",
+                requestId: message.requestId,
+                payload: result,
+                timestamp: new Date(),
+              });
+            },
+            (error: unknown) => {
+              webview.postMessage({
+                type: "error",
+                requestId: message.requestId,
+                error: error instanceof Error ? error.message : "Failed to get beta monthly cost",
                 timestamp: new Date(),
               });
             }
@@ -1113,7 +1153,7 @@ export class SamuraiAgentPanelWebviewViewProvider
   }
 
   /**
-   * Gets available models based on configured API keys
+   * Gets available models based on configured API keys and beta code
    */
   private getAvailableModels(globalSettings: any) {
     const availableModels = [];
@@ -1123,15 +1163,49 @@ export class SamuraiAgentPanelWebviewViewProvider
       availableModels.push(...LLM_MODELS.openai);
     }
 
+    // Beta model logic - check if beta code is valid and limit not reached
+    const isBetaCodeValid = globalSettings.betaCode?.trim() === VALID_BETA_CODE;
+    let betaLimitReached = false;
+    
+    console.log('[Backend Beta Debug] Beta code check:', {
+      betaCode: globalSettings.betaCode,
+      trimmed: globalSettings.betaCode?.trim(),
+      expectedCode: VALID_BETA_CODE,
+      isValid: isBetaCodeValid
+    });
+    
+    if (isBetaCodeValid && this.llmCostStorage) {
+      const betaMonthlyCost = this.llmCostStorage.getMonthlyCostForBetaUsers();
+      console.log('[Backend Beta Debug] Monthly cost:', betaMonthlyCost, 'Limit:', BETA_MONTHLY_LIMIT);
+      if (typeof betaMonthlyCost === 'number' && betaMonthlyCost >= BETA_MONTHLY_LIMIT) {
+        betaLimitReached = true;
+      }
+    }
+
+    // Add beta testing model if code is valid AND limit not reached
+    if (isBetaCodeValid && !betaLimitReached) {
+      const betaModel = LLM_MODELS.google.find(m => m.id === 'gemini-2.5-flash-beta');
+      if (betaModel) {
+        console.log('[Backend Beta Debug] Adding beta model to available models');
+        availableModels.push(betaModel);
+      } else {
+        console.log('[Backend Beta Debug] Beta model not found in LLM_MODELS.google');
+      }
+    } else {
+      console.log('[Backend Beta Debug] Beta model not added. isBetaCodeValid:', isBetaCodeValid, 'betaLimitReached:', betaLimitReached);
+    }
+
     // Always add free tier model since it uses hardcoded API key
     const freeTierModel = LLM_MODELS.google.find(m => m.id === 'gemini-2.5-flash-free-tier');
     if (freeTierModel) {
       availableModels.push(freeTierModel);
     }
 
-    // Check Google models (add other models if user has Gemini API key)
+    // Check Google models (add other models if user has Gemini API key, exclude free tier and beta)
     if (globalSettings.geminiApiKey && globalSettings.geminiApiKey.trim()) {
-      const otherGoogleModels = LLM_MODELS.google.filter(m => m.id !== 'gemini-2.5-flash-free-tier');
+      const otherGoogleModels = LLM_MODELS.google.filter(
+        m => m.id !== 'gemini-2.5-flash-free-tier' && m.id !== 'gemini-2.5-flash-beta'
+      );
       availableModels.push(...otherGoogleModels);
     }
 
@@ -1141,7 +1215,7 @@ export class SamuraiAgentPanelWebviewViewProvider
     }
 
     // Sort alphabetically by provider, then by model name
-    // But always put free tier model last within its provider group
+    // Within Google provider, order: beta, paid models, free tier
     return availableModels.sort((a, b) => {
       const providerA = a.provider;
       const providerB = b.provider;
@@ -1151,12 +1225,18 @@ export class SamuraiAgentPanelWebviewViewProvider
         return providerA.localeCompare(providerB);
       }
       
-      // Within same provider, put free tier model last
-      const aIsFree = a.id === 'gemini-2.5-flash-free-tier';
-      const bIsFree = b.id === 'gemini-2.5-flash-free-tier';
-      
-      if (aIsFree && !bIsFree) return 1;  // a (free tier) goes after b
-      if (!aIsFree && bIsFree) return -1; // b (free tier) goes after a
+      // Within Google provider, special ordering
+      if (providerA === 'google') {
+        const aIsBeta = a.id === 'gemini-2.5-flash-beta';
+        const bIsBeta = b.id === 'gemini-2.5-flash-beta';
+        const aIsFree = a.id === 'gemini-2.5-flash-free-tier';
+        const bIsFree = b.id === 'gemini-2.5-flash-free-tier';
+        
+        if (aIsBeta && !bIsBeta) return -1; // Beta model comes first
+        if (!aIsBeta && bIsBeta) return 1;
+        if (aIsFree && !bIsFree) return 1;  // Free tier goes last
+        if (!aIsFree && bIsFree) return -1;
+      }
       
       // Otherwise sort alphabetically by name
       return a.name.localeCompare(b.name);
