@@ -46,7 +46,7 @@ Unlike quick tools that use keyword search, we use **agentic code search** to re
    
    Recommendation: Option A - you already have 3 similar patterns"
 ```
-```
+
 
 
 ---

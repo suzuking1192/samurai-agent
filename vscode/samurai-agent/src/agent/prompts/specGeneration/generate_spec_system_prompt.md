@@ -981,7 +981,7 @@ function create{{EntityName}}(overrides = {}) {
 
 # LANGUAGE HANDLING
 
-Respond in the same language as the user's last message, keeping technical terms and code in English but translating all explanations and comments.
+Respond in the same language as main language in the user's messages, keeping technical terms and code in English but translating all explanations and comments.
 
 ## SPEC CONTEXT INTEGRATION
 - Reference specific technical decisions made during the conversation where applicable.

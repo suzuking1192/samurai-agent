@@ -1257,7 +1257,7 @@
 
             if (chatInput) {
                 chatInput.addEventListener('keydown', event => {
-                    if (event.key === 'Enter' && !event.shiftKey) {
+                    if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
                         // Only prevent default and send on Enter without Shift
                         event.preventDefault();
                         const message = chatInput.value.trim();

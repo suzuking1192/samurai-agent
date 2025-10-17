@@ -2,7 +2,7 @@
   "name": "samurai-agent",
   "displayName": "Samurai Agent - Deep Bug Analysis & Feature Planning",
   "description": "Find root causes of bugs and plan complex features with confidence. Analyzes system-wide code relationships, presents architectural trade-offs, generates reviewable specs. For production codebases.",
-  "version": "0.0.19",
+  "version": "0.0.21",
   "publisher": "SamuraiAgent",
   "engines": {
     "vscode": "^1.75.0"

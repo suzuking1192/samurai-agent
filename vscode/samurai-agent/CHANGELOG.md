@@ -2,6 +2,82 @@
 
 All notable changes to the "samurai-agent" extension will be documented in this file.
 
+## [0.0.20] - 2025-10-17
+
+### Added
+- **Beta Testing Mode**: Introduced comprehensive beta testing system for new features
+  - Added beta model selection feature in settings UI
+  - Integrated beta testing framework with LLM provider service
+  - Added telemetry tracking for beta feature usage
+  - Created comprehensive test coverage for beta models functionality
+- **Code Extraction Enhancements**: Major improvements to code parsing and context extraction
+  - Implemented CodeParserCache for improved performance and reduced redundant parsing
+  - Added DocumentationExtractor for automatic extraction of JSDoc and docstrings
+  - Added ExportAnalyzer to track module exports and public APIs
+  - Added PatternDetector to identify framework-specific patterns (React, Django, Spring)
+  - Implemented RelationshipTracker for better understanding of code dependencies
+  - Added SnippetEnricher to provide richer code context with relationships and documentation
+- **Recent Files Tracking**: Added system to track and suggest recently opened files
+  - Automatically tracks recently viewed files in the workspace
+  - Integrated with code extraction to provide better context
+  - Added comprehensive test coverage for recent files functionality
+- **Context File Pinning**: Implemented file pinning system for persistent context
+  - Users can pin important files for continuous context across chat sessions
+  - Pinned files are prioritized in code extraction
+  - Added UI controls for managing pinned files
+  - Created comprehensive test suite for file pinning functionality
+- **Spec Relationship Visualization**: Enhanced spec artifact generation with relationship tracking
+  - Added Mermaid diagram support for visualizing spec relationships
+  - Implemented MermaidValidator for validating diagram syntax
+  - Enhanced spec clarification prompts to better capture spec relationships
+  - Added "Show Current Spec" button in chat UI for viewing active spec context
+- **Code Extraction Keywords**: Improved keyword handling in code extraction
+  - Better merging of user-provided and AI-extracted keywords
+  - Enhanced duplicate keyword filtering
+  - Added contextual keyword suggestions based on recent files
+
+### Fixed
+- **CRITICAL**: Fixed spec relationship tracking to ensure all specs are properly connected
+  - Enhanced spec artifact generation to validate parent-child relationships
+  - Improved spec clarification flow to maintain relationship integrity
+  - Added comprehensive test coverage for spec relationship scenarios
+- **CRITICAL**: Fixed Japanese input composition issue in chat
+  - Chat no longer sends message on Enter key when composing Japanese/CJK characters
+  - Added `isComposing` check to prevent premature message submission
+  - Improves user experience for non-English speakers using IME
+- **Code Extraction Bug**: Fixed keyword merging logic that was causing duplicate keywords
+  - Improved deduplication algorithm to handle case-insensitive matching
+  - Better integration between user keywords and AI-extracted keywords
+- **Language Detection**: Improved language handling in spec generation
+  - Changed from "last message" language detection to "main language" detection
+  - Better multilingual support for users mixing English technical terms with native language
+
+### Improved
+- **Enhanced Code Parser Performance**: Major performance improvements in code parsing
+  - Implemented caching layer to avoid re-parsing unchanged files
+  - Optimized tree-sitter queries for better performance
+  - Added performance benchmarks and optimization tests
+- **Better Code Context Quality**: Significantly improved quality of extracted code context
+  - Richer code snippets with documentation and relationship information
+  - Better detection of framework-specific patterns and idioms
+  - Enhanced understanding of module exports and API surfaces
+- **Improved Spec Generation Prompts**: Enhanced prompts for better spec quality
+  - Added explicit instructions for Mermaid diagram generation
+  - Improved spec relationship tracking in prompts
+  - Better handling of root cause analysis in bug scenarios
+- **Enhanced Test Coverage**: Added extensive test suites for new features
+  - Beta testing integration tests (445 new tests)
+  - Code parser component tests (1,500+ new assertions)
+  - Context file pinning tests (521 new tests)
+  - Mermaid validation tests
+  - Recent files tracking tests (512 new tests)
+  - Webview functionality tests (256 new tests)
+
+## [0.0.19] - 2025-10-15
+
+### Note
+- Version 0.0.19 was an intermediate release with incremental improvements that are now fully documented in version 0.0.20
+
 ## [0.0.18] - 2025-10-09
 
 ### Added
