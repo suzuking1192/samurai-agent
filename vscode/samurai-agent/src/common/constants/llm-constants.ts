@@ -28,4 +28,10 @@ export const VALID_BETA_CODE = 'BETA-SA-2025-7K9M';
  */
 export const BETA_MONTHLY_LIMIT = 3.00;
 
+/**
+ * Backend proxy URL for gemini-2.5-flash-beta requests
+ * This proxy validates betaCode server-side and uses the sponsored API key
+ */
+export const GEMINI_BETA_PROXY_URL = 'https://samurai-agent-beta-proxy.onrender.com/api/gemini-beta';
+
 

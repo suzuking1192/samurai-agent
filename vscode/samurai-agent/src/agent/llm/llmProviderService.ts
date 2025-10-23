@@ -11,6 +11,7 @@ import { LLM_MODELS } from "../../common/constants/llm-models";
 import { FREE_TIER_GEMINI_API_KEY, BETA_GEMINI_API_KEY, VALID_BETA_CODE, BETA_MONTHLY_LIMIT } from "../../common/constants/llm-constants";
 import { ProjectSettings } from "../../common/models/settings-models";
 import { calculateLLMCost } from "../../common/utils/llmCostCalculator";
+import { GeminiBetaProxyClient } from "./GeminiBetaProxyClient";
 
 export interface ChatClient {
   chat(request: LLMRequest): Promise<ApiResponse<LLMResponse | LLMError>>;
@@ -19,6 +20,7 @@ export interface ChatClient {
 export class LLMProviderService {
   private clients: Map<string, ChatClient>;
   private cachedGlobalSettings: any | undefined;
+  private proxyClient: GeminiBetaProxyClient | null = null;
 
   constructor(
     private readonly globalDataStore: GlobalDataStore,
@@ -35,6 +37,87 @@ export class LLMProviderService {
 
   public getCachedGlobalSettings(): any | undefined {
     return this.cachedGlobalSettings;
+  }
+
+  /**
+   * Get or create the proxy client for beta requests
+   */
+  private getOrCreateProxyClient(): GeminiBetaProxyClient {
+    if (!this.proxyClient) {
+      this.proxyClient = new GeminiBetaProxyClient(this.globalDataStore);
+    }
+    return this.proxyClient;
+  }
+
+  /**
+   * Fallback logic when beta model fails or monthly limit is exceeded
+   * Tries user's own key first, then free tier
+   */
+  private async fallbackFromBetaModel(
+    modelRequest: LLMRequest, 
+    globalSettings: any
+  ): Promise<ApiResponse<LLMResponse | LLMError>> {
+    console.log('[LLMProviderService] Attempting fallback from beta model');
+    
+    // Try user's own Gemini API key first
+    if (globalSettings.geminiApiKey?.trim()) {
+      console.log('[LLMProviderService] Falling back to user\'s gemini-2.5-flash key');
+      modelRequest.model = 'gemini-2.5-flash';
+      modelRequest.metadata = { 
+        ...modelRequest.metadata, 
+        apiKey: globalSettings.geminiApiKey,
+        fallbackReason: 'beta_proxy_failed'
+      };
+      
+      // Execute with user's key
+      const client = this.clients.get('google');
+      if (client) {
+        const response = await client.chat(modelRequest);
+        this.trackProxyTelemetry(false, 'PROXY_ERROR', undefined, 'gemini-2.5-flash');
+        return response;
+      }
+    }
+    
+    // Fall back to free tier
+    console.log('[LLMProviderService] Falling back to gemini-2.5-flash-free-tier');
+    modelRequest.model = 'gemini-2.5-flash-free-tier';
+    modelRequest.metadata = { 
+      ...modelRequest.metadata, 
+      apiKey: FREE_TIER_GEMINI_API_KEY,
+      fallbackReason: 'beta_proxy_failed'
+    };
+    
+    const client = this.clients.get('google');
+    if (client) {
+      const response = await client.chat(modelRequest);
+      this.trackProxyTelemetry(false, 'PROXY_ERROR', undefined, 'gemini-2.5-flash-free-tier');
+      return response;
+    }
+    
+    // This should not happen, but handle gracefully
+    return this.createErrorResponse(
+      'No fallback client available for Gemini requests',
+      modelRequest.id
+    );
+  }
+
+  /**
+   * Track proxy telemetry events
+   */
+  private trackProxyTelemetry(
+    success: boolean, 
+    errorCode?: string, 
+    latencyMs?: number, 
+    fallbackModel?: string
+  ): void {
+    // Get telemetry service from globalDataStore if available
+    const telemetryService = (this.globalDataStore as any).telemetryService;
+    if (telemetryService && typeof telemetryService.trackGeminiBetaProxyCall === 'function') {
+      telemetryService.trackGeminiBetaProxyCall(success, errorCode, latencyMs, fallbackModel)
+        .catch((error: any) => {
+          console.error('[LLMProviderService] Error tracking proxy telemetry:', error);
+        });
+    }
   }
 
   public async chat(
@@ -114,7 +197,7 @@ export class LLMProviderService {
       modelRequest.maxTokens = request.maxTokens;
     }
     
-    // Beta mode enforcement
+    // Beta mode enforcement - route through proxy
     if (modelRequest.model === 'gemini-2.5-flash-beta') {
       const isBetaCodeValid = globalSettings.betaCode?.trim() === VALID_BETA_CODE;
       
@@ -130,14 +213,35 @@ export class LLMProviderService {
         const betaMonthlyCost = this.llmCostStorage.getMonthlyCostForBetaUsers();
         if (betaMonthlyCost >= BETA_MONTHLY_LIMIT) {
           // Fallback: use user's own key if available, otherwise free tier
-          if (globalSettings.geminiApiKey?.trim()) {
-            modelRequest.model = 'gemini-2.5-flash';
-            modelRequest.metadata = { ...modelRequest.metadata, apiKey: globalSettings.geminiApiKey };
-          } else {
-            modelRequest.model = 'gemini-2.5-flash-free-tier';
-            modelRequest.metadata = { ...modelRequest.metadata, apiKey: FREE_TIER_GEMINI_API_KEY };
-          }
+          return await this.fallbackFromBetaModel(modelRequest, globalSettings);
         }
+      }
+      
+      // Use proxy client for beta requests
+      const proxyStartTime = Date.now();
+      try {
+        const proxyClient = this.getOrCreateProxyClient();
+        const response = await proxyClient.chat(modelRequest);
+        
+        if (response.type === ResponseType.SUCCESS) {
+          // Track successful proxy call
+          const latency = Date.now() - proxyStartTime;
+          this.trackProxyTelemetry(true, undefined, latency);
+          return response;
+        }
+        
+        // Proxy returned error - attempt fallback
+        console.error('[LLMProviderService] Proxy error, attempting fallback:', response);
+        const latency = Date.now() - proxyStartTime;
+        const errorCode = response.payload && 'errorCode' in response.payload ? response.payload.errorCode : 'UNKNOWN_ERROR';
+        this.trackProxyTelemetry(false, errorCode, latency);
+        return await this.fallbackFromBetaModel(modelRequest, globalSettings);
+        
+      } catch (error) {
+        console.error('[LLMProviderService] Proxy call failed, attempting fallback:', error);
+        const latency = Date.now() - proxyStartTime;
+        this.trackProxyTelemetry(false, 'PROXY_ERROR', latency);
+        return await this.fallbackFromBetaModel(modelRequest, globalSettings);
       }
     }
     

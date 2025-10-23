@@ -144,6 +144,72 @@ export class TelemetryService {
     }
 
     /**
+     * Track Gemini Beta Proxy call events
+     * @param success - Whether the proxy call was successful
+     * @param errorCode - Error code if the call failed
+     * @param latencyMs - Request latency in milliseconds
+     * @param fallbackModel - Model used in fallback if applicable
+     */
+    public async trackGeminiBetaProxyCall(
+        success: boolean,
+        errorCode?: string,
+        latencyMs?: number,
+        fallbackModel?: string
+    ): Promise<void> {
+        try {
+            // Check if telemetry is enabled
+            const config = vscode.workspace.getConfiguration('samurai-agent');
+            const isTelemetryEnabled = config.get<boolean>('enableTelemetry', true);
+
+            if (!isTelemetryEnabled) {
+                return;
+            }
+
+            if (!this.posthog || !this.distinctId) {
+                return;
+            }
+
+            // Build properties object
+            const properties: Record<string, any> = {
+                success: success,
+                eventTimestamp: new Date().toISOString(),
+                extensionVersion: this.context.extension.packageJSON.version,
+                vscodeVersion: vscode.version
+            };
+
+            // Add optional properties
+            if (errorCode) {
+                properties.errorCode = errorCode;
+            }
+            if (latencyMs !== undefined) {
+                properties.latencyMs = latencyMs;
+            }
+            if (fallbackModel) {
+                properties.fallbackModel = fallbackModel;
+            }
+
+            // Send the event
+            const eventData = {
+                distinctId: this.distinctId,
+                event: 'gemini_beta_proxy_call',
+                properties: properties
+            };
+
+            this.posthog.capture(eventData);
+            console.log('TelemetryService: Tracked gemini beta proxy call:', {
+                success,
+                errorCode,
+                latencyMs,
+                fallbackModel
+            });
+
+        } catch (error) {
+            // Telemetry errors should not affect core functionality
+            console.error('TelemetryService: Error tracking gemini beta proxy call:', error);
+        }
+    }
+
+    /**
      * Track extension activation
      */
     public async trackExtensionActivation(): Promise<void> {
