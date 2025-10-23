@@ -1628,7 +1628,7 @@ CRITICAL RULES:
         { role: "user", content: currentUserMessage.content }
       ];
       
-      // Call LLM service
+      // Call LLM service with parameters optimized for concise responses
       const response = await this.llmProviderService.chat({
         id: `intent-analysis-${Date.now()}`,
         provider: "auto",
@@ -1638,7 +1638,10 @@ CRITICAL RULES:
           type: "intent_analysis"
         },
         createdAt: new Date(),
-        updatedAt: new Date()
+        updatedAt: new Date(),
+        // Add parameters to encourage concise responses
+        temperature: 0.1, // Lower temperature for more deterministic, concise responses
+        maxTokens: 10 // Limit to prevent verbose responses (intent should be 1 word)
       });
       
       if (response.type === "error" || !response.payload) {
@@ -1716,6 +1719,8 @@ CRITICAL RULES:
   }
   
   private parseIntentResponse(intentResponse: string): UserIntentEnum {
+    const normalized = intentResponse.trim().toLowerCase();
+    
     // Map possible variations to standard intents
     const intentMapping: Record<string, UserIntentEnum> = {
       "pure_discussion": UserIntentEnum.PURE_DISCUSSION,
@@ -1733,19 +1738,32 @@ CRITICAL RULES:
     };
     
     // Try exact match first
-    if (intentMapping[intentResponse]) {
-      return intentMapping[intentResponse];
+    if (intentMapping[normalized]) {
+      return intentMapping[normalized];
+    }
+    
+    // NEW: Try regex extraction for verbose responses
+    const intentRegex = /\b(pure_discussion|feature_exploration|spec_clarification)\b/;
+    const match = normalized.match(intentRegex);
+    
+    if (match) {
+      console.warn(`Intent parser: Had to extract intent from verbose response. Original: "${intentResponse.substring(0, 100)}${intentResponse.length > 100 ? '...' : ''}"`);
+      return intentMapping[match[1]];
     }
     
     // Try partial matching
     for (const [key, value] of Object.entries(intentMapping)) {
-      if (intentResponse.includes(key)) {
+      if (normalized.includes(key)) {
+        console.warn(`Intent parser: Used partial matching for "${key}" from verbose response`);
         return value;
       }
     }
     
-    // If no match found, throw an error
-    throw new Error(`Unable to parse intent from LLM response: "${intentResponse}". Expected one of: pure_discussion, feature_exploration, spec_clarification`);
+    // Enhanced error with truncated preview
+    const preview = intentResponse.length > 100 
+      ? intentResponse.substring(0, 100) + "..." 
+      : intentResponse;
+    throw new Error(`Unable to parse intent from LLM response: "${preview}". Expected one of: pure_discussion, feature_exploration, spec_clarification`);
   }
 
   /**
