@@ -42,7 +42,7 @@ export class GeminiBetaProxyClient implements ChatClient {
   private readonly requestTimeoutMs = 30000; // 30 seconds
 
   constructor(private globalDataStore: GlobalDataStore) {
-    // Hardcoded proxy URL (will be updated after Render deployment)
+    // Use the deployed proxy URL
     this.proxyBaseUrl = 'https://samurai-agent-beta-proxy.onrender.com/api/gemini-beta';
   }
 
