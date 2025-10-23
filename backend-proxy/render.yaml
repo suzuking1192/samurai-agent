@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: samurai-agent-beta-proxy
+    env: node
+    region: oregon
+    plan: starter
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: BETA_GEMINI_API_KEY
+        sync: false
+      - key: VALID_BETA_CODE
+        value: BETA-SA-2025-7K9M
+      - key: PORT
+        value: 3000
+    autoDeploy: false
+    branch: main
+    rootDir: backend-proxy
